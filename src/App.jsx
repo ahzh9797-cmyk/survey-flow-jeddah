@@ -1876,12 +1876,6 @@ export default function App() {
       </div>
 
       <div style={{ paddingBottom:80 }}>
-        {(roleError || true) && (
-          <div style={{ background:"#fffbe0", border:"1px solid #e6c200", padding:"8px 14px", fontSize:10,
-            direction:"ltr", textAlign:"left", color:"#665c00", wordBreak:"break-all" }}>
-            DEBUG — user.id: {user?.id} | role: {String(role)} | error: {roleError || "none"}
-          </div>
-        )}
         {tab==="surveys" && (
           <SurveysList surveys={surveys} loading={loadingSurveys} schoolCount={schoolCount} isAdmin={isAdmin}
             onNew={()=>setModal({type:"new"})}
@@ -1952,4 +1946,3 @@ export default function App() {
     </div>
   );
 }
-
