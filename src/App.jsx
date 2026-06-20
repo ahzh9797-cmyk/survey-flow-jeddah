@@ -255,20 +255,26 @@ function useSchoolCount(){
 function useUserRole(user) {
   const [role, setRole] = useState(null); // null = loading, 'admin' | 'viewer'
   const [displayName, setDisplayName] = useState("");
+  const [roleError, setRoleError] = useState("");
 
   useEffect(() => {
     if (!user) { setRole(null); return; }
     let active = true;
     supabase.from("user_roles").select("role,display_name").eq("user_id", user.id).maybeSingle()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (!active) return;
+        if (error) {
+          setRoleError(error.message);
+          setRole("viewer");
+          return;
+        }
         setRole(data?.role || "viewer"); // افتراضياً viewer إن لم يوجد سجل بعد
         setDisplayName(data?.display_name || "");
       });
     return () => { active = false; };
   }, [user]);
 
-  return { role, displayName, isAdmin: role === "admin" };
+  return { role, displayName, isAdmin: role === "admin", roleError };
 }
 
 // تسجيل عملية في سجل التدقيق — لا تمنع تنفيذ العملية إن فشل التسجيل نفسه
@@ -1803,7 +1809,7 @@ export default function App() {
   const [modal, setModal] = useState(null);
   const { surveys, loading: loadingSurveys, refetch } = useSurveys();
   const schoolCount = useSchoolCount();
-  const { role, isAdmin } = useUserRole(user);
+  const { role, isAdmin, roleError } = useUserRole(user);
 
   // check public survey link: ?survey=uuid
   const params = new URLSearchParams(window.location.search);
@@ -1870,6 +1876,12 @@ export default function App() {
       </div>
 
       <div style={{ paddingBottom:80 }}>
+        {(roleError || true) && (
+          <div style={{ background:"#fffbe0", border:"1px solid #e6c200", padding:"8px 14px", fontSize:10,
+            direction:"ltr", textAlign:"left", color:"#665c00", wordBreak:"break-all" }}>
+            DEBUG — user.id: {user?.id} | role: {String(role)} | error: {roleError || "none"}
+          </div>
+        )}
         {tab==="surveys" && (
           <SurveysList surveys={surveys} loading={loadingSurveys} schoolCount={schoolCount} isAdmin={isAdmin}
             onNew={()=>setModal({type:"new"})}
@@ -1940,3 +1952,4 @@ export default function App() {
     </div>
   );
 }
+
