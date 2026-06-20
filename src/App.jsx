@@ -252,6 +252,70 @@ function useSchoolCount(){
 // ═══════════════════════════════════════════════════════
 // ROLES & AUDIT LOG
 // ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+// PWA INSTALL PROMPT
+// ═══════════════════════════════════════════════════════
+function usePWAInstall() {
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [installed, setInstalled] = useState(false);
+
+  useEffect(() => {
+    // Already running as installed app (standalone mode)?
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches
+      || window.navigator.standalone === true;
+    if (isStandalone) setInstalled(true);
+
+    function onBeforeInstall(e) {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    }
+    function onInstalled() {
+      setInstalled(true);
+      setDeferredPrompt(null);
+    }
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  async function promptInstall() {
+    if (!deferredPrompt) return false;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    setDeferredPrompt(null);
+    return outcome === "accepted";
+  }
+
+  return { canInstall: !!deferredPrompt && !installed, installed, promptInstall };
+}
+
+function InstallAppBanner() {
+  const { canInstall, installed, promptInstall } = usePWAInstall();
+  const [dismissed, setDismissed] = useState(false);
+
+  if (installed || !canInstall || dismissed) return null;
+
+  return (
+    <div style={{ background: C.accentLight, border: `1px solid ${C.accent}40`, borderRadius: 12,
+      padding: "12px 14px", margin: "0 16px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+      <span style={{ fontSize: 22 }}>📲</span>
+      <div style={{ flex: 1 }}>
+        <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: C.dark }}>ثبّت التطبيق على جهازك</p>
+        <p style={{ margin: "2px 0 0", fontSize: 11, color: C.muted }}>وصول أسرع، أيقونة على الشاشة الرئيسية</p>
+      </div>
+      <button onClick={promptInstall} style={{ background: C.accent, color: "#fff", border: "none",
+        borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+        تثبيت
+      </button>
+      <button onClick={()=>setDismissed(true)} style={{ background: "none", border: "none", color: C.muted,
+        fontSize: 16, cursor: "pointer", padding: 0 }}>✕</button>
+    </div>
+  );
+}
+
 function useUserRole(user) {
   const [role, setRole] = useState(null); // null = loading, 'admin' | 'viewer'
   const [displayName, setDisplayName] = useState("");
@@ -1876,6 +1940,7 @@ export default function App() {
       </div>
 
       <div style={{ paddingBottom:80 }}>
+        {tab==="surveys" && <InstallAppBanner/>}
         {tab==="surveys" && (
           <SurveysList surveys={surveys} loading={loadingSurveys} schoolCount={schoolCount} isAdmin={isAdmin}
             onNew={()=>setModal({type:"new"})}
@@ -1904,6 +1969,16 @@ export default function App() {
                   <p style={{ margin:"2px 0 0", fontSize:11, color:C.muted }}>كل عمليات الإضافة والتعديل والحذف</p>
                 </div>
               </div>
+            </Card>
+
+            <Card style={{ marginTop:10 }}>
+              <p style={{ margin:"0 0 8px", fontSize:13, fontWeight:700, color:C.dark }}>📲 تثبيت التطبيق</p>
+              <p style={{ margin:"0 0 6px", fontSize:11, color:C.muted, lineHeight:1.8 }}>
+                <strong>على آيفون:</strong> افتح الموقع في Safari ← زر المشاركة ⬆️ ← "إضافة إلى الشاشة الرئيسية"
+              </p>
+              <p style={{ margin:0, fontSize:11, color:C.muted, lineHeight:1.8 }}>
+                <strong>على أندرويد/كمبيوتر:</strong> ستظهر رسالة "تثبيت" تلقائياً في أعلى المتصفح أو من قائمة الاستبيانات
+              </p>
             </Card>
           </div>
         )}
@@ -1946,3 +2021,4 @@ export default function App() {
     </div>
   );
 }
+
