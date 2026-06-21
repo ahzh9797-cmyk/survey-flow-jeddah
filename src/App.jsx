@@ -226,12 +226,22 @@ function useResponses(surveyId){
   const fetchResponses = useCallback(async () => {
     if (!surveyId) return;
     setLoading(true);
-    const { data } = await supabase
-      .from("survey_responses")
-      .select("*, survey_schools(name, principal, stage)")
-      .eq("survey_id", surveyId)
-      .order("submitted_at", { ascending: false });
-    setResponses(data || []);
+    let all = [];
+    let from = 0;
+    const BATCH = 1000;
+    while (true) {
+      const { data, error } = await supabase
+        .from("survey_responses")
+        .select("*, survey_schools(name, principal, stage)")
+        .eq("survey_id", surveyId)
+        .order("submitted_at", { ascending: false })
+        .range(from, from + BATCH - 1);
+      if (error || !data || data.length === 0) break;
+      all = all.concat(data);
+      if (data.length < BATCH) break;
+      from += BATCH;
+    }
+    setResponses(all);
     setLoading(false);
   }, [surveyId]);
 
@@ -602,8 +612,25 @@ function TrackingPage({ survey, onBack }) {
 
   useEffect(() => {
     setLoadingSchools(true);
-    supabase.from("survey_schools").select("id,name,principal,stage").order("name")
-      .then(({ data }) => { setAllSchools(data || []); setLoadingSchools(false); });
+    async function loadAllSchools() {
+      let all = [];
+      let from = 0;
+      const BATCH = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from("survey_schools")
+          .select("id,name,principal,stage")
+          .order("name")
+          .range(from, from + BATCH - 1);
+        if (error || !data || data.length === 0) break;
+        all = all.concat(data);
+        if (data.length < BATCH) break;
+        from += BATCH;
+      }
+      setAllSchools(all);
+      setLoadingSchools(false);
+    }
+    loadAllSchools();
   }, []);
 
   const respondedIds = useMemo(() => new Set(responses.map(r=>r.school_id)), [responses]);
@@ -1495,8 +1522,22 @@ function SchoolsManagementPage({ isAdmin, user }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from("survey_schools").select("*").order("name");
-    setSchools(data || []);
+    // Supabase يفرض حداً افتراضياً 1000 صف لكل استعلام — نجلب على دفعات لضمان جلب كل المدارس مهما زاد العدد
+    let all = [];
+    let from = 0;
+    const BATCH = 1000;
+    while (true) {
+      const { data, error } = await supabase
+        .from("survey_schools")
+        .select("*")
+        .order("name")
+        .range(from, from + BATCH - 1);
+      if (error || !data || data.length === 0) break;
+      all = all.concat(data);
+      if (data.length < BATCH) break;
+      from += BATCH;
+    }
+    setSchools(all);
     setLoading(false);
   }, []);
 
@@ -2021,4 +2062,3 @@ export default function App() {
     </div>
   );
 }
-
