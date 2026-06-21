@@ -451,13 +451,16 @@ function MinistryLookup({ onConfirm }) {
 // PUBLIC SURVEY FILL (writes to Supabase)
 // ═══════════════════════════════════════════════════════
 function PublicFill({ survey, onBack }) {
+  const isOpen = survey.survey_type === "open";
   const [school, setSchool] = useState(null);
+  const [respondentLabel, setRespondentLabel] = useState("");
   const [ans, setAns] = useState({});
   const [errs, setErrs] = useState({});
-  const [step, setStep] = useState("identify");
+  const [step, setStep] = useState(isOpen ? "fill" : "identify");
   const [submitting, setSubmitting] = useState(false);
   const [existingResp, setExistingResp] = useState(null);
   const [submitError, setSubmitError] = useState("");
+  const [gateStopped, setGateStopped] = useState(false); // توقف الاستبيان عند البوابة الشرطية
 
   const setA = (id, v) => { setAns(p=>({...p,[id]:v})); setErrs(p=>({...p,[id]:null})); };
 
@@ -471,23 +474,46 @@ function PublicFill({ survey, onBack }) {
     if (data) setExistingResp(data);
   }
 
+  // يحدد أي الأسئلة تُعرَض فعلياً بناءً على إجابة سؤال البوابة (إن وُجد)
+  function visibleQuestions() {
+    if (!survey.gate_question_id) return survey.questions;
+    const gateAnswer = ans[survey.gate_question_id];
+    if (gateAnswer === survey.gate_required_value) return survey.questions;
+    // لم تُجَب البوابة بعد، أو أُجيبت بقيمة مختلفة عن المطلوبة → نعرض فقط سؤال البوابة
+    return survey.questions.filter(q => q.id === survey.gate_question_id);
+  }
+
   async function submit() {
+    const qsToValidate = visibleQuestions();
     const e = {};
-    survey.questions.forEach(q => { if(q.required && !ans[q.id]) e[q.id]="هذا الحقل مطلوب"; });
+    qsToValidate.forEach(q => { if(q.required && !ans[q.id]) e[q.id]="هذا الحقل مطلوب"; });
     if (Object.keys(e).length) { setErrs(e); return; }
 
+    // تحقق من حالة البوابة: إن وُجد سؤال بوابة وأُجيب بقيمة مختلفة عن المطلوبة، الرد يُحفظ جزئياً وينتهي
+    const stoppedAtGate = survey.gate_question_id
+      && ans[survey.gate_question_id] !== undefined
+      && ans[survey.gate_question_id] !== survey.gate_required_value;
+
     setSubmitting(true); setSubmitError("");
+    const payload = {
+      survey_id: survey.id,
+      answers: stoppedAtGate ? { [survey.gate_question_id]: ans[survey.gate_question_id] } : ans,
+      submitted_at: new Date().toISOString(),
+      completed: !stoppedAtGate,
+    };
+    if (isOpen) {
+      payload.respondent_label = respondentLabel.trim() || null;
+    } else {
+      payload.school_id = school.id;
+    }
+
     const { error } = await supabase
       .from("survey_responses")
-      .upsert({
-        survey_id: survey.id,
-        school_id: school.id,
-        answers: ans,
-        submitted_at: new Date().toISOString(),
-      }, { onConflict: "survey_id,school_id" });
+      .upsert(payload, { onConflict: isOpen ? undefined : "survey_id,school_id" });
 
     setSubmitting(false);
     if (error) { setSubmitError("حدث خطأ أثناء الإرسال. حاول مرة أخرى."); return; }
+    if (stoppedAtGate) setGateStopped(true);
     setStep("done");
   }
 
@@ -495,17 +521,29 @@ function PublicFill({ survey, onBack }) {
     <div style={{ minHeight:"100vh", background:C.bg, display:"flex", flexDirection:"column",
       alignItems:"center", justifyContent:"center", padding:24, direction:"rtl", textAlign:"center" }}>
       <div style={{ fontSize:72, marginBottom:16 }}>✅</div>
-      <h2 style={{ color:C.primary, margin:"0 0 8px", fontSize:22, fontWeight:800 }}>تم إرسال إجاباتك بنجاح</h2>
-      <p style={{ color:C.muted, fontSize:14, maxWidth:320, lineHeight:1.8 }}>
-        شكراً <strong style={{color:C.dark}}>{school?.principal}</strong><br/>
-        تم تسجيل رد <strong style={{color:C.dark}}>{school?.name}</strong> في قاعدة البيانات
-      </p>
-      <div style={{ background:C.primaryBg, borderRadius:12, padding:14, marginTop:20, width:"100%", maxWidth:300 }}>
-        <p style={{ margin:0, fontSize:11, color:C.muted }}>الرقم الوزاري</p>
-        <p style={{ margin:"4px 0 0", fontSize:22, fontWeight:800, color:C.primary, letterSpacing:2 }}>#{school?.id}</p>
-      </div>
+      <h2 style={{ color:C.primary, margin:"0 0 8px", fontSize:22, fontWeight:800 }}>
+        {gateStopped ? "شكراً لإجابتك" : "تم إرسال إجاباتك بنجاح"}
+      </h2>
+      {!isOpen ? (
+        <>
+          <p style={{ color:C.muted, fontSize:14, maxWidth:320, lineHeight:1.8 }}>
+            شكراً <strong style={{color:C.dark}}>{school?.principal}</strong><br/>
+            تم تسجيل رد <strong style={{color:C.dark}}>{school?.name}</strong> في قاعدة البيانات
+          </p>
+          <div style={{ background:C.primaryBg, borderRadius:12, padding:14, marginTop:20, width:"100%", maxWidth:300 }}>
+            <p style={{ margin:0, fontSize:11, color:C.muted }}>الرقم الوزاري</p>
+            <p style={{ margin:"4px 0 0", fontSize:22, fontWeight:800, color:C.primary, letterSpacing:2 }}>#{school?.id}</p>
+          </div>
+        </>
+      ) : (
+        <p style={{ color:C.muted, fontSize:14, maxWidth:320, lineHeight:1.8 }}>
+          تم تسجيل ردك بنجاح في قاعدة البيانات
+        </p>
+      )}
     </div>
   );
+
+  const qsToShow = visibleQuestions();
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, direction:"rtl" }}>
@@ -515,7 +553,7 @@ function PublicFill({ survey, onBack }) {
       </div>
 
       <div style={{ maxWidth:600, margin:"0 auto", padding:16 }}>
-        {existingResp && (
+        {existingResp && !isOpen && (
           <div style={{ background:C.warnBg, border:`1px solid ${C.warn}40`, borderRadius:12, padding:14, marginBottom:16 }}>
             <p style={{ margin:0, fontSize:13, color:C.warn, fontWeight:700 }}>
               ⚠️ مدرستك أجابت مسبقاً — إجابتك الجديدة ستحل محل الإجابة السابقة
@@ -523,22 +561,36 @@ function PublicFill({ survey, onBack }) {
           </div>
         )}
 
-        {step === "identify" && (
+        {step === "identify" && !isOpen && (
           <Card style={{ marginBottom:16 }}>
             <p style={{ margin:"0 0 16px", fontSize:15, fontWeight:800, color:C.dark }}>أولاً: تحقق من هوية مدرستك</p>
             <MinistryLookup onConfirm={async s => { setSchool(s); await checkExisting(s); setStep("fill"); }}/>
           </Card>
         )}
 
-        {step === "fill" && school && (
+        {step === "fill" && (isOpen || school) && (
           <>
-            <div style={{ background:C.successBg, border:`1.5px solid ${C.success}`, borderRadius:12, padding:14, marginBottom:16 }}>
-              <p style={{ margin:"0 0 4px", fontSize:12, color:C.success, fontWeight:700 }}>✅ تم التحقق</p>
-              <p style={{ margin:0, fontSize:15, fontWeight:800, color:C.dark }}>{school.name}</p>
-              <p style={{ margin:"3px 0 0", fontSize:12, color:C.muted }}>
-                {school.principal} · {school.stage} · رقم وزاري: {school.id}
-              </p>
-            </div>
+            {!isOpen && (
+              <div style={{ background:C.successBg, border:`1.5px solid ${C.success}`, borderRadius:12, padding:14, marginBottom:16 }}>
+                <p style={{ margin:"0 0 4px", fontSize:12, color:C.success, fontWeight:700 }}>✅ تم التحقق</p>
+                <p style={{ margin:0, fontSize:15, fontWeight:800, color:C.dark }}>{school.name}</p>
+                <p style={{ margin:"3px 0 0", fontSize:12, color:C.muted }}>
+                  {school.principal} · {school.stage} · رقم وزاري: {school.id}
+                </p>
+              </div>
+            )}
+
+            {isOpen && (
+              <Card style={{ marginBottom:16 }}>
+                <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:6 }}>
+                  الاسم أو الجهة <span style={{ fontSize:11, fontWeight:400, color:C.muted }}>(اختياري)</span>
+                </label>
+                <input value={respondentLabel} onChange={e=>setRespondentLabel(e.target.value)}
+                  placeholder="مثال: إدارة المدرسة الفلانية، أو اسمك"
+                  style={{ width:"100%", padding:"11px 13px", border:`1.5px solid ${C.border}`, borderRadius:10,
+                    fontSize:14, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", outline:"none" }}/>
+              </Card>
+            )}
 
             {survey.description && (
               <div style={{ background:C.accentLight, borderRight:`4px solid ${C.accent}`, borderRadius:12, padding:14, marginBottom:16 }}>
@@ -546,7 +598,7 @@ function PublicFill({ survey, onBack }) {
               </div>
             )}
 
-            {survey.questions.map((q, i) => (
+            {qsToShow.map((q, i) => (
               <Card key={q.id} style={{ marginBottom:14 }}>
                 <p style={{ margin:"0 0 12px", fontWeight:700, color:C.dark, fontSize:15, lineHeight:1.5 }}>
                   <span style={{ color:C.primary, marginLeft:6 }}>{i+1}.</span>
@@ -582,6 +634,11 @@ function PublicFill({ survey, onBack }) {
                 )}
                 {q.type==="rating" && <Stars value={ans[q.id]||0} onChange={v=>setA(q.id,v)}/>}
                 {errs[q.id] && <p style={{ color:C.danger, fontSize:12, margin:"8px 0 0" }}>{errs[q.id]}</p>}
+                {survey.gate_question_id === q.id && ans[q.id] && ans[q.id] !== survey.gate_required_value && (
+                  <p style={{ color:C.muted, fontSize:11.5, margin:"10px 0 0", background:C.bg, padding:"8px 10px", borderRadius:8 }}>
+                    ℹ️ بناءً على إجابتك سينتهي الاستبيان هنا عند الإرسال.
+                  </p>
+                )}
               </Card>
             ))}
 
@@ -599,7 +656,96 @@ function PublicFill({ survey, onBack }) {
 // ═══════════════════════════════════════════════════════
 // TRACKING PAGE (live from Supabase)
 // ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+// TRACKING — OPEN SURVEYS (no school verification)
+// ═══════════════════════════════════════════════════════
+function OpenSurveyTracking({ survey, onBack }) {
+  const { responses, loading } = useResponses(survey.id);
+  const questions = (survey.questions || []).sort((a,b)=>a.order_index-b.order_index);
+  const completed = responses.filter(r => r.completed !== false);
+  const stoppedAtGate = responses.filter(r => r.completed === false);
+
+  async function exportExcel() {
+    const XLSX = await ensureXLSX();
+    const rows = responses.map(r => {
+      const base = {
+        "الاسم/الجهة": r.respondent_label || "—",
+        "الحالة": r.completed === false ? "توقف عند سؤال الفرز" : "مكتمل",
+        "تاريخ الرد": new Date(r.submitted_at).toLocaleString("ar-SA"),
+      };
+      questions.forEach(q => { base[q.label] = r.answers?.[q.id] ?? ""; });
+      return base;
+    });
+    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ "لا توجد ردود بعد": "" }]);
+    ws["!cols"] = Object.keys(rows[0] || {"لا توجد ردود بعد":""}).map(() => ({ wch: 24 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "الردود");
+    XLSX.writeFile(wb, `${survey.title.replace(/[\\/:*?"<>|]/g,"")}-${tsStamp()}.xlsx`);
+  }
+
+  if (loading) return (
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}><Spinner size={32}/></div>
+  );
+
+  return (
+    <div style={{ paddingBottom:20 }}>
+      <div style={{ background:C.primary, padding:"14px 16px", color:"#fff", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, position:"sticky", top:0, zIndex:10 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <button onClick={onBack} style={{ background:"none", border:"none", color:"#fff", fontSize:20, cursor:"pointer", lineHeight:1 }}>←</button>
+          <div>
+            <div style={{ fontWeight:800, fontSize:15 }}>متابعة الاستجابة</div>
+            <div style={{ fontSize:11, opacity:0.7 }}>{survey.title} · 🌐 استبيان مفتوح</div>
+          </div>
+        </div>
+        {responses.length > 0 && (
+          <button onClick={exportExcel} style={{ background:"rgba(255,255,255,0.15)", border:"none", color:"#fff",
+            borderRadius:8, padding:"7px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>📊 تصدير</button>
+        )}
+      </div>
+
+      <div style={{ padding:16 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:16 }}>
+          {[
+            { l:"إجمالي الردود", v:responses.length, c:C.primary, i:"📝" },
+            { l:"مكتملة", v:completed.length, c:C.success, i:"✅" },
+            { l:"توقفت عند الفرز", v:stoppedAtGate.length, c:C.warn, i:"🚪" },
+          ].map((x,i) => (
+            <Card key={i} style={{ textAlign:"center", padding:12, borderTop:`3px solid ${x.c}` }}>
+              <div style={{ fontSize:18 }}>{x.i}</div>
+              <div style={{ fontSize:20, fontWeight:800, color:x.c, margin:"3px 0 2px" }}>{x.v}</div>
+              <div style={{ fontSize:10, color:C.muted }}>{x.l}</div>
+            </Card>
+          ))}
+        </div>
+
+        {responses.length === 0 ? (
+          <Card style={{ textAlign:"center", padding:30 }}>
+            <p style={{ margin:0, color:C.muted, fontSize:13 }}>لا توجد ردود بعد</p>
+          </Card>
+        ) : (
+          <Card style={{ padding:0, overflow:"hidden" }}>
+            {responses.map((r, i) => (
+              <div key={r.id} style={{ padding:"12px 14px", borderBottom:i<responses.length-1?`1px solid ${C.border}`:undefined }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <p style={{ margin:0, fontSize:13, fontWeight:700, color:C.dark }}>{r.respondent_label || "بدون اسم"}</p>
+                  {r.completed === false
+                    ? <Tag color={C.warn}>🚪 توقف عند الفرز</Tag>
+                    : <Tag color={C.success}>✅ مكتمل</Tag>}
+                </div>
+                <p style={{ margin:"3px 0 0", fontSize:11, color:C.muted }}>{new Date(r.submitted_at).toLocaleString("ar-SA")}</p>
+              </div>
+            ))}
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 function TrackingPage({ survey, onBack }) {
+  if (survey.survey_type === "open") return <OpenSurveyTracking survey={survey} onBack={onBack}/>;
+
   const [allSchools, setAllSchools] = useState([]);
   const [loadingSchools, setLoadingSchools] = useState(true);
   const { responses, loading: loadingResp } = useResponses(survey.id);
@@ -892,9 +1038,12 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
       )}
       {surveys.map(s => (
         <Card key={s.id} style={{ marginBottom:12 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8, gap:8 }}>
             <h3 style={{ margin:0, fontSize:15, color:C.dark, fontWeight:700, flex:1, lineHeight:1.4 }}>{s.title}</h3>
-            <Tag color={C.success}>نشط</Tag>
+            <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+              <Tag color={s.survey_type==="open" ? C.accent : C.primary}>{s.survey_type==="open" ? "🌐 مفتوح" : "🏫 مدارس"}</Tag>
+              <Tag color={C.success}>نشط</Tag>
+            </div>
           </div>
           <p style={{ margin:"0 0 12px", fontSize:12, color:C.muted }}>{s.description}</p>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
@@ -913,7 +1062,10 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
 function NewSurveyPage({ onSaved, onCancel, user }) {
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
+  const [surveyType, setSurveyType] = useState("school"); // school | open
   const [qs, setQs] = useState([{ id:"q1", type:"text", label:"", required:true, options:[] }]);
+  const [gateQuestionId, setGateQuestionId] = useState(""); // "" = بدون سؤال شرطي
+  const [gateRequiredValue, setGateRequiredValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -923,13 +1075,26 @@ function NewSurveyPage({ onSaved, onCancel, user }) {
     {v:"number",l:"رقم / إحصائية"},{v:"select",l:"اختيار من قائمة"},{v:"rating",l:"تقييم بالنجوم"},
   ];
 
+  // السؤال الشرطي يجب أن يكون من نوع "اختيار من قائمة" وله خيارات فعلية
+  const selectQuestions = qs.filter(q => q.type === "select" && (q.options||[]).length > 0 && q.label.trim());
+  const gateQuestion = selectQuestions.find(q => q.id === gateQuestionId);
+
+  function removeQuestion(id) {
+    setQs(p => p.filter(x => x.id !== id));
+    if (gateQuestionId === id) { setGateQuestionId(""); setGateRequiredValue(""); }
+  }
+
   async function save() {
     if (!title.trim()) return;
     setSaving(true); setError("");
 
     const { data: survey, error: surveyErr } = await supabase
       .from("surveys")
-      .insert({ title, description: desc, status: "active" })
+      .insert({
+        title, description: desc, status: "active",
+        survey_type: surveyType,
+        gate_question_id: null, // سنحدّثه بعد معرفة معرفات الأسئلة الفعلية بعد الإدراج
+      })
       .select()
       .single();
 
@@ -944,10 +1109,23 @@ function NewSurveyPage({ onSaved, onCancel, user }) {
       required: q.required, options: q.options || [], order_index: i,
     }));
 
-    const { error: qErr } = await supabase.from("survey_questions").insert(questionsPayload);
-    setSaving(false);
-    if (qErr) { setError("فشل حفظ الأسئلة: " + qErr.message); return; }
+    const { data: insertedQs, error: qErr } = await supabase
+      .from("survey_questions").insert(questionsPayload).select();
+    if (qErr) { setSaving(false); setError("فشل حفظ الأسئلة: " + qErr.message); return; }
 
+    // إن وُجد سؤال شرطي محدد، نربطه بمعرفه الحقيقي بعد الإدراج (نطابق حسب الترتيب لأن uuid يُولَّد عند الإدراج)
+    if (gateQuestionId && gateRequiredValue) {
+      const localIndex = qs.findIndex(q => q.id === gateQuestionId);
+      const realQuestion = insertedQs?.find(q => q.order_index === localIndex);
+      if (realQuestion) {
+        await supabase.from("surveys").update({
+          gate_question_id: realQuestion.id,
+          gate_required_value: gateRequiredValue,
+        }).eq("id", survey.id);
+      }
+    }
+
+    setSaving(false);
     logAction({ user, action: "create", table: "surveys", recordId: survey.id, recordLabel: title });
     onSaved();
   }
@@ -957,6 +1135,28 @@ function NewSurveyPage({ onSaved, onCancel, user }) {
       <button onClick={onCancel} style={{ background:"none", border:"none", color:C.primary, fontSize:14,
         cursor:"pointer", padding:"0 0 14px", fontFamily:"inherit", display:"flex", alignItems:"center", gap:4 }}>← إلغاء</button>
       <h2 style={{ margin:"0 0 16px", fontSize:18, color:C.dark, fontWeight:800 }}>استبيان جديد</h2>
+
+      <Card style={{ marginBottom:14 }}>
+        <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:8 }}>نوع الاستبيان</label>
+        <div style={{ display:"flex", gap:8, marginBottom:4 }}>
+          <button onClick={()=>setSurveyType("school")} style={{
+            flex:1, padding:"12px 10px", borderRadius:10, cursor:"pointer", fontFamily:"inherit",
+            border:`2px solid ${surveyType==="school"?C.primary:C.border}`,
+            background:surveyType==="school"?C.primaryBg:"#fff", textAlign:"center" }}>
+            <div style={{ fontSize:20, marginBottom:4 }}>🏫</div>
+            <div style={{ fontSize:12.5, fontWeight:700, color:surveyType==="school"?C.primary:C.text }}>خاص بالمدارس</div>
+            <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>يتطلب رقم وزاري للتحقق</div>
+          </button>
+          <button onClick={()=>setSurveyType("open")} style={{
+            flex:1, padding:"12px 10px", borderRadius:10, cursor:"pointer", fontFamily:"inherit",
+            border:`2px solid ${surveyType==="open"?C.accent:C.border}`,
+            background:surveyType==="open"?C.accentLight:"#fff", textAlign:"center" }}>
+            <div style={{ fontSize:20, marginBottom:4 }}>🌐</div>
+            <div style={{ fontSize:12.5, fontWeight:700, color:surveyType==="open"?C.accent:C.text }}>مفتوح</div>
+            <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>بدون قيود — لأي شخص لديه الرابط</div>
+          </button>
+        </div>
+      </Card>
 
       <Card style={{ marginBottom:14 }}>
         <div style={{ marginBottom:12 }}>
@@ -975,24 +1175,33 @@ function NewSurveyPage({ onSaved, onCancel, user }) {
         </div>
       </Card>
 
-      <Card style={{ marginBottom:12, background:"#e8f5ee", border:`1px solid ${C.success}40` }}>
-        <p style={{ margin:0, fontSize:13, color:C.success, fontWeight:700 }}>✅ سؤال الرقم الوزاري تلقائي</p>
-        <p style={{ margin:"4px 0 0", fontSize:12, color:C.muted }}>يُعرض أولاً للتحقق من هوية المستجيب، ثم أسئلتك أدناه.</p>
-      </Card>
+      {surveyType === "school" ? (
+        <Card style={{ marginBottom:12, background:"#e8f5ee", border:`1px solid ${C.success}40` }}>
+          <p style={{ margin:0, fontSize:13, color:C.success, fontWeight:700 }}>✅ سؤال الرقم الوزاري تلقائي</p>
+          <p style={{ margin:"4px 0 0", fontSize:12, color:C.muted }}>يُعرض أولاً للتحقق من هوية المستجيب، ثم أسئلتك أدناه.</p>
+        </Card>
+      ) : (
+        <Card style={{ marginBottom:12, background:C.accentLight, border:`1px solid ${C.accent}40` }}>
+          <p style={{ margin:0, fontSize:13, color:C.accent, fontWeight:700 }}>🌐 استبيان مفتوح بدون تحقق</p>
+          <p style={{ margin:"4px 0 0", fontSize:12, color:C.muted }}>سيُطلب من المجيب اسمه أو جهته اختيارياً فقط، ثم ينتقل مباشرة لأسئلتك أدناه.</p>
+        </Card>
+      )}
 
       {qs.map((q,i) => (
-        <Card key={q.id} style={{ marginBottom:12 }} accent={C.primary}>
+        <Card key={q.id} style={{ marginBottom:12 }} accent={gateQuestionId===q.id ? C.accent : C.primary}>
           <div style={{ display:"flex", justifyContent:"space-between", marginBottom:10 }}>
-            <span style={{ fontSize:13, fontWeight:700, color:C.primary }}>السؤال {i+1}</span>
+            <span style={{ fontSize:13, fontWeight:700, color:gateQuestionId===q.id ? C.accent : C.primary }}>
+              السؤال {i+1} {gateQuestionId===q.id && "🚪 (سؤال شرطي)"}
+            </span>
             {qs.length>1 && (
-              <button onClick={()=>setQs(p=>p.filter(x=>x.id!==q.id))} style={{ background:"none", border:"none", cursor:"pointer", color:C.danger, fontSize:18 }}>🗑</button>
+              <button onClick={()=>removeQuestion(q.id)} style={{ background:"none", border:"none", cursor:"pointer", color:C.danger, fontSize:18 }}>🗑</button>
             )}
           </div>
           <input value={q.label} onChange={e=>upd(q.id,"label",e.target.value)} placeholder="نص السؤال..."
             style={{ width:"100%", padding:"10px 12px", border:`1.5px solid ${C.border}`, borderRadius:10,
               fontSize:14, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", outline:"none", marginBottom:10 }}/>
           <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>
-            <select value={q.type} onChange={e=>upd(q.id,"type",e.target.value)}
+            <select value={q.type} onChange={e=>{ upd(q.id,"type",e.target.value); if (gateQuestionId===q.id && e.target.value!=="select") { setGateQuestionId(""); setGateRequiredValue(""); } }}
               style={{ flex:1, minWidth:140, padding:"9px 10px", border:`1.5px solid ${C.border}`, borderRadius:10,
                 fontSize:13, fontFamily:"inherit", color:C.text, background:C.white }}>
               {types.map(t=><option key={t.v} value={t.v}>{t.l}</option>)}
@@ -1002,10 +1211,36 @@ function NewSurveyPage({ onSaved, onCancel, user }) {
             </label>
           </div>
           {q.type==="select" && (
-            <textarea value={(q.options||[]).join("\n")} onChange={e=>upd(q.id,"options",e.target.value.split("\n").filter(Boolean))}
-              rows={3} placeholder={"خيار 1\nخيار 2\nخيار 3"}
-              style={{ width:"100%", padding:"9px 12px", border:`1.5px solid ${C.border}`, borderRadius:10,
-                fontSize:13, fontFamily:"inherit", direction:"rtl", resize:"none", boxSizing:"border-box", outline:"none", marginTop:8 }}/>
+            <>
+              <textarea value={(q.options||[]).join("\n")} onChange={e=>upd(q.id,"options",e.target.value.split("\n").filter(Boolean))}
+                rows={3} placeholder={"خيار 1\nخيار 2\nخيار 3"}
+                style={{ width:"100%", padding:"9px 12px", border:`1.5px solid ${C.border}`, borderRadius:10,
+                  fontSize:13, fontFamily:"inherit", direction:"rtl", resize:"none", boxSizing:"border-box", outline:"none", marginTop:8 }}/>
+              {(q.options||[]).length > 0 && q.label.trim() && (
+                <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, cursor:"pointer", marginTop:10,
+                  background:gateQuestionId===q.id?C.accentLight:"transparent", padding:"7px 10px", borderRadius:8 }}>
+                  <input type="checkbox" checked={gateQuestionId===q.id}
+                    onChange={e=>{ if (e.target.checked) { setGateQuestionId(q.id); setGateRequiredValue(q.options[0]||""); } else { setGateQuestionId(""); setGateRequiredValue(""); } }}
+                    style={{width:16,height:16}}/>
+                  🚪 اجعل هذا سؤال شرطي (بوابة) — باقي الأسئلة تظهر فقط عند اختيار إجابة معينة
+                </label>
+              )}
+              {gateQuestionId===q.id && (
+                <div style={{ marginTop:10 }}>
+                  <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.accent, marginBottom:5 }}>
+                    الإجابة التي تسمح بمتابعة باقي الأسئلة:
+                  </label>
+                  <select value={gateRequiredValue} onChange={e=>setGateRequiredValue(e.target.value)}
+                    style={{ width:"100%", padding:"9px 10px", border:`1.5px solid ${C.accent}`, borderRadius:10,
+                      fontSize:13, fontFamily:"inherit", color:C.text, background:C.white }}>
+                    {(q.options||[]).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                  <p style={{ margin:"6px 0 0", fontSize:11, color:C.muted }}>
+                    أي إجابة أخرى ستُنهي الاستبيان فوراً بعد حفظ هذا السؤال فقط.
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </Card>
       ))}
@@ -1876,189 +2111,4 @@ function AuditLogPage() {
             {paged.map((l, i) => {
               const a = ACTION_LABELS[l.action] || { label: l.action, color: C.muted, icon: "•" };
               return (
-                <div key={l.id} style={{ display:"flex", alignItems:"flex-start", gap:10, padding:"12px 14px",
-                  borderBottom: i < paged.length-1 ? `1px solid ${C.border}` : undefined }}>
-                  <div style={{ width:30, height:30, borderRadius:8, background:a.color+"18", display:"flex",
-                    alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>{a.icon}</div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <p style={{ margin:0, fontSize:13, color:C.dark }}>
-                      <strong>{a.label}</strong> في {TABLE_LABELS[l.table_name] || l.table_name}
-                      {l.record_label && <> — {l.record_label}</>}
-                    </p>
-                    <p style={{ margin:"3px 0 0", fontSize:11, color:C.muted }}>
-                      {l.user_email || "غير معروف"} · {new Date(l.created_at).toLocaleString("ar-SA")}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </Card>
-          {paged.length < filtered.length && (
-            <Btn variant="secondary" full onClick={()=>setPage(p=>p+1)} style={{ marginTop:12 }}>
-              عرض المزيد ({filtered.length - paged.length} متبقي)
-            </Btn>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════
-// MAIN APP
-// ═══════════════════════════════════════════════════════
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
-  const [tab, setTab] = useState("surveys");
-  const [modal, setModal] = useState(null);
-  const { surveys, loading: loadingSurveys, refetch } = useSurveys();
-  const schoolCount = useSchoolCount();
-  const { role, isAdmin, roleError } = useUserRole(user);
-
-  // check public survey link: ?survey=uuid
-  const params = new URLSearchParams(window.location.search);
-  const publicSurveyId = params.get("survey");
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => { setUser(data.session?.user || null); setAuthChecked(true); });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => setUser(session?.user || null));
-    return () => sub.subscription.unsubscribe();
-  }, []);
-
-  // public survey fill mode — works WITHOUT login
-  if (publicSurveyId) {
-    const survey = surveys.find(s => s.id === publicSurveyId);
-    if (loadingSurveys) return <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}><Spinner size={32}/></div>;
-    if (!survey) return (
-      <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", direction:"rtl", padding:24, textAlign:"center" }}>
-        <p style={{ color:C.muted }}>الاستبيان غير موجود أو غير نشط</p>
-      </div>
-    );
-    return <PublicFill survey={survey} onBack={()=>{}}/>;
-  }
-
-  if (!authChecked) return <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}><Spinner size={32}/></div>;
-
-  if (modal?.type === "tracking") return <TrackingPage survey={modal.data} onBack={()=>setModal(null)}/>;
-
-  if (modal?.type === "new") {
-    if (!isAdmin) { setModal(null); return null; }
-    return (
-      <div style={{ paddingBottom:80 }}>
-        <NewSurveyPage onSaved={()=>{ refetch(); setModal(null); }} onCancel={()=>setModal(null)} user={user}/>
-      </div>
-    );
-  }
-
-  if (!user) return <LoginPage onLogin={setUser}/>;
-
-  // role still loading (null) — brief spinner to avoid flash of wrong permissions
-  if (role === null) return <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}><Spinner size={32}/></div>;
-
-  const TABS = [
-    {id:"surveys",i:"📋",l:"الاستبيانات"},
-    {id:"schools",i:"🏫",l:"المدارس"},
-    {id:"analytics",i:"📊",l:"إحصائيات"},
-    ...(isAdmin ? [{id:"more",i:"⚙️",l:"المزيد"}] : []),
-  ];
-
-  return (
-    <div style={{ minHeight:"100vh", background:C.bg, direction:"rtl", fontFamily:"'Segoe UI',Tahoma,Arial,sans-serif" }}>
-      <div style={{ background:C.primary, padding:"14px 16px", color:"#fff", display:"flex", justifyContent:"space-between",
-        alignItems:"center", position:"sticky", top:0, zIndex:10 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ width:32, height:32, background:C.accent, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>📋</div>
-          <div>
-            <div style={{ fontWeight:800, fontSize:15, display:"flex", alignItems:"center", gap:8 }}>
-              منظومة الاستبيانات <RoleBadge role={role}/>
-            </div>
-            <div style={{ fontSize:10, opacity:0.7, marginTop:2 }}>إدارة التعليم — جدة · {schoolCount} مدرسة</div>
-          </div>
-        </div>
-        <button onClick={()=>supabase.auth.signOut()} style={{ background:"rgba(255,255,255,0.15)", border:"none",
-          color:"#fff", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>خروج</button>
-      </div>
-
-      <div style={{ paddingBottom:80 }}>
-        {tab==="surveys" && <InstallAppBanner/>}
-        {tab==="surveys" && (
-          <SurveysList surveys={surveys} loading={loadingSurveys} schoolCount={schoolCount} isAdmin={isAdmin}
-            onNew={()=>setModal({type:"new"})}
-            onShare={s=>setModal({type:"share",data:s})}
-            onTrack={s=>setModal({type:"tracking",data:s})}/>
-        )}
-        {tab==="analytics" && <AnalyticsPage surveys={surveys}/>}
-        {tab==="schools" && <SchoolsManagementPage isAdmin={isAdmin} user={user}/>}
-        {tab==="more" && isAdmin && (
-          <div style={{ padding:16, direction:"rtl" }}>
-            <h2 style={{ margin:"0 0 16px", fontSize:17, color:C.dark }}>المزيد</h2>
-            <Card style={{ marginBottom:10, cursor:"pointer" }} accent={C.primary}>
-              <div onClick={()=>setModal({type:"users"})} style={{ display:"flex", alignItems:"center", gap:12 }}>
-                <span style={{ fontSize:22 }}>👥</span>
-                <div>
-                  <p style={{ margin:0, fontSize:14, fontWeight:700, color:C.dark }}>إدارة المستخدمين والصلاحيات</p>
-                  <p style={{ margin:"2px 0 0", fontSize:11, color:C.muted }}>تعيين مدير عام أو مشرف عرض فقط</p>
-                </div>
-              </div>
-            </Card>
-            <Card style={{ cursor:"pointer" }} accent={C.accent}>
-              <div onClick={()=>setModal({type:"auditlog"})} style={{ display:"flex", alignItems:"center", gap:12 }}>
-                <span style={{ fontSize:22 }}>📜</span>
-                <div>
-                  <p style={{ margin:0, fontSize:14, fontWeight:700, color:C.dark }}>سجل التدقيق</p>
-                  <p style={{ margin:"2px 0 0", fontSize:11, color:C.muted }}>كل عمليات الإضافة والتعديل والحذف</p>
-                </div>
-              </div>
-            </Card>
-
-            <Card style={{ marginTop:10 }}>
-              <p style={{ margin:"0 0 8px", fontSize:13, fontWeight:700, color:C.dark }}>📲 تثبيت التطبيق</p>
-              <p style={{ margin:"0 0 6px", fontSize:11, color:C.muted, lineHeight:1.8 }}>
-                <strong>على آيفون:</strong> افتح الموقع في Safari ← زر المشاركة ⬆️ ← "إضافة إلى الشاشة الرئيسية"
-              </p>
-              <p style={{ margin:0, fontSize:11, color:C.muted, lineHeight:1.8 }}>
-                <strong>على أندرويد/كمبيوتر:</strong> ستظهر رسالة "تثبيت" تلقائياً في أعلى المتصفح أو من قائمة الاستبيانات
-              </p>
-            </Card>
-          </div>
-        )}
-      </div>
-
-      <div style={{ position:"fixed", bottom:0, left:0, right:0, background:C.white, borderTop:`1px solid ${C.border}`, display:"flex", zIndex:10 }}>
-        {TABS.map(item => (
-          <button key={item.id} onClick={()=>setTab(item.id)} style={{
-            flex:1, padding:"10px 0", border:"none", background:"none", cursor:"pointer",
-            display:"flex", flexDirection:"column", alignItems:"center", gap:2,
-            color:tab===item.id?C.primary:C.muted, fontFamily:"inherit" }}>
-            <span style={{ fontSize:20 }}>{item.i}</span>
-            <span style={{ fontSize:10, fontWeight:tab===item.id?700:400 }}>{item.l}</span>
-            {tab===item.id && <div style={{ width:18, height:3, background:C.primary, borderRadius:2, marginTop:1 }}/>}
-          </button>
-        ))}
-      </div>
-
-      {modal?.type==="share" && <ShareSheet survey={modal.data} onClose={()=>setModal(null)}/>}
-
-      {modal?.type==="users" && isAdmin && (
-        <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:50, overflowY:"auto" }}>
-          <div style={{ background:C.primary, padding:"14px 16px", color:"#fff", display:"flex", alignItems:"center", gap:10, position:"sticky", top:0 }}>
-            <button onClick={()=>setModal(null)} style={{ background:"none", border:"none", color:"#fff", fontSize:20, cursor:"pointer" }}>←</button>
-            <span style={{ fontWeight:800, fontSize:15 }}>إدارة المستخدمين</span>
-          </div>
-          <UsersManagementPage currentUser={user}/>
-        </div>
-      )}
-
-      {modal?.type==="auditlog" && isAdmin && (
-        <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:50, overflowY:"auto" }}>
-          <div style={{ background:C.primary, padding:"14px 16px", color:"#fff", display:"flex", alignItems:"center", gap:10, position:"sticky", top:0 }}>
-            <button onClick={()=>setModal(null)} style={{ background:"none", border:"none", color:"#fff", fontSize:20, cursor:"pointer" }}>←</button>
-            <span style={{ fontWeight:800, fontSize:15 }}>سجل التدقيق</span>
-          </div>
-          <AuditLogPage/>
-        </div>
-      )}
-    </div>
-  );
-}
+                <div key={l.id} style={{ display:"flex", alignItems:"flex-start", gap:10, padd
