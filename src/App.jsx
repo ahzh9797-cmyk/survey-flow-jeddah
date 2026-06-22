@@ -202,10 +202,10 @@ function useSurveys(){
 
   const fetchSurveys = useCallback(async () => {
     setLoading(true);
+    // نجلب كل الاستبيانات (نشطة + مسودة + بانتظار الاعتماد) لأن السياسة ستفلتر حسب الدور تلقائياً
     const { data: surveysData } = await supabase
       .from("surveys")
       .select("*, survey_questions(*)")
-      .eq("status", "active")
       .order("created_at", { ascending: false });
     setSurveys((surveysData || []).map(s => ({
       ...s,
@@ -352,6 +352,25 @@ function useUserRole(user) {
 }
 
 // عدد طلبات التسجيل المعلّقة — يُستخدم لإظهار شارة تنبيه للمدير العام
+// إعدادات التطبيق (اللوغو، الاسم، إلخ) — تُجلب مرة واحدة وتُخزن
+function useAppSettings() {
+  const [settings, setSettings] = useState({ logo_url:"", app_name:"منظومة الاستبيانات", app_subtitle:"إدارة التعليم — جدة" });
+  const reload = useCallback(async () => {
+    const { data } = await supabase.from("app_settings").select("key,value");
+    if (data) {
+      const obj = {};
+      data.forEach(r => { obj[r.key] = r.value; });
+      setSettings(p => ({ ...p, ...obj }));
+    }
+  }, []);
+  useEffect(() => { reload(); }, [reload]);
+  return { settings, reload };
+}
+
+async function saveSetting(key, value) {
+  await supabase.from("app_settings").upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict:"key" });
+}
+
 function usePendingCount(isAdmin) {
   const [count, setCount] = useState(0);
   useEffect(() => {
@@ -469,7 +488,14 @@ function MinistryLookup({ onConfirm }) {
 // ═══════════════════════════════════════════════════════
 function PublicFill({ survey, onBack }) {
   const isOpen = survey.survey_type === "open";
+  const isSupervisor = survey.survey_type === "supervisor";
+  const isExpired = survey.expires_at && new Date(survey.expires_at) < new Date();
+
   const [school, setSchool] = useState(null);
+  const [supervisor, setSupervisor] = useState(null); // للاستبيانات الخاصة بالمشرفين
+  const [nationalId, setNationalId] = useState("");
+  const [lookingUp, setLookingUp] = useState(false);
+  const [lookupError, setLookupError] = useState("");
   const [respondentLabel, setRespondentLabel] = useState("");
   const [ans, setAns] = useState({});
   const [errs, setErrs] = useState({});
@@ -477,9 +503,33 @@ function PublicFill({ survey, onBack }) {
   const [submitting, setSubmitting] = useState(false);
   const [existingResp, setExistingResp] = useState(null);
   const [submitError, setSubmitError] = useState("");
-  const [gateStopped, setGateStopped] = useState(false); // توقف الاستبيان عند البوابة الشرطية
+  const [gateStopped, setGateStopped] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState({});
+
+  // إن كان الاستبيان منتهياً، نعرض رسالة إغلاق فوراً
+  if (isExpired) return (
+    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center", padding:24, direction:"rtl", textAlign:"center" }}>
+      <div style={{ fontSize:72, marginBottom:16 }}>⛔</div>
+      <h2 style={{ color:C.danger, margin:"0 0 8px", fontSize:22, fontWeight:800 }}>انتهت مدة الاستبيان</h2>
+      <p style={{ color:C.muted, fontSize:14 }}>
+        انتهى هذا الاستبيان في {new Date(survey.expires_at).toLocaleDateString("ar-SA")} ولم يعد يقبل ردوداً جديدة.
+      </p>
+    </div>
+  );
 
   const setA = (id, v) => { setAns(p=>({...p,[id]:v})); setErrs(p=>({...p,[id]:null})); };
+
+  async function lookupSupervisor() {
+    if (!nationalId.trim()) return;
+    setLookingUp(true); setLookupError("");
+    const { data, error } = await supabase.from("supervisors").select("*")
+      .eq("national_id", nationalId.trim()).maybeSingle();
+    setLookingUp(false);
+    if (error || !data) { setLookupError("رقم الهوية غير موجود في قاعدة بيانات المشرفين"); return; }
+    setSupervisor(data);
+    setStep("fill");
+  }
 
   async function checkExisting(s) {
     const { data } = await supabase
@@ -491,12 +541,23 @@ function PublicFill({ survey, onBack }) {
     if (data) setExistingResp(data);
   }
 
+  async function uploadFile(questionId, file) {
+    if (!file) return;
+    setUploadingFiles(p => ({...p, [questionId]: true}));
+    const ext = file.name.split(".").pop();
+    const path = `${survey.id}/${questionId}_${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("survey-files").upload(path, file);
+    if (upErr) { setErrs(p=>({...p,[questionId]:"فشل رفع الملف"})); setUploadingFiles(p=>({...p,[questionId]:false})); return; }
+    const { data } = supabase.storage.from("survey-files").getPublicUrl(path);
+    setA(questionId, { url: data.publicUrl, name: file.name, size: file.size });
+    setUploadingFiles(p => ({...p, [questionId]: false}));
+  }
+
   // يحدد أي الأسئلة تُعرَض فعلياً بناءً على إجابة سؤال البوابة (إن وُجد)
   function visibleQuestions() {
     if (!survey.gate_question_id) return survey.questions;
     const gateAnswer = ans[survey.gate_question_id];
     if (gateAnswer === survey.gate_required_value) return survey.questions;
-    // لم تُجَب البوابة بعد، أو أُجيبت بقيمة مختلفة عن المطلوبة → نعرض فقط سؤال البوابة
     return survey.questions.filter(q => q.id === survey.gate_question_id);
   }
 
@@ -506,7 +567,6 @@ function PublicFill({ survey, onBack }) {
     qsToValidate.forEach(q => { if(q.required && !ans[q.id]) e[q.id]="هذا الحقل مطلوب"; });
     if (Object.keys(e).length) { setErrs(e); return; }
 
-    // تحقق من حالة البوابة: إن وُجد سؤال بوابة وأُجيب بقيمة مختلفة عن المطلوبة، الرد يُحفظ جزئياً وينتهي
     const stoppedAtGate = survey.gate_question_id
       && ans[survey.gate_question_id] !== undefined
       && ans[survey.gate_question_id] !== survey.gate_required_value;
@@ -578,7 +638,32 @@ function PublicFill({ survey, onBack }) {
           </div>
         )}
 
-        {step === "identify" && !isOpen && (
+        {step === "identify" && isSupervisor && (
+          <Card style={{ marginBottom:16 }}>
+            <p style={{ margin:"0 0 16px", fontSize:15, fontWeight:800, color:C.dark }}>أولاً: تحقق من هويتك كمشرف</p>
+            <label style={{ display:"block", fontSize:14, fontWeight:700, color:C.dark, marginBottom:6 }}>
+              رقم الهوية الوطنية <span style={{ color:C.danger }}>*</span>
+            </label>
+            <div style={{ display:"flex", gap:8, marginBottom:10 }}>
+              <input value={nationalId} onChange={e=>{setNationalId(e.target.value);setSupervisor(null);}}
+                placeholder="10 أرقام" onKeyDown={e=>e.key==="Enter"&&lookupSupervisor()}
+                style={{ flex:1, padding:"12px 14px", border:`1.5px solid ${lookupError?C.danger:C.border}`,
+                  borderRadius:10, fontSize:15, fontFamily:"inherit", boxSizing:"border-box", outline:"none",
+                  direction:"ltr", textAlign:"center", fontWeight:700 }}/>
+              <Btn onClick={lookupSupervisor} loading={lookingUp} sm>بحث</Btn>
+            </div>
+            <ErrorBanner message={lookupError}/>
+            {supervisor && (
+              <div style={{ background:C.successBg, border:`1.5px solid ${C.success}`, borderRadius:12, padding:14 }}>
+                <p style={{ margin:"0 0 8px", fontSize:12, color:C.success, fontWeight:700 }}>✅ تم التحقق</p>
+                <p style={{ margin:0, fontSize:15, fontWeight:800, color:C.dark }}>{supervisor.name}</p>
+                <p style={{ margin:"4px 0 10px", fontSize:12, color:C.muted }}>رقم الهوية: {supervisor.national_id}</p>
+                <Btn full onClick={()=>setStep("fill")}>✓ تأكيد — هذا أنا</Btn>
+              </div>
+            )}
+          </Card>
+        )}
+        {step === "identify" && !isOpen && !isSupervisor && (
           <Card style={{ marginBottom:16 }}>
             <p style={{ margin:"0 0 16px", fontSize:15, fontWeight:800, color:C.dark }}>أولاً: تحقق من هوية مدرستك</p>
             <MinistryLookup onConfirm={async s => { setSchool(s); await checkExisting(s); setStep("fill"); }}/>
@@ -650,6 +735,26 @@ function PublicFill({ survey, onBack }) {
                   </div>
                 )}
                 {q.type==="rating" && <Stars value={ans[q.id]||0} onChange={v=>setA(q.id,v)}/>}
+                {q.type==="file" && (
+                  <div>
+                    <input type="file"
+                      accept={(q.allowed_file_types||"pdf,xlsx").split(",").map(t=>`.${t}`).join(",")}
+                      onChange={e=>uploadFile(q.id, e.target.files?.[0])}
+                      disabled={uploadingFiles[q.id]}
+                      style={{ width:"100%", fontSize:13, marginBottom:8 }}/>
+                    {uploadingFiles[q.id] && <p style={{ margin:0, fontSize:12, color:C.primary }}>جاري الرفع...</p>}
+                    {ans[q.id]?.url && (
+                      <div style={{ background:C.successBg, borderRadius:8, padding:"8px 12px" }}>
+                        <p style={{ margin:0, fontSize:12, color:C.success }}>✅ تم رفع: {ans[q.id].name}</p>
+                        <a href={ans[q.id].url} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize:11, color:C.primary }}>عرض الملف ↗</a>
+                      </div>
+                    )}
+                    <p style={{ margin:"6px 0 0", fontSize:11, color:C.muted }}>
+                      الصيغ المقبولة: {(q.allowed_file_types||"pdf,xlsx").toUpperCase().replace(",","، ")}
+                    </p>
+                  </div>
+                )}
                 {errs[q.id] && <p style={{ color:C.danger, fontSize:12, margin:"8px 0 0" }}>{errs[q.id]}</p>}
                 {survey.gate_question_id === q.id && ans[q.id] && ans[q.id] !== survey.gate_required_value && (
                   <p style={{ color:C.muted, fontSize:11.5, margin:"10px 0 0", background:C.bg, padding:"8px 10px", borderRadius:8 }}>
@@ -1034,10 +1139,16 @@ function TrackingPage({ survey, onBack }) {
 // ═══════════════════════════════════════════════════════
 // SURVEYS LIST
 // ═══════════════════════════════════════════════════════
-function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, isAdmin }) {
+function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, isAdmin, onDelete, onApprove }) {
+  const now = new Date();
+
   if (loading) return (
     <div style={{ minHeight:"50vh", display:"flex", alignItems:"center", justifyContent:"center" }}><Spinner size={32}/></div>
   );
+
+  const typeColor = {school:C.primary, supervisor:"#7B2D8B", open:C.accent};
+  const typeLabel = {school:"🏫 مدارس", supervisor:"👤 مشرفون", open:"🌐 مفتوح"};
+
   return (
     <div style={{ padding:16 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
@@ -1045,30 +1156,68 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
           <h2 style={{ margin:0, fontSize:18, color:C.dark, fontWeight:800 }}>الاستبيانات</h2>
           <p style={{ margin:"2px 0 0", color:C.muted, fontSize:12 }}>{surveys.length} استبيان · {schoolCount} مدرسة</p>
         </div>
-        {isAdmin && <Btn sm onClick={onNew}>＋ جديد</Btn>}
+        <Btn sm onClick={onNew}>＋ جديد</Btn>
       </div>
-      {!isAdmin && <ViewerNotice action="إنشاء استبيانات جديدة"/>}
+
       {surveys.length === 0 && (
         <Card style={{ textAlign:"center", padding:32 }}>
-          <p style={{ color:C.muted, margin:0 }}>لا توجد استبيانات بعد. أنشئ أول استبيان!</p>
+          <p style={{ color:C.muted, margin:0 }}>لا توجد استبيانات بعد.</p>
         </Card>
       )}
-      {surveys.map(s => (
-        <Card key={s.id} style={{ marginBottom:12 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8, gap:8 }}>
-            <h3 style={{ margin:0, fontSize:15, color:C.dark, fontWeight:700, flex:1, lineHeight:1.4 }}>{s.title}</h3>
-            <div style={{ display:"flex", gap:6, flexShrink:0 }}>
-              <Tag color={s.survey_type==="open" ? C.accent : C.primary}>{s.survey_type==="open" ? "🌐 مفتوح" : "🏫 مدارس"}</Tag>
-              <Tag color={C.success}>نشط</Tag>
+      {surveys.map(s => {
+        const isExpired = s.expires_at && new Date(s.expires_at) < now;
+        const expiresTomorrow = s.expires_at && !isExpired &&
+          (new Date(s.expires_at) - now) < 24*60*60*1000;
+        const isPending = s.approval_status === "pending_approval";
+        const isDraft = s.approval_status === "draft";
+
+        return (
+          <Card key={s.id} style={{ marginBottom:12, opacity: isExpired ? 0.7 : 1 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8, gap:8 }}>
+              <h3 style={{ margin:0, fontSize:15, color:C.dark, fontWeight:700, flex:1, lineHeight:1.4 }}>{s.title}</h3>
+              <div style={{ display:"flex", gap:4, flexShrink:0, flexWrap:"wrap", justifyContent:"flex-end" }}>
+                <Tag color={typeColor[s.survey_type]||C.primary}>{typeLabel[s.survey_type]||"🏫 مدارس"}</Tag>
+                {isExpired ? <Tag color={C.danger}>⛔ منتهي</Tag>
+                  : isPending ? <Tag color={C.warn}>⏳ بانتظار الاعتماد</Tag>
+                  : isDraft ? <Tag color={C.muted}>📝 مسودة</Tag>
+                  : <Tag color={C.success}>✅ نشط</Tag>}
+              </div>
             </div>
-          </div>
-          <p style={{ margin:"0 0 12px", fontSize:12, color:C.muted }}>{s.description}</p>
-          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-            <Btn sm variant="secondary" onClick={()=>onTrack(s)}>📊 متابعة الاستجابة</Btn>
-            <Btn sm variant="gold" onClick={()=>onShare(s)}>🔗 مشاركة</Btn>
-          </div>
-        </Card>
-      ))}
+
+            {expiresTomorrow && (
+              <div style={{ background:C.warnBg, border:`1px solid ${C.warn}40`, borderRadius:8, padding:"6px 10px", marginBottom:8 }}>
+                <p style={{ margin:0, fontSize:11, color:C.warn, fontWeight:700 }}>
+                  ⚠️ ينتهي غداً — {new Date(s.expires_at).toLocaleDateString("ar-SA")}
+                </p>
+              </div>
+            )}
+            {isExpired && (
+              <div style={{ background:"#fdf0ee", borderRadius:8, padding:"6px 10px", marginBottom:8 }}>
+                <p style={{ margin:0, fontSize:11, color:C.danger }}>⛔ انتهى في {new Date(s.expires_at).toLocaleDateString("ar-SA")}</p>
+              </div>
+            )}
+            {s.expires_at && !isExpired && !expiresTomorrow && (
+              <p style={{ margin:"0 0 8px", fontSize:11, color:C.muted }}>
+                📅 ينتهي: {new Date(s.expires_at).toLocaleDateString("ar-SA")}
+              </p>
+            )}
+
+            <p style={{ margin:"0 0 12px", fontSize:12, color:C.muted }}>{s.description}</p>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              <Btn sm variant="secondary" onClick={()=>onTrack(s)}>📊 متابعة</Btn>
+              {!isPending && !isDraft && !isExpired && isAdmin && (
+                <Btn sm variant="gold" onClick={()=>onShare(s)}>🔗 مشاركة</Btn>
+              )}
+              {isPending && isAdmin && (
+                <Btn sm variant="primary" onClick={()=>onApprove(s)}>✅ اعتماد ونشر</Btn>
+              )}
+              {isAdmin && (
+                <Btn sm variant="danger" onClick={()=>onDelete(s)}>🗑️ حذف</Btn>
+              )}
+            </div>
+          </Card>
+        );
+      })}
     </div>
   );
 }
@@ -1076,12 +1225,13 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
 // ═══════════════════════════════════════════════════════
 // NEW SURVEY (writes to Supabase)
 // ═══════════════════════════════════════════════════════
-function NewSurveyPage({ onSaved, onCancel, user }) {
+function NewSurveyPage({ onSaved, onCancel, user, isAdmin }) {
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
-  const [surveyType, setSurveyType] = useState("school"); // school | open
-  const [qs, setQs] = useState([{ id:"q1", type:"text", label:"", required:true, options:[] }]);
-  const [gateQuestionId, setGateQuestionId] = useState(""); // "" = بدون سؤال شرطي
+  const [surveyType, setSurveyType] = useState("school"); // school | open | supervisor
+  const [expiresAt, setExpiresAt] = useState(""); // تاريخ الانتهاء
+  const [qs, setQs] = useState([{ id:"q1", type:"text", label:"", required:true, options:[], allowedFileTypes:"pdf,xlsx" }]);
+  const [gateQuestionId, setGateQuestionId] = useState("");
   const [gateRequiredValue, setGateRequiredValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -1089,10 +1239,10 @@ function NewSurveyPage({ onSaved, onCancel, user }) {
   const upd = (id,f,v) => setQs(p => p.map(q => q.id===id ? {...q,[f]:v} : q));
   const types = [
     {v:"text",l:"نص قصير"},{v:"textarea",l:"نص طويل"},
-    {v:"number",l:"رقم / إحصائية"},{v:"select",l:"اختيار من قائمة"},{v:"rating",l:"تقييم بالنجوم"},
+    {v:"number",l:"رقم / إحصائية"},{v:"select",l:"اختيار من قائمة"},
+    {v:"rating",l:"تقييم بالنجوم"},{v:"file",l:"رفع ملف (PDF/Excel)"},
   ];
 
-  // السؤال الشرطي يجب أن يكون من نوع "اختيار من قائمة" وله خيارات فعلية
   const selectQuestions = qs.filter(q => q.type === "select" && (q.options||[]).length > 0 && q.label.trim());
   const gateQuestion = selectQuestions.find(q => q.id === gateQuestionId);
 
@@ -1105,12 +1255,18 @@ function NewSurveyPage({ onSaved, onCancel, user }) {
     if (!title.trim()) return;
     setSaving(true); setError("");
 
+    // المشرف (viewer) ينشئ استبيانًا بحالة draft بانتظار اعتماد المسؤول
+    const approvalStatus = isAdmin ? "approved" : "pending_approval";
+
     const { data: survey, error: surveyErr } = await supabase
       .from("surveys")
       .insert({
         title, description: desc, status: "active",
         survey_type: surveyType,
-        gate_question_id: null, // سنحدّثه بعد معرفة معرفات الأسئلة الفعلية بعد الإدراج
+        gate_question_id: null,
+        expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
+        approval_status: approvalStatus,
+        created_by: user?.id,
       })
       .select()
       .single();
@@ -1124,13 +1280,13 @@ function NewSurveyPage({ onSaved, onCancel, user }) {
     const questionsPayload = qs.map((q, i) => ({
       survey_id: survey.id, label: q.label, type: q.type,
       required: q.required, options: q.options || [], order_index: i,
+      allowed_file_types: q.type === "file" ? (q.allowedFileTypes||"pdf,xlsx") : null,
     }));
 
     const { data: insertedQs, error: qErr } = await supabase
       .from("survey_questions").insert(questionsPayload).select();
     if (qErr) { setSaving(false); setError("فشل حفظ الأسئلة: " + qErr.message); return; }
 
-    // إن وُجد سؤال شرطي محدد، نربطه بمعرفه الحقيقي بعد الإدراج (نطابق حسب الترتيب لأن uuid يُولَّد عند الإدراج)
     if (gateQuestionId && gateRequiredValue) {
       const localIndex = qs.findIndex(q => q.id === gateQuestionId);
       const realQuestion = insertedQs?.find(q => q.order_index === localIndex);
@@ -1153,25 +1309,30 @@ function NewSurveyPage({ onSaved, onCancel, user }) {
         cursor:"pointer", padding:"0 0 14px", fontFamily:"inherit", display:"flex", alignItems:"center", gap:4 }}>← إلغاء</button>
       <h2 style={{ margin:"0 0 16px", fontSize:18, color:C.dark, fontWeight:800 }}>استبيان جديد</h2>
 
+      {!isAdmin && (
+        <div style={{ background:C.warnBg, border:`1px solid ${C.warn}40`, borderRadius:10, padding:"10px 14px",
+          fontSize:12, color:"#9a5a10", marginBottom:14 }}>
+          ℹ️ سيُحفظ الاستبيان كـ<strong> مسودة بانتظار اعتماد المسؤول</strong> قبل نشره. لن يظهر الرابط لك حتى يعتمده المسؤول.
+        </div>
+      )}
+
       <Card style={{ marginBottom:14 }}>
         <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:8 }}>نوع الاستبيان</label>
-        <div style={{ display:"flex", gap:8, marginBottom:4 }}>
-          <button onClick={()=>setSurveyType("school")} style={{
-            flex:1, padding:"12px 10px", borderRadius:10, cursor:"pointer", fontFamily:"inherit",
-            border:`2px solid ${surveyType==="school"?C.primary:C.border}`,
-            background:surveyType==="school"?C.primaryBg:"#fff", textAlign:"center" }}>
-            <div style={{ fontSize:20, marginBottom:4 }}>🏫</div>
-            <div style={{ fontSize:12.5, fontWeight:700, color:surveyType==="school"?C.primary:C.text }}>خاص بالمدارس</div>
-            <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>يتطلب رقم وزاري للتحقق</div>
-          </button>
-          <button onClick={()=>setSurveyType("open")} style={{
-            flex:1, padding:"12px 10px", borderRadius:10, cursor:"pointer", fontFamily:"inherit",
-            border:`2px solid ${surveyType==="open"?C.accent:C.border}`,
-            background:surveyType==="open"?C.accentLight:"#fff", textAlign:"center" }}>
-            <div style={{ fontSize:20, marginBottom:4 }}>🌐</div>
-            <div style={{ fontSize:12.5, fontWeight:700, color:surveyType==="open"?C.accent:C.text }}>مفتوح</div>
-            <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>بدون قيود — لأي شخص لديه الرابط</div>
-          </button>
+        <div style={{ display:"flex", gap:6, marginBottom:4, flexWrap:"wrap" }}>
+          {[
+            {v:"school",i:"🏫",l:"خاص بالمدارس",s:"يتطلب رقم وزاري",c:C.primary,bg:C.primaryBg},
+            {v:"supervisor",i:"👤",l:"خاص بالمشرفين",s:"يتطلب رقم هوية",c:"#7B2D8B",bg:"#f5eefa"},
+            {v:"open",i:"🌐",l:"مفتوح",s:"بدون قيود",c:C.accent,bg:C.accentLight},
+          ].map(t => (
+            <button key={t.v} onClick={()=>setSurveyType(t.v)} style={{
+              flex:1, minWidth:90, padding:"10px 6px", borderRadius:10, cursor:"pointer", fontFamily:"inherit",
+              border:`2px solid ${surveyType===t.v?t.c:C.border}`,
+              background:surveyType===t.v?t.bg:"#fff", textAlign:"center" }}>
+              <div style={{ fontSize:18, marginBottom:3 }}>{t.i}</div>
+              <div style={{ fontSize:11.5, fontWeight:700, color:surveyType===t.v?t.c:C.text }}>{t.l}</div>
+              <div style={{ fontSize:10, color:C.muted, marginTop:1 }}>{t.s}</div>
+            </button>
+          ))}
         </div>
       </Card>
 
@@ -1184,20 +1345,35 @@ function NewSurveyPage({ onSaved, onCancel, user }) {
             style={{ width:"100%", padding:"11px 13px", border:`1.5px solid ${C.border}`, borderRadius:10,
               fontSize:14, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", outline:"none" }}/>
         </div>
-        <div>
+        <div style={{ marginBottom:12 }}>
           <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:5 }}>وصف الاستبيان</label>
           <textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={2} placeholder="وصف مختصر"
             style={{ width:"100%", padding:"11px 13px", border:`1.5px solid ${C.border}`, borderRadius:10,
               fontSize:14, fontFamily:"inherit", direction:"rtl", resize:"vertical", boxSizing:"border-box", outline:"none" }}/>
         </div>
+        <div>
+          <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:5 }}>
+            📅 تاريخ انتهاء الاستبيان <span style={{ fontSize:11, fontWeight:400, color:C.muted }}>(اختياري — بعده يُقفل تلقائياً)</span>
+          </label>
+          <input type="date" value={expiresAt} onChange={e=>setExpiresAt(e.target.value)}
+            style={{ width:"100%", padding:"11px 13px", border:`1.5px solid ${C.border}`, borderRadius:10,
+              fontSize:14, fontFamily:"inherit", direction:"ltr", boxSizing:"border-box", outline:"none" }}/>
+        </div>
       </Card>
 
-      {surveyType === "school" ? (
+      {surveyType === "school" && (
         <Card style={{ marginBottom:12, background:"#e8f5ee", border:`1px solid ${C.success}40` }}>
           <p style={{ margin:0, fontSize:13, color:C.success, fontWeight:700 }}>✅ سؤال الرقم الوزاري تلقائي</p>
           <p style={{ margin:"4px 0 0", fontSize:12, color:C.muted }}>يُعرض أولاً للتحقق من هوية المستجيب، ثم أسئلتك أدناه.</p>
         </Card>
-      ) : (
+      )}
+      {surveyType === "supervisor" && (
+        <Card style={{ marginBottom:12, background:"#f5eefa", border:"1px solid #7B2D8B40" }}>
+          <p style={{ margin:0, fontSize:13, color:"#7B2D8B", fontWeight:700 }}>👤 سؤال رقم الهوية تلقائي</p>
+          <p style={{ margin:"4px 0 0", fontSize:12, color:C.muted }}>يُعرض أولاً للتحقق من هوية المشرف عبر رقم هويته، ثم أسئلتك أدناه.</p>
+        </Card>
+      )}
+      {surveyType === "open" && (
         <Card style={{ marginBottom:12, background:C.accentLight, border:`1px solid ${C.accent}40` }}>
           <p style={{ margin:0, fontSize:13, color:C.accent, fontWeight:700 }}>🌐 استبيان مفتوح بدون تحقق</p>
           <p style={{ margin:"4px 0 0", fontSize:12, color:C.muted }}>سيُطلب من المجيب اسمه أو جهته اختيارياً فقط، ثم ينتقل مباشرة لأسئلتك أدناه.</p>
@@ -1258,6 +1434,32 @@ function NewSurveyPage({ onSaved, onCancel, user }) {
                 </div>
               )}
             </>
+          )}
+          {q.type==="file" && (
+            <div style={{ marginTop:10 }}>
+              <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:5 }}>
+                أنواع الملفات المسموحة:
+              </label>
+              <div style={{ display:"flex", gap:10 }}>
+                {[["pdf","PDF"],["xlsx","Excel"]].map(([v,l]) => (
+                  <label key={v} style={{ display:"flex", alignItems:"center", gap:5, fontSize:13, cursor:"pointer" }}>
+                    <input type="checkbox"
+                      checked={(q.allowedFileTypes||"pdf,xlsx").includes(v)}
+                      onChange={e=>{
+                        const cur = (q.allowedFileTypes||"pdf,xlsx").split(",").filter(Boolean);
+                        const next = e.target.checked ? [...new Set([...cur,v])] : cur.filter(x=>x!==v);
+                        upd(q.id,"allowedFileTypes",next.join(","));
+                      }}
+                      style={{width:16,height:16}}/>{l}
+                  </label>
+                ))}
+              </div>
+              <div style={{ marginTop:8, padding:"8px 10px", background:C.bg, borderRadius:8 }}>
+                <p style={{ margin:0, fontSize:11, color:C.muted }}>
+                  📎 سيُرفع الملف تلقائياً إلى Supabase Storage ويُحفظ رابطه في الإجابة
+                </p>
+              </div>
+            </div>
           )}
         </Card>
       ))}
@@ -2215,6 +2417,293 @@ const TABLE_LABELS = {
   survey_schools: "المدارس", surveys: "الاستبيانات", survey_questions: "أسئلة الاستبيان", user_roles: "صلاحيات المستخدمين",
 };
 
+// ═══════════════════════════════════════════════════════
+// SUPERVISORS MANAGEMENT PAGE
+// ═══════════════════════════════════════════════════════
+function SupervisorsManagementPage({ user }) {
+  const [sups, setSups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [form, setForm] = useState(null); // null=hidden, {}=new, {id,...}=edit
+  const [delTarget, setDelTarget] = useState(null);
+  const [csvOpen, setCsvOpen] = useState(false);
+  const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+  const [page, setPage] = useState(1);
+  const PER = 30;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase.from("supervisors").select("*").order("name");
+    setSups(data || []);
+    setLoading(false);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = sups.filter(s =>
+    !search || s.name.includes(search) || s.national_id.includes(search) || (s.phone||"").includes(search)
+  );
+  const paged = filtered.slice((page-1)*PER, page*PER);
+
+  async function saveSup(data) {
+    setError("");
+    if (!data.name?.trim() || !data.national_id?.trim()) { setError("الاسم ورقم الهوية حقلان إلزاميان"); return; }
+    const payload = { name:data.name.trim(), national_id:data.national_id.trim(),
+      phone:data.phone?.trim()||"", email:data.email?.trim()||"", status:data.status||"مُسندة" };
+    let err;
+    if (data.id) {
+      ({ error:err } = await supabase.from("supervisors").update(payload).eq("id", data.id));
+    } else {
+      ({ error:err } = await supabase.from("supervisors").insert(payload));
+    }
+    if (err) { setError(err.code==="23505"?"رقم الهوية مستخدم بالفعل":"حدث خطأ أثناء الحفظ"); return; }
+    logAction({ user, action:data.id?"update":"create", table:"supervisors", recordLabel:payload.name });
+    setForm(null); load();
+  }
+
+  async function deleteSup(id, name) {
+    await supabase.from("supervisors").delete().eq("id", id);
+    logAction({ user, action:"delete", table:"supervisors", recordLabel:name });
+    setDelTarget(null); load();
+  }
+
+  function sendWhatsApp(sup, surveyLink, surveyTitle, expiresAt) {
+    const expText = expiresAt ? `\nتاريخ الانتهاء: ${new Date(expiresAt).toLocaleDateString("ar-SA")}` : "";
+    const msg = encodeURIComponent(`السلام عليكم ${sup.name},\n\nنرجو تعبئة الاستبيان: ${surveyTitle}\n${surveyLink}${expText}\n\nإدارة التعليم — جدة`);
+    window.open(`https://wa.me/966${sup.phone?.replace(/^0/,"")}?text=${msg}`, "_blank");
+  }
+
+  async function uploadCsv(file) {
+    const XLSX = await ensureXLSX();
+    const ab = await file.arrayBuffer();
+    const wb = XLSX.read(ab);
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws);
+    const mapped = rows.map(r => ({
+      name: String(r["الاسم"]||r["name"]||"").trim(),
+      national_id: String(r["رقم الهوية"]||r["national_id"]||"").trim(),
+      phone: String(r["الجوال"]||r["phone"]||"").trim(),
+      email: String(r["البريد"]||r["email"]||"").trim(),
+      status: r["الحالة"]||"مُسندة",
+    })).filter(r => r.name && r.national_id);
+    if (!mapped.length) { setError("لم يتم العثور على بيانات صحيحة في الملف"); return; }
+    const { error:err } = await supabase.from("supervisors").upsert(mapped, { onConflict:"national_id" });
+    if (err) { setError("فشل الرفع: "+err.message); return; }
+    logAction({ user, action:"bulk_upload", table:"supervisors", details:{ count:mapped.length } });
+    setInfo(`تم رفع ${mapped.length} مشرف بنجاح`);
+    setCsvOpen(false); load();
+  }
+
+  const inputStyle = { width:"100%", padding:"10px 12px", border:`1.5px solid ${C.border}`, borderRadius:10,
+    fontSize:13, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", outline:"none", marginBottom:10 };
+
+  return (
+    <div style={{ padding:16, direction:"rtl" }}>
+      <h2 style={{ margin:"0 0 4px", fontSize:17, color:C.dark }}>إدارة المشرفين</h2>
+      <p style={{ margin:"0 0 12px", fontSize:12, color:C.muted }}>{sups.length} مشرف مسجّل</p>
+
+      <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+        <Btn sm full onClick={()=>setForm({})}>➕ إضافة مشرف</Btn>
+        <Btn sm full variant="secondary" onClick={()=>setCsvOpen(true)}>📄 رفع Excel/PDF</Btn>
+      </div>
+
+      <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}
+        placeholder="🔍 ابحث بالاسم أو رقم الهوية أو الجوال..."
+        style={{ width:"100%", padding:"10px 12px", border:`1.5px solid ${C.border}`, borderRadius:10,
+          fontSize:13, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", outline:"none", marginBottom:12 }}/>
+
+      <ErrorBanner message={error}/>
+      {info && <div style={{ background:C.successBg, border:`1px solid ${C.success}40`, borderRadius:10,
+        padding:"10px 14px", fontSize:12, color:C.success, marginBottom:12 }}>✅ {info}</div>}
+
+      {loading ? <div style={{ textAlign:"center", padding:30 }}><Spinner/></div> : (
+        <>
+          <p style={{ fontSize:11, color:C.muted, margin:"0 0 8px" }}>عرض {paged.length} من {filtered.length}</p>
+          <Card style={{ padding:0, overflow:"hidden" }}>
+            {paged.length === 0 ? (
+              <p style={{ padding:20, textAlign:"center", color:C.muted, fontSize:13 }}>لا توجد نتائج</p>
+            ) : paged.map((s, i) => (
+              <div key={s.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px",
+                borderBottom:i<paged.length-1?`1px solid ${C.border}`:undefined }}>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <p style={{ margin:0, fontSize:13, fontWeight:700, color:C.dark }}>{s.name}</p>
+                  <p style={{ margin:"2px 0 0", fontSize:11, color:C.muted }}>
+                    هوية: {s.national_id} {s.phone && `· 📱 ${s.phone}`}
+                  </p>
+                </div>
+                <Tag color={s.status==="مُسندة"?C.success:C.muted}>{s.status}</Tag>
+                <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                  <button onClick={()=>setForm(s)} style={{ background:C.primaryBg, border:"none", borderRadius:8,
+                    padding:"5px 8px", fontSize:11, color:C.primary, cursor:"pointer", fontFamily:"inherit" }}>✏️</button>
+                  <button onClick={()=>setDelTarget(s)} style={{ background:"#fdf0ee", border:"none", borderRadius:8,
+                    padding:"5px 8px", fontSize:11, color:C.danger, cursor:"pointer", fontFamily:"inherit" }}>🗑️</button>
+                </div>
+              </div>
+            ))}
+          </Card>
+          {Math.ceil(filtered.length/PER) > 1 && (
+            <div style={{ display:"flex", justifyContent:"center", gap:8, marginTop:12 }}>
+              <Btn sm variant="secondary" disabled={page===1} onClick={()=>setPage(p=>p-1)}>السابق</Btn>
+              <span style={{ padding:"8px 14px", fontSize:13, color:C.muted }}>{page}/{Math.ceil(filtered.length/PER)}</span>
+              <Btn sm variant="secondary" disabled={page>=Math.ceil(filtered.length/PER)} onClick={()=>setPage(p=>p+1)}>التالي</Btn>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* نموذج إضافة/تعديل */}
+      {form !== null && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:100, display:"flex",
+          alignItems:"flex-end", direction:"rtl" }}>
+          <div style={{ width:"100%", background:C.white, borderRadius:"20px 20px 0 0", padding:20, maxHeight:"80vh", overflowY:"auto" }}>
+            <h3 style={{ margin:"0 0 16px", fontSize:16, color:C.dark }}>{form.id?"تعديل بيانات المشرف":"إضافة مشرف جديد"}</h3>
+            {[["الاسم","name","اسم المشرف"],["رقم الهوية","national_id","10 أرقام"],
+              ["رقم الجوال","phone","05xxxxxxxx"],["البريد الإلكتروني","email",""]].map(([l,k,ph]) => (
+              <div key={k}>
+                <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:4 }}>{l}</label>
+                <input value={form[k]||""} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))}
+                  placeholder={ph} style={inputStyle}/>
+              </div>
+            ))}
+            <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:4 }}>الحالة</label>
+            <select value={form.status||"مُسندة"} onChange={e=>setForm(p=>({...p,status:e.target.value}))}
+              style={{ ...inputStyle, background:C.white }}>
+              <option>مُسندة</option><option>غير مُسندة</option>
+            </select>
+            <ErrorBanner message={error}/>
+            <div style={{ display:"flex", gap:8 }}>
+              <Btn full variant="secondary" onClick={()=>{setForm(null);setError("");}}>إلغاء</Btn>
+              <Btn full onClick={()=>saveSup(form)}>حفظ</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* تأكيد الحذف */}
+      {delTarget && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:100, display:"flex",
+          alignItems:"center", justifyContent:"center", padding:20 }}>
+          <div style={{ background:C.white, borderRadius:16, padding:20, width:"100%", maxWidth:340 }}>
+            <p style={{ textAlign:"center", fontWeight:700, color:C.dark, fontSize:15 }}>حذف {delTarget.name}؟</p>
+            <p style={{ textAlign:"center", color:C.muted, fontSize:12 }}>لا يمكن التراجع</p>
+            <div style={{ display:"flex", gap:8, marginTop:14 }}>
+              <Btn full variant="secondary" onClick={()=>setDelTarget(null)}>إلغاء</Btn>
+              <Btn full variant="danger" onClick={()=>deleteSup(delTarget.id, delTarget.name)}>حذف</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* رفع Excel */}
+      {csvOpen && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:100, display:"flex",
+          alignItems:"flex-end", direction:"rtl" }}>
+          <div style={{ width:"100%", background:C.white, borderRadius:"20px 20px 0 0", padding:20 }}>
+            <h3 style={{ margin:"0 0 12px", fontSize:16 }}>رفع قائمة مشرفين</h3>
+            <Card style={{ marginBottom:12, background:C.primaryBg }}>
+              <p style={{ margin:0, fontSize:12, color:C.text, lineHeight:1.8 }}>
+                يجب أن يحتوي الملف على الأعمدة: <strong>الاسم، رقم الهوية</strong> (إلزامي)، والجوال، البريد، الحالة (اختياري)
+              </p>
+            </Card>
+            <input type="file" accept=".xlsx,.xls,.csv"
+              onChange={e=>{ if(e.target.files?.[0]) uploadCsv(e.target.files[0]); }}
+              style={{ width:"100%", fontSize:13, marginBottom:12 }}/>
+            <Btn full variant="secondary" onClick={()=>setCsvOpen(false)}>إلغاء</Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// APP SETTINGS PAGE — اللوغو وإعدادات التطبيق
+// ═══════════════════════════════════════════════════════
+function AppSettingsPage({ onSaved }) {
+  const { settings, reload } = useAppSettings();
+  const [logoUrl, setLogoUrl] = useState("");
+  const [appName, setAppName] = useState("");
+  const [appSubtitle, setAppSubtitle] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [info, setInfo] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setLogoUrl(settings.logo_url || "");
+    setAppName(settings.app_name || "منظومة الاستبيانات");
+    setAppSubtitle(settings.app_subtitle || "إدارة التعليم — جدة");
+  }, [settings]);
+
+  async function uploadLogo(file) {
+    if (!file) return;
+    setUploading(true); setError("");
+    const ext = file.name.split(".").pop();
+    const path = `logo.${ext}`;
+    const { error: upErr } = await supabase.storage.from("logos").upload(path, file, { upsert: true });
+    if (upErr) { setError("فشل رفع الصورة: " + upErr.message); setUploading(false); return; }
+    const { data } = supabase.storage.from("logos").getPublicUrl(path);
+    setLogoUrl(data.publicUrl + "?t=" + Date.now());
+    setUploading(false);
+  }
+
+  async function save() {
+    setSaving(true); setError(""); setInfo("");
+    await saveSetting("logo_url", logoUrl);
+    await saveSetting("app_name", appName);
+    await saveSetting("app_subtitle", appSubtitle);
+    await reload();
+    setSaving(false);
+    setInfo("تم حفظ الإعدادات بنجاح");
+    if (onSaved) onSaved();
+  }
+
+  const inputStyle = { width:"100%", padding:"11px 13px", border:`1.5px solid ${C.border}`, borderRadius:10,
+    fontSize:14, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", outline:"none" };
+
+  return (
+    <div style={{ padding:16, direction:"rtl" }}>
+      <h2 style={{ margin:"0 0 4px", fontSize:17, color:C.dark }}>إعدادات التطبيق</h2>
+      <p style={{ margin:"0 0 16px", fontSize:12, color:C.muted }}>تخصيص اللوغو وعناوين النظام</p>
+
+      <Card style={{ marginBottom:14 }}>
+        <p style={{ margin:"0 0 12px", fontSize:13, fontWeight:700, color:C.dark }}>🖼️ اللوغو</p>
+        {logoUrl ? (
+          <div style={{ textAlign:"center", marginBottom:12 }}>
+            <img src={logoUrl} alt="logo" style={{ maxHeight:80, maxWidth:"100%", borderRadius:10, objectFit:"contain" }}/>
+          </div>
+        ) : (
+          <div style={{ textAlign:"center", marginBottom:12, padding:20, background:C.bg, borderRadius:10 }}>
+            <p style={{ margin:0, fontSize:12, color:C.muted }}>لا يوجد لوغو حالياً</p>
+          </div>
+        )}
+        <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:6 }}>رفع صورة جديدة:</label>
+        <input type="file" accept="image/*" onChange={e=>uploadLogo(e.target.files?.[0])} disabled={uploading}
+          style={{ width:"100%", fontSize:13, marginBottom:10 }}/>
+        {uploading && <p style={{ fontSize:12, color:C.primary, margin:"0 0 8px" }}>جاري الرفع...</p>}
+        <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:6 }}>أو أدخل رابط URL للصورة:</label>
+        <input value={logoUrl} onChange={e=>setLogoUrl(e.target.value)} placeholder="https://example.com/logo.png"
+          style={{ ...inputStyle, direction:"ltr" }}/>
+        <button onClick={()=>setLogoUrl("")} style={{ background:"none", border:"none", color:C.danger, fontSize:11,
+          cursor:"pointer", marginTop:6, fontFamily:"inherit" }}>✕ إزالة اللوغو</button>
+      </Card>
+
+      <Card style={{ marginBottom:14 }}>
+        <p style={{ margin:"0 0 12px", fontSize:13, fontWeight:700, color:C.dark }}>📝 عناوين النظام</p>
+        <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:5 }}>اسم النظام:</label>
+        <input value={appName} onChange={e=>setAppName(e.target.value)} style={{ ...inputStyle, marginBottom:12 }}/>
+        <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:5 }}>العنوان الفرعي:</label>
+        <input value={appSubtitle} onChange={e=>setAppSubtitle(e.target.value)} style={inputStyle}/>
+      </Card>
+
+      <ErrorBanner message={error}/>
+      {info && <div style={{ background:C.successBg, border:`1px solid ${C.success}40`, borderRadius:10,
+        padding:"10px 14px", fontSize:13, color:C.success, marginBottom:12 }}>✅ {info}</div>}
+      <Btn full loading={saving} onClick={save}>💾 حفظ الإعدادات</Btn>
+    </div>
+  );
+}
+
 function AuditLogPage() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -2319,6 +2808,23 @@ export default function App() {
   const schoolCount = useSchoolCount();
   const { role, isAdmin, roleError } = useUserRole(user);
   const pendingCount = usePendingCount(isAdmin);
+  const { settings } = useAppSettings();
+  const [deleteSurveyTarget, setDeleteSurveyTarget] = useState(null);
+
+  async function deleteSurvey(s) {
+    await supabase.from("survey_questions").delete().eq("survey_id", s.id);
+    await supabase.from("survey_responses").delete().eq("survey_id", s.id);
+    await supabase.from("surveys").delete().eq("id", s.id);
+    logAction({ user, action:"delete", table:"surveys", recordId:s.id, recordLabel:s.title });
+    refetch();
+    setDeleteSurveyTarget(null);
+  }
+
+  async function approveSurvey(s) {
+    await supabase.from("surveys").update({ approval_status:"approved" }).eq("id", s.id);
+    logAction({ user, action:"update", table:"surveys", recordId:s.id, recordLabel:`اعتماد: ${s.title}` });
+    refetch();
+  }
 
   // check public survey link: ?survey=uuid
   const params = new URLSearchParams(window.location.search);
@@ -2347,10 +2853,9 @@ export default function App() {
   if (modal?.type === "tracking") return <TrackingPage survey={modal.data} onBack={()=>setModal(null)}/>;
 
   if (modal?.type === "new") {
-    if (!isAdmin) { setModal(null); return null; }
     return (
       <div style={{ paddingBottom:80 }}>
-        <NewSurveyPage onSaved={()=>{ refetch(); setModal(null); }} onCancel={()=>setModal(null)} user={user}/>
+        <NewSurveyPage onSaved={()=>{ refetch(); setModal(null); }} onCancel={()=>setModal(null)} user={user} isAdmin={isAdmin}/>
       </div>
     );
   }
@@ -2372,12 +2877,16 @@ export default function App() {
       <div style={{ background:C.primary, padding:"14px 16px", color:"#fff", display:"flex", justifyContent:"space-between",
         alignItems:"center", position:"sticky", top:0, zIndex:10 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ width:32, height:32, background:C.accent, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>📋</div>
+          {settings.logo_url ? (
+            <img src={settings.logo_url} alt="logo" style={{ width:36, height:36, borderRadius:8, objectFit:"contain", background:"#fff", padding:2 }}/>
+          ) : (
+            <div style={{ width:32, height:32, background:C.accent, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>📋</div>
+          )}
           <div>
             <div style={{ fontWeight:800, fontSize:15, display:"flex", alignItems:"center", gap:8 }}>
-              منظومة الاستبيانات <RoleBadge role={role}/>
+              {settings.app_name || "منظومة الاستبيانات"} <RoleBadge role={role}/>
             </div>
-            <div style={{ fontSize:10, opacity:0.7, marginTop:2 }}>إدارة التعليم — جدة · {schoolCount} مدرسة</div>
+            <div style={{ fontSize:10, opacity:0.7, marginTop:2 }}>{settings.app_subtitle || "إدارة التعليم — جدة"} · {schoolCount} مدرسة</div>
           </div>
         </div>
         <button onClick={()=>supabase.auth.signOut()} style={{ background:"rgba(255,255,255,0.15)", border:"none",
@@ -2390,7 +2899,9 @@ export default function App() {
           <SurveysList surveys={surveys} loading={loadingSurveys} schoolCount={schoolCount} isAdmin={isAdmin}
             onNew={()=>setModal({type:"new"})}
             onShare={s=>setModal({type:"share",data:s})}
-            onTrack={s=>setModal({type:"tracking",data:s})}/>
+            onTrack={s=>setModal({type:"tracking",data:s})}
+            onDelete={s=>setDeleteSurveyTarget(s)}
+            onApprove={approveSurvey}/>
         )}
         {tab==="analytics" && <AnalyticsPage surveys={surveys}/>}
         {tab==="schools" && <SchoolsManagementPage isAdmin={isAdmin} user={user}/>}
@@ -2410,7 +2921,16 @@ export default function App() {
                 )}
               </div>
             </Card>
-            <Card style={{ cursor:"pointer" }} accent={C.accent}>
+            <Card style={{ marginBottom:10, cursor:"pointer" }} accent="#7B2D8B">
+              <div onClick={()=>setModal({type:"supervisors"})} style={{ display:"flex", alignItems:"center", gap:12 }}>
+                <span style={{ fontSize:22 }}>👤</span>
+                <div>
+                  <p style={{ margin:0, fontSize:14, fontWeight:700, color:C.dark }}>إدارة المشرفين</p>
+                  <p style={{ margin:"2px 0 0", fontSize:11, color:C.muted }}>إضافة وتعديل وإرسال استبيانات للمشرفين</p>
+                </div>
+              </div>
+            </Card>
+            <Card style={{ marginBottom:10, cursor:"pointer" }} accent={C.accent}>
               <div onClick={()=>setModal({type:"auditlog"})} style={{ display:"flex", alignItems:"center", gap:12 }}>
                 <span style={{ fontSize:22 }}>📜</span>
                 <div>
@@ -2419,8 +2939,16 @@ export default function App() {
                 </div>
               </div>
             </Card>
-
-            <Card style={{ marginTop:10 }}>
+            <Card style={{ marginBottom:10, cursor:"pointer" }} accent={C.primary}>
+              <div onClick={()=>setModal({type:"settings"})} style={{ display:"flex", alignItems:"center", gap:12 }}>
+                <span style={{ fontSize:22 }}>🎨</span>
+                <div>
+                  <p style={{ margin:0, fontSize:14, fontWeight:700, color:C.dark }}>إعدادات التطبيق</p>
+                  <p style={{ margin:"2px 0 0", fontSize:11, color:C.muted }}>اللوغو والعناوين وتخصيص النظام</p>
+                </div>
+              </div>
+            </Card>
+            <Card>
               <p style={{ margin:"0 0 8px", fontSize:13, fontWeight:700, color:C.dark }}>📲 تثبيت التطبيق</p>
               <p style={{ margin:"0 0 6px", fontSize:11, color:C.muted, lineHeight:1.8 }}>
                 <strong>على آيفون:</strong> افتح الموقع في Safari ← زر المشاركة ⬆️ ← "إضافة إلى الشاشة الرئيسية"
@@ -2474,7 +3002,47 @@ export default function App() {
           <AuditLogPage/>
         </div>
       )}
+
+      {modal?.type==="supervisors" && isAdmin && (
+        <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:50, overflowY:"auto" }}>
+          <div style={{ background:C.primary, padding:"14px 16px", color:"#fff", display:"flex", alignItems:"center", gap:10, position:"sticky", top:0 }}>
+            <button onClick={()=>setModal(null)} style={{ background:"none", border:"none", color:"#fff", fontSize:20, cursor:"pointer" }}>←</button>
+            <span style={{ fontWeight:800, fontSize:15 }}>إدارة المشرفين</span>
+          </div>
+          <SupervisorsManagementPage user={user}/>
+        </div>
+      )}
+
+      {modal?.type==="settings" && isAdmin && (
+        <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:50, overflowY:"auto" }}>
+          <div style={{ background:C.primary, padding:"14px 16px", color:"#fff", display:"flex", alignItems:"center", gap:10, position:"sticky", top:0 }}>
+            <button onClick={()=>setModal(null)} style={{ background:"none", border:"none", color:"#fff", fontSize:20, cursor:"pointer" }}>←</button>
+            <span style={{ fontWeight:800, fontSize:15 }}>إعدادات التطبيق</span>
+          </div>
+          <AppSettingsPage onSaved={()=>setModal(null)}/>
+        </div>
+      )}
+
+      {deleteSurveyTarget && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:100, display:"flex",
+          alignItems:"center", justifyContent:"center", padding:20, direction:"rtl" }}>
+          <div style={{ background:C.white, borderRadius:16, padding:22, width:"100%", maxWidth:360 }}>
+            <p style={{ textAlign:"center", fontSize:16, fontWeight:700, color:C.dark, margin:"0 0 6px" }}>
+              حذف الاستبيان؟
+            </p>
+            <p style={{ textAlign:"center", color:C.danger, fontSize:13, fontWeight:700, margin:"0 0 6px" }}>
+              {deleteSurveyTarget.title}
+            </p>
+            <p style={{ textAlign:"center", color:C.muted, fontSize:12, margin:"0 0 16px" }}>
+              سيُحذف الاستبيان وجميع إجاباته بشكل نهائي ولا يمكن التراجع.
+            </p>
+            <div style={{ display:"flex", gap:10 }}>
+              <Btn full variant="secondary" onClick={()=>setDeleteSurveyTarget(null)}>إلغاء</Btn>
+              <Btn full variant="danger" onClick={()=>deleteSurvey(deleteSurveyTarget)}>🗑️ حذف نهائياً</Btn>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
