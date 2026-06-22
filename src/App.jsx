@@ -351,6 +351,23 @@ function useUserRole(user) {
   return { role, displayName, isAdmin: role === "admin", roleError };
 }
 
+// عدد طلبات التسجيل المعلّقة — يُستخدم لإظهار شارة تنبيه للمدير العام
+function usePendingCount(isAdmin) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!isAdmin) return;
+    let active = true;
+    function load() {
+      supabase.from("user_roles").select("*", { count:"exact", head:true }).eq("status","pending")
+        .then(({ count }) => { if (active) setCount(count || 0); });
+    }
+    load();
+    const interval = setInterval(load, 30000); // تحديث كل 30 ثانية أثناء بقاء المدير في التطبيق
+    return () => { active = false; clearInterval(interval); };
+  }, [isAdmin]);
+  return count;
+}
+
 // تسجيل عملية في سجل التدقيق — لا تمنع تنفيذ العملية إن فشل التسجيل نفسه
 async function logAction({ user, action, table, recordId, recordLabel, details }) {
   try {
@@ -1312,19 +1329,74 @@ function ShareSheet({ survey, onClose }) {
 // LOGIN (Supabase Auth)
 // ═══════════════════════════════════════════════════════
 function LoginPage({ onLogin }) {
+  const [mode, setMode] = useState("login"); // login | signup | reset
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [err, setErr] = useState("");
+  const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
   const schoolCount = useSchoolCount();
 
+  function resetMessages() { setErr(""); setInfo(""); }
+
   async function handleLogin() {
-    setLoading(true); setErr("");
+    resetMessages(); setLoading(true);
     const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+    if (error) { setLoading(false); setErr("البريد أو كلمة المرور غير صحيحة"); return; }
+
+    // تحقق من حالة الحساب قبل الدخول الفعلي
+    const { data: roleRow } = await supabase.from("user_roles").select("status").eq("user_id", data.user.id).maybeSingle();
     setLoading(false);
-    if (error) { setErr("البريد أو كلمة المرور غير صحيحة"); return; }
+    if (roleRow?.status === "pending") {
+      setErr("حسابك بانتظار موافقة المدير العام. سيتم إشعارك عند القبول.");
+      await supabase.auth.signOut();
+      return;
+    }
+    if (roleRow?.status === "rejected") {
+      setErr("تم رفض طلب تسجيلك. تواصل مع المدير العام لمزيد من التفاصيل.");
+      await supabase.auth.signOut();
+      return;
+    }
     onLogin(data.user);
   }
+
+  async function handleSignup() {
+    resetMessages();
+    if (!displayName.trim()) { setErr("الرجاء إدخال الاسم"); return; }
+    if (pass.length < 6) { setErr("كلمة المرور يجب أن تكون 6 أحرف على الأقل"); return; }
+    setLoading(true);
+    const { data, error } = await supabase.auth.signUp({ email, password: pass });
+    if (error) {
+      setLoading(false);
+      setErr(error.message.includes("already") ? "هذا البريد مسجّل مسبقاً" : "فشل إنشاء الحساب: " + error.message);
+      return;
+    }
+    if (data.user) {
+      await supabase.from("user_roles").insert({
+        user_id: data.user.id, role: "viewer", status: "pending", display_name: displayName.trim(),
+      });
+    }
+    setLoading(false);
+    setInfo("تم إنشاء حسابك بنجاح. هو الآن بانتظار موافقة المدير العام، وستتمكن من الدخول فور القبول.");
+    setMode("login");
+    setPass("");
+  }
+
+  async function handleReset() {
+    resetMessages();
+    if (!email.trim()) { setErr("الرجاء إدخال البريد الإلكتروني أولاً"); return; }
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+    setLoading(false);
+    if (error) { setErr("تعذّر إرسال رابط إعادة التعيين"); return; }
+    setInfo("تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني");
+  }
+
+  const inputStyle = { width:"100%", padding:"12px 14px", border:`1.5px solid ${C.border}`, borderRadius:10,
+    fontSize:15, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", outline:"none" };
 
   return (
     <div style={{ minHeight:"100vh", background:`linear-gradient(160deg,${C.primary} 0%,#083d3d 100%)`,
@@ -1336,22 +1408,70 @@ function LoginPage({ onLogin }) {
         <p style={{ color:"rgba(255,255,255,0.65)", margin:"6px 0 0", fontSize:13 }}>إدارة التعليم — جدة · {schoolCount} مدرسة</p>
       </div>
       <div style={{ width:"100%", maxWidth:400, background:C.white, borderRadius:18, padding:24, boxShadow:"0 20px 60px rgba(0,0,0,0.25)" }}>
-        <h2 style={{ margin:"0 0 20px", fontSize:17, color:C.dark }}>تسجيل الدخول</h2>
+
+        {mode !== "reset" && (
+          <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:20 }}>
+            {[["login","تسجيل الدخول"],["signup","حساب جديد"]].map(([k,l]) => (
+              <button key={k} onClick={()=>{ setMode(k); resetMessages(); }} style={{
+                flex:1, padding:"10px 4px", border:"none", background:"none", cursor:"pointer",
+                fontSize:14, fontFamily:"inherit", fontWeight:mode===k?700:400, color:mode===k?C.primary:C.muted,
+                borderBottom:`2px solid ${mode===k?C.primary:"transparent"}`, marginBottom:-1 }}>{l}</button>
+            ))}
+          </div>
+        )}
+
+        {mode === "reset" && (
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:20 }}>
+            <button onClick={()=>{ setMode("login"); resetMessages(); }} style={{ background:"none", border:"none",
+              color:C.primary, fontSize:18, cursor:"pointer", padding:0 }}>←</button>
+            <h2 style={{ margin:0, fontSize:17, color:C.dark }}>استرجاع كلمة المرور</h2>
+          </div>
+        )}
+
+        {mode === "signup" && (
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:5 }}>الاسم</label>
+            <input value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder="اسمك الكامل"
+              style={inputStyle}/>
+          </div>
+        )}
+
         <div style={{ marginBottom:14 }}>
           <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:5 }}>البريد الإلكتروني</label>
           <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="admin@moe.sa"
-            style={{ width:"100%", padding:"12px 14px", border:`1.5px solid ${C.border}`, borderRadius:10,
-              fontSize:15, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", outline:"none" }}/>
+            style={inputStyle}/>
         </div>
-        <div style={{ marginBottom:14 }}>
-          <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:5 }}>كلمة المرور</label>
-          <input type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••"
-            onKeyDown={e=>e.key==="Enter"&&handleLogin()}
-            style={{ width:"100%", padding:"12px 14px", border:`1.5px solid ${C.border}`, borderRadius:10,
-              fontSize:15, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", outline:"none" }}/>
-        </div>
+
+        {mode !== "reset" && (
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:5 }}>كلمة المرور</label>
+            <input type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••"
+              onKeyDown={e=>e.key==="Enter"&&(mode==="login"?handleLogin():handleSignup())}
+              style={inputStyle}/>
+          </div>
+        )}
+
         <ErrorBanner message={err}/>
-        <Btn full onClick={handleLogin} loading={loading}>دخول</Btn>
+        {info && (
+          <div style={{ background:C.successBg, border:`1px solid ${C.success}40`, borderRadius:10,
+            padding:"10px 14px", fontSize:13, color:C.success, marginBottom:14, lineHeight:1.7 }}>✅ {info}</div>
+        )}
+
+        {mode === "login" && (
+          <>
+            <Btn full onClick={handleLogin} loading={loading}>دخول</Btn>
+            <button onClick={()=>{ setMode("reset"); resetMessages(); }} style={{ background:"none", border:"none",
+              color:C.primary, fontSize:12.5, cursor:"pointer", marginTop:14, width:"100%", textAlign:"center", fontFamily:"inherit" }}>
+              نسيت كلمة المرور؟
+            </button>
+          </>
+        )}
+        {mode === "signup" && (
+          <Btn full onClick={handleSignup} loading={loading}>إنشاء حساب</Btn>
+        )}
+        {mode === "reset" && (
+          <Btn full onClick={handleReset} loading={loading}>إرسال رابط إعادة التعيين</Btn>
+        )}
       </div>
     </div>
   );
@@ -1932,8 +2052,6 @@ function SchoolsManagementPage({ isAdmin, user }) {
 function UsersManagementPage({ currentUser }) {
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [email, setEmail] = useState("");
-  const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
 
@@ -1947,31 +2065,47 @@ function UsersManagementPage({ currentUser }) {
   useEffect(() => { load(); }, [load]);
 
   // ملاحظة: لا يمكن للواجهة الأمامية إنشاء مستخدم Supabase Auth جديد مباشرة بدون صلاحيات إدارية متقدمة (service_role).
-  // لذلك هذه الصفحة تدير الأدوار لمستخدمين موجودين بالفعل في نظام تسجيل الدخول.
-  // لإضافة مستخدم جديد بالكامل: أنشئه أولاً من لوحة Supabase (Authentication > Users)، ثم عيّن دوره هنا.
+  // يمكن للمستخدمين التسجيل ذاتياً من صفحة الدخول (يدخلون كـ "بانتظار الموافقة")،
+  // أو يمكنك إنشاء حساب لهم يدوياً من لوحة Supabase (Authentication > Users) ثم تحديد دوره هنا.
 
   async function setRole(userId, role, displayName) {
     setError(""); setInfo("");
     const { error: err } = await supabase.from("user_roles")
-      .upsert({ user_id: userId, role, display_name: displayName }, { onConflict: "user_id" });
+      .update({ role, status: "approved" }).eq("user_id", userId);
     if (err) { setError("فشل تحديث الصلاحية"); return; }
     logAction({ user: currentUser, action: "update", table: "user_roles", recordId: userId,
       recordLabel: `تغيير صلاحية إلى ${role === "admin" ? "مدير عام" : "مشرف"}` });
     load();
   }
 
+  async function approve(userId, displayName) {
+    setError(""); setInfo("");
+    const { error: err } = await supabase.from("user_roles")
+      .update({ status: "approved", role: "viewer" }).eq("user_id", userId);
+    if (err) { setError("فشل قبول الطلب"); return; }
+    logAction({ user: currentUser, action: "update", table: "user_roles", recordId: userId,
+      recordLabel: `قبول طلب تسجيل: ${displayName || "مستخدم"}` });
+    setInfo(`تم قبول ${displayName || "المستخدم"} بصلاحية مشرف`);
+    load();
+  }
+
+  async function reject(userId, displayName) {
+    setError(""); setInfo("");
+    const { error: err } = await supabase.from("user_roles")
+      .update({ status: "rejected" }).eq("user_id", userId);
+    if (err) { setError("فشل رفض الطلب"); return; }
+    logAction({ user: currentUser, action: "update", table: "user_roles", recordId: userId,
+      recordLabel: `رفض طلب تسجيل: ${displayName || "مستخدم"}` });
+    load();
+  }
+
+  const pending = roles.filter(r => r.status === "pending");
+  const others = roles.filter(r => r.status !== "pending");
+
   return (
     <div style={{ padding:16, direction:"rtl" }}>
       <h2 style={{ margin:"0 0 4px", fontSize:17, color:C.dark }}>إدارة المستخدمين والصلاحيات</h2>
       <p style={{ margin:"0 0 16px", fontSize:12, color:C.muted }}>تحكم في من يملك صلاحية التعديل الكاملة</p>
-
-      <Card style={{ marginBottom:16, background:C.primaryBg }}>
-        <p style={{ margin:0, fontSize:12, color:C.text, lineHeight:1.8 }}>
-          💡 لإضافة مستخدم جديد بالكامل: أنشئ حسابه أولاً من لوحة Supabase
-          (Authentication ← Users ← Add User)، ثم سيظهر هنا تلقائياً عند أول تسجيل دخول له،
-          وعندها يمكنك تحديد صلاحيته (مدير عام / مشرف).
-        </p>
-      </Card>
 
       <ErrorBanner message={error}/>
       {info && (
@@ -1981,42 +2115,76 @@ function UsersManagementPage({ currentUser }) {
 
       {loading ? (
         <div style={{ textAlign:"center", padding:30 }}><Spinner/></div>
-      ) : roles.length === 0 ? (
-        <Card style={{ textAlign:"center", padding:24 }}>
-          <p style={{ margin:0, color:C.muted, fontSize:13 }}>لا يوجد مستخدمون مسجّلون بعد</p>
-        </Card>
       ) : (
-        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          {roles.map(r => (
-            <Card key={r.user_id} style={{ padding:14 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-                <div>
-                  <p style={{ margin:0, fontSize:13, fontWeight:700, color:C.dark }}>
-                    {r.display_name || "مستخدم"} {r.user_id === currentUser?.id && <span style={{color:C.primary, fontSize:11}}>(أنت)</span>}
-                  </p>
-                  <p style={{ margin:"2px 0 0", fontSize:11, color:C.muted, direction:"ltr", textAlign:"right" }}>{r.user_id.slice(0,8)}...</p>
-                </div>
-                <RoleBadgeStatic role={r.role}/>
+        <>
+          {pending.length > 0 && (
+            <div style={{ marginBottom:20 }}>
+              <p style={{ margin:"0 0 10px", fontSize:13, fontWeight:700, color:C.warn }}>
+                🔔 طلبات تسجيل بانتظار الموافقة ({pending.length})
+              </p>
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                {pending.map(r => (
+                  <Card key={r.user_id} style={{ padding:14, background:C.warnBg, border:`1px solid ${C.warn}40` }}>
+                    <p style={{ margin:"0 0 2px", fontSize:13, fontWeight:700, color:C.dark }}>{r.display_name || "مستخدم"}</p>
+                    <p style={{ margin:"0 0 10px", fontSize:11, color:C.muted }}>
+                      طلب التسجيل {new Date(r.created_at).toLocaleDateString("ar-SA")}
+                    </p>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <Btn sm full variant="primary" onClick={()=>approve(r.user_id, r.display_name)}>✅ قبول</Btn>
+                      <Btn sm full variant="danger" onClick={()=>reject(r.user_id, r.display_name)}>❌ رفض</Btn>
+                    </div>
+                  </Card>
+                ))}
               </div>
-              <div style={{ display:"flex", gap:8 }}>
-                <button onClick={()=>setRole(r.user_id, "admin", r.display_name)} disabled={r.role==="admin"}
-                  style={{ flex:1, padding:"7px 0", borderRadius:8, fontSize:11, fontFamily:"inherit",
-                    border:`1.5px solid ${r.role==="admin" ? C.accent : C.border}`,
-                    background: r.role==="admin" ? C.accentLight : "#fff", color: r.role==="admin" ? C.accent : C.muted,
-                    cursor: r.role==="admin" ? "default" : "pointer", fontWeight:700 }}>
-                  👑 مدير عام
-                </button>
-                <button onClick={()=>setRole(r.user_id, "viewer", r.display_name)} disabled={r.role==="viewer"}
-                  style={{ flex:1, padding:"7px 0", borderRadius:8, fontSize:11, fontFamily:"inherit",
-                    border:`1.5px solid ${r.role==="viewer" ? C.primary : C.border}`,
-                    background: r.role==="viewer" ? C.primaryBg : "#fff", color: r.role==="viewer" ? C.primary : C.muted,
-                    cursor: r.role==="viewer" ? "default" : "pointer", fontWeight:700 }}>
-                  👁️ مشرف (عرض فقط)
-                </button>
-              </div>
+            </div>
+          )}
+
+          {others.length === 0 ? (
+            <Card style={{ textAlign:"center", padding:24 }}>
+              <p style={{ margin:0, color:C.muted, fontSize:13 }}>لا يوجد مستخدمون آخرون بعد</p>
             </Card>
-          ))}
-        </div>
+          ) : (
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {others.map(r => (
+                <Card key={r.user_id} style={{ padding:14, opacity: r.status==="rejected" ? 0.6 : 1 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                    <div>
+                      <p style={{ margin:0, fontSize:13, fontWeight:700, color:C.dark }}>
+                        {r.display_name || "مستخدم"} {r.user_id === currentUser?.id && <span style={{color:C.primary, fontSize:11}}>(أنت)</span>}
+                      </p>
+                      <p style={{ margin:"2px 0 0", fontSize:11, color:C.muted, direction:"ltr", textAlign:"right" }}>{r.user_id.slice(0,8)}...</p>
+                    </div>
+                    <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                      {r.status === "rejected" && <Tag color={C.danger}>مرفوض</Tag>}
+                      <RoleBadgeStatic role={r.role}/>
+                    </div>
+                  </div>
+                  {r.status !== "rejected" && (
+                    <div style={{ display:"flex", gap:8 }}>
+                      <button onClick={()=>setRole(r.user_id, "admin", r.display_name)} disabled={r.role==="admin"}
+                        style={{ flex:1, padding:"7px 0", borderRadius:8, fontSize:11, fontFamily:"inherit",
+                          border:`1.5px solid ${r.role==="admin" ? C.accent : C.border}`,
+                          background: r.role==="admin" ? C.accentLight : "#fff", color: r.role==="admin" ? C.accent : C.muted,
+                          cursor: r.role==="admin" ? "default" : "pointer", fontWeight:700 }}>
+                        👑 مدير عام
+                      </button>
+                      <button onClick={()=>setRole(r.user_id, "viewer", r.display_name)} disabled={r.role==="viewer"}
+                        style={{ flex:1, padding:"7px 0", borderRadius:8, fontSize:11, fontFamily:"inherit",
+                          border:`1.5px solid ${r.role==="viewer" ? C.primary : C.border}`,
+                          background: r.role==="viewer" ? C.primaryBg : "#fff", color: r.role==="viewer" ? C.primary : C.muted,
+                          cursor: r.role==="viewer" ? "default" : "pointer", fontWeight:700 }}>
+                        👁️ مشرف (عرض فقط)
+                      </button>
+                    </div>
+                  )}
+                  {r.status === "rejected" && (
+                    <Btn sm full variant="secondary" onClick={()=>approve(r.user_id, r.display_name)}>إعادة القبول</Btn>
+                  )}
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -2150,6 +2318,7 @@ export default function App() {
   const { surveys, loading: loadingSurveys, refetch } = useSurveys();
   const schoolCount = useSchoolCount();
   const { role, isAdmin, roleError } = useUserRole(user);
+  const pendingCount = usePendingCount(isAdmin);
 
   // check public survey link: ?survey=uuid
   const params = new URLSearchParams(window.location.search);
@@ -2231,10 +2400,14 @@ export default function App() {
             <Card style={{ marginBottom:10, cursor:"pointer" }} accent={C.primary}>
               <div onClick={()=>setModal({type:"users"})} style={{ display:"flex", alignItems:"center", gap:12 }}>
                 <span style={{ fontSize:22 }}>👥</span>
-                <div>
+                <div style={{ flex:1 }}>
                   <p style={{ margin:0, fontSize:14, fontWeight:700, color:C.dark }}>إدارة المستخدمين والصلاحيات</p>
                   <p style={{ margin:"2px 0 0", fontSize:11, color:C.muted }}>تعيين مدير عام أو مشرف عرض فقط</p>
                 </div>
+                {pendingCount > 0 && (
+                  <span style={{ background:C.danger, color:"#fff", borderRadius:12, fontSize:11, fontWeight:700,
+                    padding:"3px 9px" }}>{pendingCount} 🔔</span>
+                )}
               </div>
             </Card>
             <Card style={{ cursor:"pointer" }} accent={C.accent}>
@@ -2266,7 +2439,14 @@ export default function App() {
             flex:1, padding:"10px 0", border:"none", background:"none", cursor:"pointer",
             display:"flex", flexDirection:"column", alignItems:"center", gap:2,
             color:tab===item.id?C.primary:C.muted, fontFamily:"inherit" }}>
-            <span style={{ fontSize:20 }}>{item.i}</span>
+            <span style={{ fontSize:20, position:"relative" }}>
+              {item.i}
+              {item.id==="more" && pendingCount > 0 && (
+                <span style={{ position:"absolute", top:-4, right:-8, background:C.danger, color:"#fff",
+                  borderRadius:10, fontSize:9, fontWeight:700, padding:"1px 5px", minWidth:14, textAlign:"center",
+                  border:"1.5px solid #fff", lineHeight:1.4 }}>{pendingCount}</span>
+              )}
+            </span>
             <span style={{ fontSize:10, fontWeight:tab===item.id?700:400 }}>{item.l}</span>
             {tab===item.id && <div style={{ width:18, height:3, background:C.primary, borderRadius:2, marginTop:1 }}/>}
           </button>
@@ -2297,3 +2477,4 @@ export default function App() {
     </div>
   );
 }
+
