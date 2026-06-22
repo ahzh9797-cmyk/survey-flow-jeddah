@@ -2473,25 +2473,84 @@ function SupervisorsManagementPage({ user }) {
     window.open(`https://wa.me/966${sup.phone?.replace(/^0/,"")}?text=${msg}`, "_blank");
   }
 
-  async function uploadCsv(file) {
-    const XLSX = await ensureXLSX();
-    const ab = await file.arrayBuffer();
-    const wb = XLSX.read(ab);
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws);
-    const mapped = rows.map(r => ({
-      name: String(r["الاسم"]||r["name"]||"").trim(),
-      national_id: String(r["رقم الهوية"]||r["national_id"]||"").trim(),
-      phone: String(r["الجوال"]||r["phone"]||"").trim(),
-      email: String(r["البريد"]||r["email"]||"").trim(),
-      status: r["الحالة"]||"مُسندة",
-    })).filter(r => r.name && r.national_id);
-    if (!mapped.length) { setError("لم يتم العثور على بيانات صحيحة في الملف"); return; }
-    const { error:err } = await supabase.from("supervisors").upsert(mapped, { onConflict:"national_id" });
-    if (err) { setError("فشل الرفع: "+err.message); return; }
-    logAction({ user, action:"bulk_upload", table:"supervisors", details:{ count:mapped.length } });
-    setInfo(`تم رفع ${mapped.length} مشرف بنجاح`);
-    setCsvOpen(false); load();
+  const [previewRows, setPreviewRows] = useState(null); // صفوف المعاينة قبل الحفظ
+
+  async function loadPdfJs() {
+    if (window.pdfjsLib) return window.pdfjsLib;
+    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    return window.pdfjsLib;
+  }
+
+  async function parseFile(file) {
+    setError(""); setPreviewRows(null);
+    const ext = file.name.split(".").pop().toLowerCase();
+
+    if (ext === "pdf") {
+      // قراءة PDF واستخراج النص
+      const pdfjsLib = await loadPdfJs();
+      const ab = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+      let allText = "";
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        allText += content.items.map(i => i.str).join(" ") + "\n";
+      }
+      // محاولة استخراج بيانات المشرفين من النص
+      const lines = allText.split(/[\n\r]+/).map(l => l.trim()).filter(Boolean);
+      const idPattern = /\b[12]\d{9}\b/;
+      const phonePattern = /\b05\d{8}\b/;
+      const rows = [];
+      for (const line of lines) {
+        const idMatch = line.match(idPattern);
+        const phoneMatch = line.match(phonePattern);
+        if (idMatch) {
+          // استخرج الاسم: كل النص بعد إزالة رقم الهوية والجوال والأرقام الأخرى
+          let name = line
+            .replace(idMatch[0], "").replace(phoneMatch?.[0]||"", "")
+            .replace(/\d+/g, "").replace(/[#\-_|،,]/g, " ")
+            .trim().replace(/\s+/g, " ");
+          if (name.length > 2) {
+            rows.push({
+              name, national_id: idMatch[0],
+              phone: phoneMatch?.[0] || "", email: "", status: "مُسندة"
+            });
+          }
+        }
+      }
+      if (!rows.length) {
+        setError("لم يتم التعرف على بيانات منظمة في هذا الملف. يُنصح باستخدام Excel للنتائج الأفضل.");
+        return;
+      }
+      setPreviewRows(rows);
+    } else {
+      // Excel / CSV
+      const XLSX = await ensureXLSX();
+      const ab = await file.arrayBuffer();
+      const wb = XLSX.read(ab);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws);
+      const mapped = rows.map(r => ({
+        name: String(r["الاسم"]||r["name"]||r["Name"]||"").trim(),
+        national_id: String(r["رقم الهوية"]||r["national_id"]||r["الهوية"]||"").trim(),
+        phone: String(r["الجوال"]||r["phone"]||r["Phone"]||r["الجوال"]||"").trim(),
+        email: String(r["البريد"]||r["email"]||"").trim(),
+        status: String(r["الحالة"]||"مُسندة"),
+      })).filter(r => r.name && r.national_id);
+      if (!mapped.length) { setError("لم يتم العثور على بيانات صحيحة. تأكد من وجود أعمدة: الاسم، رقم الهوية"); return; }
+      setPreviewRows(mapped);
+    }
+  }
+
+  async function confirmImport() {
+    if (!previewRows?.length) return;
+    const { error:err } = await supabase.from("supervisors").upsert(previewRows, { onConflict:"national_id" });
+    if (err) { setError("فشل الاستيراد: "+err.message); return; }
+    logAction({ user, action:"bulk_upload", table:"supervisors", details:{ count:previewRows.length } });
+    setInfo(`تم استيراد ${previewRows.length} مشرف بنجاح`);
+    setPreviewRows(null); setCsvOpen(false); load();
   }
 
   const inputStyle = { width:"100%", padding:"10px 12px", border:`1.5px solid ${C.border}`, borderRadius:10,
@@ -2504,7 +2563,7 @@ function SupervisorsManagementPage({ user }) {
 
       <div style={{ display:"flex", gap:8, marginBottom:12 }}>
         <Btn sm full onClick={()=>setForm({})}>➕ إضافة مشرف</Btn>
-        <Btn sm full variant="secondary" onClick={()=>setCsvOpen(true)}>📄 رفع Excel/PDF</Btn>
+        <Btn sm full variant="secondary" onClick={()=>{setCsvOpen(true);setPreviewRows(null);}}>📄 رفع Excel/PDF</Btn>
       </div>
 
       <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}
@@ -2598,17 +2657,62 @@ function SupervisorsManagementPage({ user }) {
       {csvOpen && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:100, display:"flex",
           alignItems:"flex-end", direction:"rtl" }}>
-          <div style={{ width:"100%", background:C.white, borderRadius:"20px 20px 0 0", padding:20 }}>
+          <div style={{ width:"100%", background:C.white, borderRadius:"20px 20px 0 0", padding:20, maxHeight:"85vh", overflowY:"auto" }}>
             <h3 style={{ margin:"0 0 12px", fontSize:16 }}>رفع قائمة مشرفين</h3>
-            <Card style={{ marginBottom:12, background:C.primaryBg }}>
-              <p style={{ margin:0, fontSize:12, color:C.text, lineHeight:1.8 }}>
-                يجب أن يحتوي الملف على الأعمدة: <strong>الاسم، رقم الهوية</strong> (إلزامي)، والجوال، البريد، الحالة (اختياري)
-              </p>
-            </Card>
-            <input type="file" accept=".xlsx,.xls,.csv"
-              onChange={e=>{ if(e.target.files?.[0]) uploadCsv(e.target.files[0]); }}
-              style={{ width:"100%", fontSize:13, marginBottom:12 }}/>
-            <Btn full variant="secondary" onClick={()=>setCsvOpen(false)}>إلغاء</Btn>
+
+            {!previewRows ? (
+              <>
+                <Card style={{ marginBottom:12, background:C.primaryBg }}>
+                  <p style={{ margin:"0 0 6px", fontSize:12, color:C.text, lineHeight:1.8 }}>
+                    <strong>Excel/CSV:</strong> أعمدة: الاسم، رقم الهوية (إلزامي)، الجوال، البريد، الحالة
+                  </p>
+                  <p style={{ margin:0, fontSize:12, color:C.warn, lineHeight:1.8 }}>
+                    <strong>PDF:</strong> يتم استخراج البيانات تلقائياً لكن قد يحتاج مراجعة قبل الحفظ
+                  </p>
+                </Card>
+                <ErrorBanner message={error}/>
+                <input type="file" accept=".xlsx,.xls,.csv,.pdf"
+                  onChange={e=>{ if(e.target.files?.[0]) parseFile(e.target.files[0]); }}
+                  style={{ width:"100%", fontSize:13, marginBottom:12 }}/>
+                <Btn full variant="secondary" onClick={()=>{setCsvOpen(false);setError("");}}>إلغاء</Btn>
+              </>
+            ) : (
+              <>
+                <div style={{ background:C.successBg, border:`1px solid ${C.success}40`, borderRadius:10,
+                  padding:"10px 14px", fontSize:12, color:C.success, marginBottom:12 }}>
+                  ✅ تم قراءة <strong>{previewRows.length}</strong> سجل — راجع البيانات قبل الحفظ
+                </div>
+                <div style={{ overflowX:"auto", marginBottom:14 }}>
+                  <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+                    <thead>
+                      <tr style={{ background:C.primaryBg }}>
+                        {["الاسم","رقم الهوية","الجوال"].map(h => (
+                          <th key={h} style={{ padding:"8px 10px", textAlign:"right", color:C.primary, borderBottom:`1px solid ${C.border}` }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewRows.slice(0,20).map((r,i) => (
+                        <tr key={i} style={{ borderBottom:`1px solid ${C.border}` }}>
+                          <td style={{ padding:"7px 10px", color:C.dark }}>{r.name||"—"}</td>
+                          <td style={{ padding:"7px 10px", color:C.muted, direction:"ltr" }}>{r.national_id}</td>
+                          <td style={{ padding:"7px 10px", color:C.muted }}>{r.phone||"—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {previewRows.length > 20 && (
+                    <p style={{ textAlign:"center", fontSize:11, color:C.muted, marginTop:6 }}>
+                      ... و{previewRows.length-20} سجل آخر
+                    </p>
+                  )}
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <Btn full variant="secondary" onClick={()=>setPreviewRows(null)}>← رجوع</Btn>
+                  <Btn full onClick={confirmImport}>💾 حفظ الكل</Btn>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
