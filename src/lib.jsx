@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
@@ -7,11 +6,11 @@ import { createClient } from "@supabase/supabase-js";
 // ═══════════════════════════════════════════════════════
 const SUPABASE_URL = "https://dijkdmjrklvyznjedztd.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_TgKKUVO-KiQ6-AFMmwVpHQ_X38pPUw-";
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ── Lazy CDN loader for export libraries ──
 const _scriptCache = {};
-function loadScript(src) {
+export function loadScript(src) {
   if (_scriptCache[src]) return _scriptCache[src];
   _scriptCache[src] = new Promise((resolve, reject) => {
     const existing = document.querySelector(`script[src="${src}"]`);
@@ -24,23 +23,23 @@ function loadScript(src) {
   });
   return _scriptCache[src];
 }
-async function ensureXLSX() {
+export async function ensureXLSX() {
   if (!window.XLSX) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
   return window.XLSX;
 }
-async function ensurePDF() {
+export async function ensurePDF() {
   if (!window.jspdf) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
   if (!window.jspdf.jsPDF.API.autoTable) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js");
   return window.jspdf.jsPDF;
 }
 
 // Arabic-safe filename timestamp
-function tsStamp() {
+export function tsStamp() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
-const C = {
+export const C = {
   primary:"#0B6E6E",primaryLight:"#0E8E8E",primaryBg:"#EAF5F5",
   accent:"#C49A28",accentLight:"#FDF6E0",dark:"#1A2B2B",
   text:"#2D3E3E",muted:"#6B8585",border:"#D0E4E4",
@@ -49,7 +48,7 @@ const C = {
 };
 
 // ── UI ATOMS ──
-function Spinner({size=24}){
+export function Spinner({size=24}){
   return(
     <div style={{width:size,height:size,border:`3px solid ${C.border}`,borderTopColor:C.primary,
       borderRadius:"50%",animation:"spin 0.8s linear infinite"}}>
@@ -58,7 +57,7 @@ function Spinner({size=24}){
   );
 }
 
-function Stars({value,onChange}){
+export function Stars({value,onChange}){
   const [h,setH]=useState(0);
   return(
     <div style={{display:"flex",gap:6}}>
@@ -72,7 +71,7 @@ function Stars({value,onChange}){
   );
 }
 
-function Btn({children,onClick,variant="primary",full,sm,disabled,loading,style:ex}){
+export function Btn({children,onClick,variant="primary",full,sm,disabled,loading,style:ex}){
   const V={
     primary:{background:C.primary,color:"#fff",border:"none"},
     secondary:{background:C.primaryBg,color:C.primary,border:`1px solid ${C.border}`},
@@ -92,7 +91,7 @@ function Btn({children,onClick,variant="primary",full,sm,disabled,loading,style:
   );
 }
 
-function Card({children,style:ex,accent}){
+export function Card({children,style:ex,accent}){
   return(
     <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.border}`,
       padding:16,borderRight:accent?`4px solid ${accent}`:undefined,...ex}}>
@@ -101,7 +100,7 @@ function Card({children,style:ex,accent}){
   );
 }
 
-function Tag({children,color=C.primary}){
+export function Tag({children,color=C.primary}){
   return(
     <span style={{background:color+"18",color,border:`1px solid ${color}40`,
       borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>
@@ -110,7 +109,7 @@ function Tag({children,color=C.primary}){
   );
 }
 
-function ErrorBanner({message}){
+export function ErrorBanner({message}){
   if(!message) return null;
   return(
     <div style={{background:"#fdf0ee",border:`1px solid #f5c6c0`,borderRadius:10,
@@ -120,7 +119,7 @@ function ErrorBanner({message}){
   );
 }
 
-function ExportMenu({ options }) {
+export function ExportMenu({ options }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState("");
@@ -169,7 +168,7 @@ function ExportMenu({ options }) {
 // jsPDF + autotable support UTF-8 text directly when using a unicode font is ideal,
 // but to keep bundle light we rely on default font with 'right' alignment which renders
 // Arabic glyphs correctly in modern jsPDF (basic shaping). For headers we use larger size.
-function pdfRTLText(doc, text, x, y, opts = {}) {
+export function pdfRTLText(doc, text, x, y, opts = {}) {
   doc.text(text, x, y, { align: "right", ...opts });
 }
 
@@ -177,7 +176,7 @@ function pdfRTLText(doc, text, x, y, opts = {}) {
 // SUPABASE DATA HOOKS
 // ═══════════════════════════════════════════════════════
 
-function useSchoolLookup(){
+export function useSchoolLookup(){
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
 
@@ -197,7 +196,7 @@ function useSchoolLookup(){
   return { lookup, loading, error };
 }
 
-function useSurveys(){
+export function useSurveys(){
   const [surveys, setSurveys] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -220,7 +219,7 @@ function useSurveys(){
   return { surveys, loading, refetch: fetchSurveys };
 }
 
-function useResponses(surveyId){
+export function useResponses(surveyId){
   const [responses, setResponses] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -251,7 +250,7 @@ function useResponses(surveyId){
   return { responses, loading, refetch: fetchResponses };
 }
 
-function useSchoolCount(){
+export function useSchoolCount(){
   const [count, setCount] = useState(0);
   useEffect(() => {
     supabase.from("survey_schools").select("*", { count: "exact", head: true })
@@ -266,7 +265,7 @@ function useSchoolCount(){
 // ═══════════════════════════════════════════════════════
 // PWA INSTALL PROMPT
 // ═══════════════════════════════════════════════════════
-function usePWAInstall() {
+export function usePWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [installed, setInstalled] = useState(false);
 
@@ -303,7 +302,7 @@ function usePWAInstall() {
   return { canInstall: !!deferredPrompt && !installed, installed, promptInstall };
 }
 
-function InstallAppBanner() {
+export function InstallAppBanner() {
   const { canInstall, installed, promptInstall } = usePWAInstall();
   const [dismissed, setDismissed] = useState(false);
 
@@ -327,7 +326,7 @@ function InstallAppBanner() {
   );
 }
 
-function useUserRole(user) {
+export function useUserRole(user) {
   const [role, setRole] = useState(null); // null = loading, 'admin' | 'viewer'
   const [displayName, setDisplayName] = useState("");
   const [roleError, setRoleError] = useState("");
@@ -354,7 +353,7 @@ function useUserRole(user) {
 
 // عدد طلبات التسجيل المعلّقة — يُستخدم لإظهار شارة تنبيه للمدير العام
 // إعدادات التطبيق (اللوغو، الاسم، إلخ) — تُجلب مرة واحدة وتُخزن
-function useAppSettings() {
+export function useAppSettings() {
   const [settings, setSettings] = useState({ logo_url:"", app_name:"منظومة الاستبيانات", app_subtitle:"إدارة التعليم — جدة" });
   const reload = useCallback(async () => {
     const { data } = await supabase.from("app_settings").select("key,value");
@@ -368,11 +367,11 @@ function useAppSettings() {
   return { settings, reload };
 }
 
-async function saveSetting(key, value) {
+export async function saveSetting(key, value) {
   await supabase.from("app_settings").upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict:"key" });
 }
 
-function usePendingCount(isAdmin) {
+export function usePendingCount(isAdmin) {
   const [count, setCount] = useState(0);
   useEffect(() => {
     if (!isAdmin) return;
@@ -389,7 +388,7 @@ function usePendingCount(isAdmin) {
 }
 
 // تسجيل عملية في سجل التدقيق — لا تمنع تنفيذ العملية إن فشل التسجيل نفسه
-async function logAction({ user, action, table, recordId, recordLabel, details }) {
+export async function logAction({ user, action, table, recordId, recordLabel, details }) {
   try {
     await supabase.from("audit_log").insert({
       user_id: user?.id || null,
@@ -400,7 +399,7 @@ async function logAction({ user, action, table, recordId, recordLabel, details }
   } catch (e) { /* تجاهل أخطاء السجل، لا توقف العملية الأساسية */ }
 }
 
-function RoleBadge({ role }) {
+export function RoleBadge({ role }) {
   if (!role) return null;
   const isAdmin = role === "admin";
   return (
@@ -412,7 +411,7 @@ function RoleBadge({ role }) {
   );
 }
 
-function ViewerNotice({ action = "هذا الإجراء" }) {
+export function ViewerNotice({ action = "هذا الإجراء" }) {
   return (
     <div style={{ background: C.warnBg, border: `1px solid ${C.warn}40`, borderRadius: 10,
       padding: "10px 14px", fontSize: 12, color: "#9a5a10", marginBottom: 12, display:"flex", alignItems:"center", gap:8 }}>
@@ -424,7 +423,7 @@ function ViewerNotice({ action = "هذا الإجراء" }) {
 // ═══════════════════════════════════════════════════════
 // MINISTRY NUMBER LOOKUP (connected to Supabase)
 // ═══════════════════════════════════════════════════════
-function MinistryLookup({ onConfirm }) {
+export function MinistryLookup({ onConfirm }) {
   const [num, setNum] = useState("");
   const [found, setFound] = useState(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -488,11 +487,4 @@ function MinistryLookup({ onConfirm }) {
 // PUBLIC SURVEY FILL (writes to Supabase)
 // ═══════════════════════════════════════════════════════
 
-// ═══════════════════════════════════════════════════════
-// EXPORTS
-// ═══════════════════════════════════════════════════════
-export { supabase, C, loadScript, ensureXLSX, ensurePDF, tsStamp, pdfRTLText,
-  Spinner, Stars, Btn, Card, Tag, ErrorBanner, ExportMenu,
-  useSchoolLookup, useSurveys, useResponses, useSchoolCount,
-  usePWAInstall, InstallAppBanner, useUserRole, useAppSettings, saveSetting,
-  usePendingCount, logAction, RoleBadge, ViewerNotice, MinistryLookup };
+
