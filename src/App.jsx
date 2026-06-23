@@ -580,13 +580,15 @@ function PublicFill({ survey, onBack }) {
     };
     if (isOpen) {
       payload.respondent_label = respondentLabel.trim() || null;
+    } else if (isSupervisor) {
+      payload.respondent_label = supervisor?.name || null;
     } else {
       payload.school_id = school.id;
     }
 
     const { error } = await supabase
       .from("survey_responses")
-      .upsert(payload, { onConflict: isOpen ? undefined : "survey_id,school_id" });
+      .upsert(payload, { onConflict: (!isOpen && !isSupervisor) ? "survey_id,school_id" : undefined });
 
     setSubmitting(false);
     if (error) { setSubmitError("حدث خطأ أثناء الإرسال. حاول مرة أخرى."); return; }
@@ -670,15 +672,23 @@ function PublicFill({ survey, onBack }) {
           </Card>
         )}
 
-        {step === "fill" && (isOpen || school) && (
+        {step === "fill" && (isOpen || isSupervisor || school) && (
           <>
-            {!isOpen && (
+            {!isOpen && !isSupervisor && school && (
               <div style={{ background:C.successBg, border:`1.5px solid ${C.success}`, borderRadius:12, padding:14, marginBottom:16 }}>
                 <p style={{ margin:"0 0 4px", fontSize:12, color:C.success, fontWeight:700 }}>✅ تم التحقق</p>
                 <p style={{ margin:0, fontSize:15, fontWeight:800, color:C.dark }}>{school.name}</p>
                 <p style={{ margin:"3px 0 0", fontSize:12, color:C.muted }}>
                   {school.principal} · {school.stage} · رقم وزاري: {school.id}
                 </p>
+              </div>
+            )}
+
+            {isSupervisor && supervisor && (
+              <div style={{ background:"#f5eefa", border:`1.5px solid #7B2D8B`, borderRadius:12, padding:14, marginBottom:16 }}>
+                <p style={{ margin:"0 0 4px", fontSize:12, color:"#7B2D8B", fontWeight:700 }}>✅ تم التحقق من هويتك</p>
+                <p style={{ margin:0, fontSize:15, fontWeight:800, color:C.dark }}>{supervisor.name}</p>
+                <p style={{ margin:"3px 0 0", fontSize:12, color:C.muted }}>رقم الهوية: {supervisor.national_id}</p>
               </div>
             )}
 
