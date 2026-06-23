@@ -120,7 +120,7 @@ function PublicFill({ survey, onBack }) {
     const error = submitError2;
 
     setSubmitting(false);
-    if (error) { setSubmitError("حدث خطأ أثناء الإرسال. حاول مرة أخرى."); return; }
+    if (error) { setSubmitError("خطأ: " + (error.message || error.code || JSON.stringify(error))); return; }
     if (stoppedAtGate) setGateStopped(true);
     setStep("done");
   }
