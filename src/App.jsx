@@ -586,9 +586,18 @@ function PublicFill({ survey, onBack }) {
       payload.school_id = school.id;
     }
 
-    const { error } = await supabase
-      .from("survey_responses")
-      .upsert(payload, { onConflict: (!isOpen && !isSupervisor) ? "survey_id,school_id" : undefined });
+    let submitError2;
+    if (!isOpen && !isSupervisor) {
+      // استبيان مدارس: upsert لمنع التكرار
+      const { error: e } = await supabase.from("survey_responses")
+        .upsert(payload, { onConflict: "survey_id,school_id" });
+      submitError2 = e;
+    } else {
+      // مفتوح أو مشرفين: insert عادي (لا يوجد قيد تعارض)
+      const { error: e } = await supabase.from("survey_responses").insert(payload);
+      submitError2 = e;
+    }
+    const error = submitError2;
 
     setSubmitting(false);
     if (error) { setSubmitError("حدث خطأ أثناء الإرسال. حاول مرة أخرى."); return; }
@@ -3160,3 +3169,4 @@ export default function App() {
     </div>
   );
 }
+
