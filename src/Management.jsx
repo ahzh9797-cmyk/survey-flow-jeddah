@@ -563,20 +563,68 @@ function LoginPage({ onLogin }) {
 // ═══════════════════════════════════════════════════════
 // ANALYTICS
 // ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+// GREEN API WHATSAPP SENDER
+// ═══════════════════════════════════════════════════════
+const GREEN_API_INSTANCE = "7107658040";
+const GREEN_API_TOKEN = "5057056a62c9475db20433c433349df534e9ee32ba0b47c0a0";
+
+async function sendWhatsAppGreen(phone, message) {
+  const cleanPhone = phone.replace(/\D/g, "").replace(/^0/, "966").replace(/^(?!966)/, "966");
+  const url = `https://api.green-api.com/waInstance${GREEN_API_INSTANCE}/sendMessage/${GREEN_API_TOKEN}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chatId: `${cleanPhone}@c.us`, message }),
+  });
+  return res.ok;
+}
+
+// ═══════════════════════════════════════════════════════
+// DASHBOARD / ANALYTICS PAGE
+// ═══════════════════════════════════════════════════════
 function AnalyticsPage({ surveys }) {
   const [stats, setStats] = useState({});
+  const [pendingSchools, setPendingSchools] = useState({}); // surveyId → [schools not responded]
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState({}); // surveyId → bool
+  const [sentCount, setSentCount] = useState({});
+  const [activeTab, setActiveTab] = useState("dashboard");
   const schoolCount = useSchoolCount();
 
   useEffect(() => {
     async function load() {
       setLoading(true);
       const results = {};
+      const pending = {};
+
       for (const s of surveys) {
-        const { count } = await supabase.from("survey_responses").select("*", { count:"exact", head:true }).eq("survey_id", s.id);
+        // عدد الردود
+        const { count } = await supabase.from("survey_responses")
+          .select("*", { count:"exact", head:true }).eq("survey_id", s.id);
         results[s.id] = count || 0;
+
+        // للاستبيانات المدرسية النشطة فقط: اجلب المدارس غير المستجيبة
+        if (s.survey_type === "school" && s.approval_status === "approved") {
+          const { data: responses } = await supabase.from("survey_responses")
+            .select("school_id").eq("survey_id", s.id);
+          const respondedIds = new Set((responses||[]).map(r => r.school_id));
+          let allSchools = [];
+          let from = 0;
+          while (true) {
+            const { data } = await supabase.from("survey_schools")
+              .select("id,name,principal,phone,stage")
+              .range(from, from+999);
+            if (!data?.length) break;
+            allSchools = allSchools.concat(data);
+            if (data.length < 1000) break;
+            from += 1000;
+          }
+          pending[s.id] = allSchools.filter(sc => !respondedIds.has(sc.id));
+        }
       }
       setStats(results);
+      setPendingSchools(pending);
       setLoading(false);
     }
     if (surveys.length) load();
@@ -584,68 +632,193 @@ function AnalyticsPage({ surveys }) {
   }, [surveys]);
 
   const totalResponded = Object.values(stats).reduce((a,b)=>a+b,0);
+  const activeSurveys = surveys.filter(s => s.approval_status === "approved" && (!s.expires_at || new Date(s.expires_at) > new Date()));
+
+  async function sendReminders(survey) {
+    const schools = pendingSchools[survey.id] || [];
+    if (!schools.length) return;
+    setSending(p => ({...p, [survey.id]: true}));
+    const link = `${window.location.origin}?survey=${survey.id}`;
+    const expText = survey.expires_at
+      ? `\n⏰ آخر موعد: ${new Date(survey.expires_at).toLocaleDateString("ar-SA")}`
+      : "";
+    let sent = 0;
+    for (const school of schools) {
+      if (!school.phone) continue;
+      const msg = `السلام عليكم ${school.principal || ""},\n\nنرجو تعبئة استبيان:\n*${survey.title}*\n\n${link}${expText}\n\nإدارة التعليم — جدة`;
+      const ok = await sendWhatsAppGreen(school.phone, msg);
+      if (ok) sent++;
+      await new Promise(r => setTimeout(r, 500)); // تأخير بسيط بين الرسائل
+    }
+    setSending(p => ({...p, [survey.id]: false}));
+    setSentCount(p => ({...p, [survey.id]: sent}));
+  }
 
   async function exportAnalyticsExcel() {
     const XLSX = await ensureXLSX();
     const rows = surveys.map(s => {
       const count = stats[s.id] || 0;
       const pct = schoolCount ? Math.round(count/schoolCount*100) : 0;
-      return { "الاستبيان": s.title, "الردود": count, "إجمالي المدارس": schoolCount, "نسبة الاستجابة": `${pct}%`, "الحالة": s.status };
+      return { "الاستبيان": s.title, "الردود": count, "إجمالي المدارس": schoolCount, "نسبة الاستجابة": `${pct}%` };
     });
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws["!cols"] = Object.keys(rows[0] || {}).map(() => ({ wch: 24 }));
+    ws["!cols"] = Object.keys(rows[0]||{}).map(()=>({wch:24}));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "إحصائيات عامة");
-    XLSX.writeFile(wb, `إحصائيات-عامة-${tsStamp()}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, "إحصائيات");
+    XLSX.writeFile(wb, `إحصائيات-${tsStamp()}.xlsx`);
   }
 
   if (loading) return <div style={{ minHeight:"50vh", display:"flex", alignItems:"center", justifyContent:"center" }}><Spinner size={32}/></div>;
 
   return (
-    <div style={{ padding:16 }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4 }}>
-        <div>
-          <h2 style={{ margin:"0 0 4px", fontSize:18, color:C.dark, fontWeight:800 }}>الإحصائيات</h2>
-          <p style={{ margin:"0 0 14px", fontSize:12, color:C.muted }}>نظرة عامة (بيانات حية من قاعدة البيانات)</p>
-        </div>
-        {surveys.length > 0 && (
-          <ExportMenu options={[{ key:"xlsx", icon:"📊", label:"تصدير الكل Excel", action: exportAnalyticsExcel }]}/>
-        )}
-      </div>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:16 }}>
-        {[
-          { l:"إجمالي المدارس", v:schoolCount, i:"🏫", c:C.primary },
-          { l:"استبيانات نشطة", v:surveys.length, i:"📋", c:C.accent },
-          { l:"إجمالي الردود", v:totalResponded, i:"📝", c:C.success },
-          { l:"متوسط الردود", v:surveys.length?Math.round(totalResponded/surveys.length):0, i:"📊", c:"#7B2D8B" },
-        ].map((x,i) => (
-          <Card key={i} style={{ textAlign:"center", padding:14, borderTop:`3px solid ${x.c}` }}>
-            <div style={{ fontSize:26 }}>{x.i}</div>
-            <div style={{ fontSize:22, fontWeight:800, color:x.c, margin:"4px 0 2px" }}>{x.v}</div>
-            <div style={{ fontSize:11, color:C.muted }}>{x.l}</div>
-          </Card>
+    <div style={{ padding:16, direction:"rtl" }}>
+
+      {/* تبويبات */}
+      <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:16 }}>
+        {[["dashboard","🏠 لوحة التحكم"],["whatsapp","📱 إشعارات واتس"],["details","📊 تفاصيل"]].map(([k,l]) => (
+          <button key={k} onClick={()=>setActiveTab(k)} style={{ flex:1, padding:"10px 4px", border:"none",
+            background:"none", cursor:"pointer", fontSize:12, fontFamily:"inherit",
+            fontWeight:activeTab===k?700:400, color:activeTab===k?C.primary:C.muted,
+            borderBottom:`2px solid ${activeTab===k?C.primary:"transparent"}`, marginBottom:-1 }}>{l}</button>
         ))}
       </div>
-      {surveys.map(s => {
-        const count = stats[s.id] || 0;
-        const pct = schoolCount ? Math.round(count/schoolCount*100) : 0;
-        return (
-          <Card key={s.id} style={{ marginBottom:12 }}>
-            <p style={{ margin:"0 0 8px", fontSize:14, fontWeight:700, color:C.dark }}>{s.title}</p>
-            <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:C.muted, marginBottom:6 }}>
-              <span>{count} من {schoolCount} مدرسة</span>
-              <span style={{ color:C.primary, fontWeight:700 }}>{pct}%</span>
-            </div>
-            <div style={{ height:10, background:C.border, borderRadius:6 }}>
-              <div style={{ height:"100%", width:`${pct}%`, background:`linear-gradient(90deg,${C.primary},${C.primaryLight})`, borderRadius:6 }}/>
-            </div>
-          </Card>
-        );
-      })}
+
+      {/* لوحة التحكم الرئيسية */}
+      {activeTab === "dashboard" && (
+        <>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:16 }}>
+            {[
+              { l:"إجمالي المدارس", v:schoolCount, i:"🏫", c:C.primary },
+              { l:"استبيانات نشطة", v:activeSurveys.length, i:"📋", c:C.accent },
+              { l:"إجمالي الردود", v:totalResponded, i:"📝", c:C.success },
+              { l:"متوسط الاستجابة", v:schoolCount&&activeSurveys.length?`${Math.round(totalResponded/activeSurveys.length/schoolCount*100)}%`:"—", i:"📊", c:"#7B2D8B" },
+            ].map((x,i) => (
+              <Card key={i} style={{ textAlign:"center", padding:14, borderTop:`3px solid ${x.c}` }}>
+                <div style={{ fontSize:26 }}>{x.i}</div>
+                <div style={{ fontSize:22, fontWeight:800, color:x.c, margin:"4px 0 2px" }}>{x.v}</div>
+                <div style={{ fontSize:11, color:C.muted }}>{x.l}</div>
+              </Card>
+            ))}
+          </div>
+
+          <h3 style={{ margin:"0 0 10px", fontSize:14, color:C.dark }}>الاستبيانات النشطة</h3>
+          {activeSurveys.length === 0 ? (
+            <Card style={{ textAlign:"center", padding:24 }}>
+              <p style={{ margin:0, color:C.muted, fontSize:13 }}>لا توجد استبيانات نشطة حالياً</p>
+            </Card>
+          ) : activeSurveys.map(s => {
+            const count = stats[s.id] || 0;
+            const pct = schoolCount ? Math.round(count/schoolCount*100) : 0;
+            const pending = pendingSchools[s.id]?.length || 0;
+            const expiresTomorrow = s.expires_at &&
+              (new Date(s.expires_at) - new Date()) < 24*60*60*1000 &&
+              new Date(s.expires_at) > new Date();
+            return (
+              <Card key={s.id} style={{ marginBottom:12 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+                  <p style={{ margin:0, fontSize:14, fontWeight:700, color:C.dark, flex:1 }}>{s.title}</p>
+                  <span style={{ fontSize:13, fontWeight:800, color:C.primary }}>{pct}%</span>
+                </div>
+                {expiresTomorrow && (
+                  <div style={{ background:C.warnBg, borderRadius:8, padding:"5px 10px", marginBottom:8 }}>
+                    <p style={{ margin:0, fontSize:11, color:C.warn, fontWeight:700 }}>⚠️ ينتهي غداً</p>
+                  </div>
+                )}
+                <div style={{ height:10, background:C.border, borderRadius:6, marginBottom:8 }}>
+                  <div style={{ height:"100%", width:`${pct}%`, background:`linear-gradient(90deg,${C.primary},${C.primaryLight})`, borderRadius:6, transition:"width 0.5s" }}/>
+                </div>
+                <p style={{ margin:"0 0 4px", fontSize:12, color:C.muted }}>
+                  ✅ {count} استجابت · ⏳ {pending} لم تستجب
+                </p>
+                {s.expires_at && (
+                  <p style={{ margin:0, fontSize:11, color:C.muted }}>
+                    📅 ينتهي: {new Date(s.expires_at).toLocaleDateString("ar-SA")}
+                  </p>
+                )}
+              </Card>
+            );
+          })}
+        </>
+      )}
+
+      {/* إشعارات واتس */}
+      {activeTab === "whatsapp" && (
+        <>
+          <div style={{ background:C.primaryBg, borderRadius:12, padding:14, marginBottom:16 }}>
+            <p style={{ margin:"0 0 4px", fontSize:13, fontWeight:700, color:C.primary }}>📱 إرسال تذكيرات واتس</p>
+            <p style={{ margin:0, fontSize:12, color:C.muted, lineHeight:1.7 }}>
+              ترسل رسالة واتس تلقائية لكل مدرسة لم تستجب بعد، تحتوي رابط الاستبيان وتاريخ الانتهاء
+            </p>
+          </div>
+
+          {activeSurveys.filter(s => s.survey_type === "school").length === 0 ? (
+            <Card style={{ textAlign:"center", padding:24 }}>
+              <p style={{ margin:0, color:C.muted, fontSize:13 }}>لا توجد استبيانات مدرسية نشطة</p>
+            </Card>
+          ) : activeSurveys.filter(s => s.survey_type === "school").map(s => {
+            const pending = pendingSchools[s.id] || [];
+            const withPhone = pending.filter(sc => sc.phone);
+            const isSending = sending[s.id];
+            const sent = sentCount[s.id];
+            return (
+              <Card key={s.id} style={{ marginBottom:12 }}>
+                <p style={{ margin:"0 0 6px", fontSize:14, fontWeight:700, color:C.dark }}>{s.title}</p>
+                <p style={{ margin:"0 0 12px", fontSize:12, color:C.muted }}>
+                  ⏳ {pending.length} مدرسة لم تستجب · 📱 {withPhone.length} لديها جوال
+                </p>
+                {sent !== undefined && (
+                  <div style={{ background:C.successBg, borderRadius:8, padding:"6px 10px", marginBottom:10 }}>
+                    <p style={{ margin:0, fontSize:12, color:C.success }}>✅ تم إرسال {sent} رسالة</p>
+                  </div>
+                )}
+                {withPhone.length > 0 ? (
+                  <Btn full loading={isSending} onClick={()=>sendReminders(s)}>
+                    {isSending ? `جاري الإرسال...` : `📱 إرسال تذكير لـ ${withPhone.length} مدرسة`}
+                  </Btn>
+                ) : (
+                  <p style={{ margin:0, fontSize:12, color:C.muted, textAlign:"center" }}>
+                    لا توجد أرقام جوال للمدارس غير المستجيبة
+                  </p>
+                )}
+              </Card>
+            );
+          })}
+        </>
+      )}
+
+      {/* تفاصيل الإحصائيات */}
+      {activeTab === "details" && (
+        <>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+            <p style={{ margin:0, fontSize:13, color:C.muted }}>{surveys.length} استبيان</p>
+            {surveys.length > 0 && (
+              <ExportMenu options={[{ key:"xlsx", icon:"📊", label:"تصدير Excel", action: exportAnalyticsExcel }]}/>
+            )}
+          </div>
+          {surveys.map(s => {
+            const count = stats[s.id] || 0;
+            const total = s.survey_type === "school" ? schoolCount : count;
+            const pct = total ? Math.round(count/total*100) : 0;
+            return (
+              <Card key={s.id} style={{ marginBottom:12 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                  <p style={{ margin:0, fontSize:14, fontWeight:700, color:C.dark, flex:1 }}>{s.title}</p>
+                  <span style={{ fontSize:13, fontWeight:800, color:C.primary }}>{pct}%</span>
+                </div>
+                <p style={{ margin:"0 0 8px", fontSize:12, color:C.muted }}>
+                  {count} من {s.survey_type==="school"?schoolCount:"—"} مدرسة
+                </p>
+                <div style={{ height:10, background:C.border, borderRadius:6 }}>
+                  <div style={{ height:"100%", width:`${pct}%`, background:`linear-gradient(90deg,${C.primary},${C.primaryLight})`, borderRadius:6 }}/>
+                </div>
+              </Card>
+            );
+          })}
+        </>
+      )}
     </div>
   );
 }
-
 // ═══════════════════════════════════════════════════════
 // SCHOOLS MANAGEMENT
 // ═══════════════════════════════════════════════════════
@@ -1788,4 +1961,3 @@ export { SurveysList, NewSurveyPage, ShareSheet, LoginPage, AnalyticsPage,
   SchoolForm, CsvUploadSheet, DeleteConfirm, SchoolsManagementPage,
   UsersManagementPage, RoleBadgeStatic, SupervisorsManagementPage,
   AppSettingsPage, AuditLogPage };
-
