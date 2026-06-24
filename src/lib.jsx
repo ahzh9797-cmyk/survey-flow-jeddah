@@ -39,62 +39,146 @@ export function tsStamp() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
+// ═══════════════════════════════════════════════════════
+// DESIGN SYSTEM — هوية بصرية جديدة
+// ═══════════════════════════════════════════════════════
 export const C = {
-  primary:"#0B6E6E",primaryLight:"#0E8E8E",primaryBg:"#EAF5F5",
-  accent:"#C49A28",accentLight:"#FDF6E0",dark:"#1A2B2B",
-  text:"#2D3E3E",muted:"#6B8585",border:"#D0E4E4",
-  white:"#FFFFFF",bg:"#F4F9F9",danger:"#C0392B",success:"#1A7A4A",
-  successBg:"#E8F5EE",warn:"#E67E22",warnBg:"#FEF5EC",
+  // الألوان الأساسية
+  primary:    "#006B54",   // أخضر زمردي — هوية حكومية
+  primaryDark:"#004D3B",
+  primaryLight:"#008A6A",
+  primaryBg:  "#E8F5F1",
+  primaryBg2: "#F0FAF7",
+
+  // الذهبي للتمييز
+  accent:     "#C9A84C",
+  accentLight:"#FDF6E3",
+  accentDark: "#A8883A",
+
+  // النصوص
+  dark:       "#1A202C",
+  text:       "#2D3748",
+  muted:      "#718096",
+  subtle:     "#A0AEC0",
+
+  // الخلفيات
+  bg:         "#F7FAFC",
+  bg2:        "#EDF2F7",
+  white:      "#FFFFFF",
+
+  // الحالات
+  success:    "#276749",
+  successBg:  "#E6F4EE",
+  danger:     "#C53030",
+  dangerBg:   "#FFF5F5",
+  warn:       "#B7791F",
+  warnBg:     "#FFFBEB",
+
+  // الحدود
+  border:     "#E2E8F0",
+  borderDark: "#CBD5E0",
+
+  // للتوافق مع الكود القديم
+  get primaryBgLight() { return this.primaryBg2; },
 };
 
+// CSS عالمي
+if (typeof document !== 'undefined' && !document.getElementById('jeddah-global-styles')) {
+  const style = document.createElement('style');
+  style.id = 'jeddah-global-styles';
+  style.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { font-family: 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif !important; background: #F7FAFC; }
+    button:focus-visible { outline: 2px solid #006B54; outline-offset: 2px; }
+    @keyframes spin { to { transform: rotate(360deg) } }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:translateY(0) } }
+    @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.5 } }
+    .card-hover { transition: transform 0.15s, box-shadow 0.15s; }
+    .card-hover:active { transform: scale(0.98); }
+  `;
+  document.head.appendChild(style);
+}
+
 // ── UI ATOMS ──
-export function Spinner({size=24}){
+export function Spinner({size=24, color}){
   return(
-    <div style={{width:size,height:size,border:`3px solid ${C.border}`,borderTopColor:C.primary,
-      borderRadius:"50%",animation:"spin 0.8s linear infinite"}}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>
+    <div style={{
+      width:size, height:size,
+      border:`${Math.max(2,size/10)}px solid ${color||C.primaryBg}`,
+      borderTopColor: color ? C.white : C.primary,
+      borderRadius:"50%", animation:"spin 0.7s linear infinite", flexShrink:0
+    }}/>
   );
 }
 
 export function Stars({value,onChange}){
   const [h,setH]=useState(0);
   return(
-    <div style={{display:"flex",gap:6}}>
+    <div style={{display:"flex",gap:8}}>
       {[1,2,3,4,5].map(n=>(
         <span key={n} onClick={()=>onChange&&onChange(n)}
           onMouseEnter={()=>onChange&&setH(n)} onMouseLeave={()=>onChange&&setH(0)}
-          style={{fontSize:34,cursor:onChange?"pointer":"default",
-            color:n<=(h||value)?C.accent:C.border,lineHeight:1}}>★</span>
+          style={{
+            fontSize:36, cursor:onChange?"pointer":"default",
+            color:n<=(h||value)?C.accent:"#E2E8F0",
+            lineHeight:1, transition:"color 0.1s, transform 0.1s",
+            transform: n<=(h||value) ? "scale(1.1)" : "scale(1)"
+          }}>★</span>
       ))}
     </div>
   );
 }
 
 export function Btn({children,onClick,variant="primary",full,sm,disabled,loading,style:ex}){
-  const V={
-    primary:{background:C.primary,color:"#fff",border:"none"},
-    secondary:{background:C.primaryBg,color:C.primary,border:`1px solid ${C.border}`},
-    gold:{background:C.accent,color:"#fff",border:"none"},
-    green:{background:"#25D366",color:"#fff",border:"none"},
-    danger:{background:"#fdf0ee",color:C.danger,border:`1px solid #f5c6c0`},
+  const variants = {
+    primary:   { background:`linear-gradient(135deg, ${C.primary}, ${C.primaryDark})`, color:"#fff", border:"none",
+                 boxShadow:`0 4px 14px rgba(0,107,84,0.35)` },
+    secondary: { background:C.white, color:C.primary, border:`1.5px solid ${C.border}`,
+                 boxShadow:"0 1px 4px rgba(0,0,0,0.06)" },
+    gold:      { background:`linear-gradient(135deg, ${C.accent}, ${C.accentDark})`, color:"#fff", border:"none",
+                 boxShadow:`0 4px 14px rgba(201,168,76,0.4)` },
+    green:     { background:"linear-gradient(135deg,#25D366,#1da851)", color:"#fff", border:"none",
+                 boxShadow:"0 4px 14px rgba(37,211,102,0.35)" },
+    danger:    { background:C.dangerBg, color:C.danger, border:`1.5px solid #FEB2B2`,
+                 boxShadow:"none" },
   };
+  const v = variants[variant] || variants.primary;
   return(
     <button onClick={onClick} disabled={disabled||loading} style={{
-      ...V[variant],borderRadius:10,padding:sm?"8px 14px":"12px 20px",
-      fontSize:sm?13:15,fontWeight:700,fontFamily:"inherit",
-      cursor:(disabled||loading)?"not-allowed":"pointer",opacity:(disabled||loading)?0.6:1,
-      width:full?"100%":"auto",display:"inline-flex",alignItems:"center",
-      justifyContent:"center",gap:7,transition:"opacity 0.15s",
-      boxSizing:"border-box",...ex
-    }}>{loading?<Spinner size={16}/>:children}</button>
+      ...v,
+      borderRadius:10,
+      padding: sm ? "9px 18px" : "13px 24px",
+      fontSize: sm ? 13 : 15,
+      fontWeight:700,
+      fontFamily:"inherit",
+      cursor:(disabled||loading)?"not-allowed":"pointer",
+      opacity:(disabled||loading)?0.6:1,
+      width:full?"100%":"auto",
+      display:"inline-flex", alignItems:"center", justifyContent:"center", gap:8,
+      transition:"all 0.15s",
+      boxSizing:"border-box",
+      letterSpacing:"0.01em",
+      ...ex
+    }}>{loading?<Spinner size={16} color={variant==="secondary"?undefined:"white"}/>:children}</button>
   );
 }
 
-export function Card({children,style:ex,accent}){
+export function Card({children,style:ex,accent,clickable,onClick}){
   return(
-    <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.border}`,
-      padding:16,borderRight:accent?`4px solid ${accent}`:undefined,...ex}}>
+    <div
+      onClick={onClick}
+      className={clickable ? "card-hover" : undefined}
+      style={{
+        background:C.white,
+        borderRadius:16,
+        border:`1px solid ${C.border}`,
+        padding:18,
+        borderTop: accent ? `3px solid ${accent}` : `1px solid ${C.border}`,
+        boxShadow:"0 2px 8px rgba(0,0,0,0.06)",
+        cursor: clickable ? "pointer" : undefined,
+        ...ex
+      }}>
       {children}
     </div>
   );
@@ -102,8 +186,17 @@ export function Card({children,style:ex,accent}){
 
 export function Tag({children,color=C.primary}){
   return(
-    <span style={{background:color+"18",color,border:`1px solid ${color}40`,
-      borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>
+    <span style={{
+      background:`${color}15`,
+      color,
+      border:`1px solid ${color}30`,
+      borderRadius:20,
+      padding:"3px 12px",
+      fontSize:12,
+      fontWeight:700,
+      display:"inline-flex", alignItems:"center", gap:4,
+      whiteSpace:"nowrap"
+    }}>
       {children}
     </span>
   );
@@ -112,9 +205,19 @@ export function Tag({children,color=C.primary}){
 export function ErrorBanner({message}){
   if(!message) return null;
   return(
-    <div style={{background:"#fdf0ee",border:`1px solid #f5c6c0`,borderRadius:10,
-      padding:"10px 14px",fontSize:13,color:C.danger,marginBottom:12}}>
-      ⚠️ {message}
+    <div style={{
+      background:C.dangerBg,
+      border:`1px solid #FEB2B2`,
+      borderRadius:12,
+      padding:"12px 16px",
+      fontSize:13,
+      color:C.danger,
+      marginBottom:14,
+      display:"flex", alignItems:"flex-start", gap:8,
+      lineHeight:1.6
+    }}>
+      <span style={{flexShrink:0}}>⚠️</span>
+      <span>{message}</span>
     </div>
   );
 }
