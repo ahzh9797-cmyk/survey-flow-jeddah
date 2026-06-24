@@ -1,8 +1,7 @@
-
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase, C, Btn, Card, Tag, Spinner, ErrorBanner, ExportMenu,
-  ensureXLSX, tsStamp, loadScript, logAction, RoleBadge, ViewerNotice,
-  useSchoolCount, useAppSettings, saveSetting } from "./lib.jsx";
+  ensureXLSX, ensurePDF, pdfRTLText, tsStamp, loadScript, logAction,
+  RoleBadge, ViewerNotice, useSchoolCount, useAppSettings, saveSetting } from "./lib.jsx";
 
 function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, isAdmin, onDelete, onApprove, onEdit }) {
   const now = new Date();
@@ -1789,3 +1788,4 @@ export { SurveysList, NewSurveyPage, ShareSheet, LoginPage, AnalyticsPage,
   SchoolForm, CsvUploadSheet, DeleteConfirm, SchoolsManagementPage,
   UsersManagementPage, RoleBadgeStatic, SupervisorsManagementPage,
   AppSettingsPage, AuditLogPage };
+
