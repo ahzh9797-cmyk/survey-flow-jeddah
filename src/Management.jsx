@@ -583,7 +583,7 @@ async function sendWhatsAppGreen(phone, message) {
 // ═══════════════════════════════════════════════════════
 // DASHBOARD / ANALYTICS PAGE
 // ═══════════════════════════════════════════════════════
-function AnalyticsPage({ surveys }) {
+function AnalyticsPage({ surveys, onNavigate }) {
   const [stats, setStats] = useState({});
   const [pendingSchools, setPendingSchools] = useState({}); // surveyId → [schools not responded]
   const [loading, setLoading] = useState(true);
@@ -686,18 +686,29 @@ function AnalyticsPage({ surveys }) {
       {/* لوحة التحكم الرئيسية */}
       {activeTab === "dashboard" && (
         <>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:16 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:12, marginBottom:20 }}>
             {[
-              { l:"إجمالي المدارس", v:schoolCount, i:"🏫", c:C.primary },
-              { l:"استبيانات نشطة", v:activeSurveys.length, i:"📋", c:C.accent },
-              { l:"إجمالي الردود", v:totalResponded, i:"📝", c:C.success },
-              { l:"متوسط الاستجابة", v:schoolCount&&activeSurveys.length?`${Math.round(totalResponded/activeSurveys.length/schoolCount*100)}%`:"—", i:"📊", c:"#7B2D8B" },
+              { l:"إجمالي المدارس", v:schoolCount, i:"🏫", c:C.primary, nav:"schools", sub:"اضغط للإدارة" },
+              { l:"استبيانات نشطة", v:activeSurveys.length, i:"📋", c:C.accent, nav:"surveys", sub:"اضغط للعرض" },
+              { l:"إجمالي الردود", v:totalResponded, i:"📝", c:C.success, nav:"surveys", sub:"اضغط للتفاصيل" },
+              { l:"متوسط الاستجابة", v:schoolCount&&activeSurveys.length?`${Math.round(totalResponded/activeSurveys.length/schoolCount*100)}%`:"—", i:"📊", c:"#7B2D8B", nav:null, sub:"من المدارس" },
             ].map((x,i) => (
-              <Card key={i} style={{ textAlign:"center", padding:14, borderTop:`3px solid ${x.c}` }}>
-                <div style={{ fontSize:26 }}>{x.i}</div>
-                <div style={{ fontSize:22, fontWeight:800, color:x.c, margin:"4px 0 2px" }}>{x.v}</div>
-                <div style={{ fontSize:11, color:C.muted }}>{x.l}</div>
-              </Card>
+              <div key={i}
+                onClick={()=>x.nav && onNavigate && onNavigate(x.nav)}
+                className={x.nav ? "card-hover" : undefined}
+                style={{
+                  background:C.white, borderRadius:16, padding:16,
+                  border:`1px solid ${C.border}`,
+                  borderTop:`3px solid ${x.c}`,
+                  boxShadow:"0 2px 8px rgba(0,0,0,0.06)",
+                  cursor:x.nav?"pointer":"default",
+                  textAlign:"center"
+                }}>
+                <div style={{ fontSize:28, marginBottom:6 }}>{x.i}</div>
+                <div style={{ fontSize:26, fontWeight:800, color:x.c, lineHeight:1 }}>{x.v}</div>
+                <div style={{ fontSize:11, color:C.muted, marginTop:4, fontWeight:500 }}>{x.l}</div>
+                {x.nav && <div style={{ fontSize:10, color:x.c, marginTop:4, fontWeight:600 }}>{x.sub} ←</div>}
+              </div>
             ))}
           </div>
 
