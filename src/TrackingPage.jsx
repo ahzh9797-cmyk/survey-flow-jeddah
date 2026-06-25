@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase, C, Btn, Card, Tag, Spinner, ErrorBanner, ExportMenu,
   ensureXLSX, ensurePDF, pdfRTLText, tsStamp, useResponses, logAction } from "./lib.jsx";
@@ -116,6 +115,10 @@ function TrackingPage({ survey, onBack }) {
         all = all.concat(data);
         if (data.length < BATCH) break;
         from += BATCH;
+      }
+      // فلتر المراحل المستهدفة إن وُجدت
+      if (survey.target_stages?.length) {
+        all = all.filter(s => survey.target_stages.includes(s.stage));
       }
       setAllSchools(all);
       setLoadingSchools(false);
@@ -363,3 +366,4 @@ function TrackingPage({ survey, onBack }) {
 // ═══════════════════════════════════════════════════════
 export { OpenSurveyTracking };
 export default TrackingPage;
+
