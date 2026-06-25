@@ -100,6 +100,10 @@ function NewSurveyPage({ onSaved, onCancel, user, isAdmin, existingSurvey }) {
   const [expiresAt, setExpiresAt] = useState(
     existingSurvey?.expires_at ? new Date(existingSurvey.expires_at).toISOString().split("T")[0] : ""
   );
+  // تحديد المدارس المستهدفة
+  const [targetMode, setTargetMode] = useState(existingSurvey?.target_stages?.length ? "stages" : "all"); // all | stages
+  const [targetStages, setTargetStages] = useState(existingSurvey?.target_stages || []);
+
   const [qs, setQs] = useState(
     existingSurvey?.questions?.length
       ? existingSurvey.questions.map(q => ({ ...q, options: q.options || [], allowedFileTypes: q.allowed_file_types || "pdf,xlsx" }))
@@ -137,6 +141,7 @@ function NewSurveyPage({ onSaved, onCancel, user, isAdmin, existingSurvey }) {
         title, description: desc, survey_type: surveyType,
         expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
         gate_question_id: null,
+        target_stages: targetMode === "stages" && targetStages.length ? targetStages : null,
       }).eq("id", surveyId);
       if (updErr) { setSaving(false); setError("فشل التحديث: " + updErr.message); return; }
       await supabase.from("survey_questions").delete().eq("survey_id", surveyId);
@@ -148,6 +153,7 @@ function NewSurveyPage({ onSaved, onCancel, user, isAdmin, existingSurvey }) {
           survey_type: surveyType, gate_question_id: null,
           expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
           approval_status: approvalStatus, created_by: user?.id,
+          target_stages: targetMode === "stages" && targetStages.length ? targetStages : null,
         })
         .select().single();
       if (surveyErr) {
@@ -241,6 +247,54 @@ function NewSurveyPage({ onSaved, onCancel, user, isAdmin, existingSurvey }) {
               fontSize:14, fontFamily:"inherit", direction:"ltr", boxSizing:"border-box", outline:"none" }}/>
         </div>
       </Card>
+
+      {surveyType === "school" && (
+        <Card style={{ marginBottom:14 }}>
+          <p style={{ margin:"0 0 10px", fontSize:13, fontWeight:700, color:C.dark }}>🎯 المدارس المستهدفة</p>
+          <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+            {[["all","🏫 جميع المدارس"],["stages","📚 مراحل محددة"]].map(([v,l]) => (
+              <button key={v} onClick={()=>setTargetMode(v)} style={{
+                flex:1, padding:"10px 8px", borderRadius:10, cursor:"pointer",
+                fontFamily:"inherit", fontSize:13, fontWeight:700,
+                border:`2px solid ${targetMode===v?C.primary:C.border}`,
+                background:targetMode===v?C.primaryBg:"#fff",
+                color:targetMode===v?C.primary:C.muted }}>{l}</button>
+            ))}
+          </div>
+          {targetMode === "all" && (
+            <p style={{ margin:0, fontSize:12, color:C.muted }}>سيُرسَل الاستبيان لجميع المدارس الـ {1046}</p>
+          )}
+          {targetMode === "stages" && (
+            <div>
+              <p style={{ margin:"0 0 8px", fontSize:12, color:C.muted }}>اختر المراحل المستهدفة:</p>
+              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                {["الابتدائية","المتوسطة","الثانوية"].map(stage => {
+                  const selected = targetStages.includes(stage);
+                  return (
+                    <button key={stage} onClick={()=>{
+                      setTargetStages(p => selected ? p.filter(s=>s!==stage) : [...p,stage]);
+                    }} style={{
+                      padding:"10px 18px", borderRadius:10, cursor:"pointer",
+                      fontFamily:"inherit", fontSize:13, fontWeight:700,
+                      border:`2px solid ${selected?C.primary:C.border}`,
+                      background:selected?C.primaryBg:"#fff",
+                      color:selected?C.primary:C.muted,
+                      boxShadow:selected?`0 2px 8px ${C.primary}30`:"none"
+                    }}>
+                      {selected ? "✓ " : ""}{stage}
+                    </button>
+                  );
+                })}
+              </div>
+              {targetStages.length > 0 && (
+                <p style={{ margin:"10px 0 0", fontSize:12, color:C.success, fontWeight:700 }}>
+                  ✅ تم تحديد: {targetStages.join(" و")}
+                </p>
+              )}
+            </div>
+          )}
+        </Card>
+      )}
 
       {surveyType === "school" && (
         <Card style={{ marginBottom:12, background:"#e8f5ee", border:`1px solid ${C.success}40` }}>
@@ -834,7 +888,7 @@ function AnalyticsPage({ surveys, onNavigate }) {
 // SCHOOLS MANAGEMENT
 // ═══════════════════════════════════════════════════════
 
-const STAGES = ["ابتدائية", "متوسطة", "الثانوية"];
+const STAGES = ["الابتدائية", "المتوسطة", "الثانوية"];
 
 function SchoolForm({ initial, onSaved, onCancel, user }) {
   const isEdit = !!initial;
@@ -1937,38 +1991,4 @@ function AuditLogPage() {
             {paged.map((l, i) => {
               const a = ACTION_LABELS[l.action] || { label: l.action, color: C.muted, icon: "•" };
               return (
-                <div key={l.id} style={{ display:"flex", alignItems:"flex-start", gap:10, padding:"12px 14px",
-                  borderBottom: i < paged.length-1 ? `1px solid ${C.border}` : undefined }}>
-                  <div style={{ width:30, height:30, borderRadius:8, background:a.color+"18", display:"flex",
-                    alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>{a.icon}</div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <p style={{ margin:0, fontSize:13, color:C.dark }}>
-                      <strong>{a.label}</strong> في {TABLE_LABELS[l.table_name] || l.table_name}
-                      {l.record_label && <> — {l.record_label}</>}
-                    </p>
-                    <p style={{ margin:"3px 0 0", fontSize:11, color:C.muted }}>
-                      {l.user_email || "غير معروف"} · {new Date(l.created_at).toLocaleString("ar-SA")}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </Card>
-          {paged.length < filtered.length && (
-            <Btn variant="secondary" full onClick={()=>setPage(p=>p+1)} style={{ marginTop:12 }}>
-              عرض المزيد ({filtered.length - paged.length} متبقي)
-            </Btn>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════
-// MAIN APP
-// ═══════════════════════════════════════════════════════
-export { SurveysList, NewSurveyPage, ShareSheet, LoginPage, AnalyticsPage,
-  SchoolForm, CsvUploadSheet, DeleteConfirm, SchoolsManagementPage,
-  UsersManagementPage, RoleBadgeStatic, SupervisorsManagementPage,
-  AppSettingsPage, AuditLogPage };
+                <div key={l.id} style={{ display:"flex", alignItems:"flex-start", gap:10, p
