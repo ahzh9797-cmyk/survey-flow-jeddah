@@ -10,6 +10,7 @@ import { SurveysList, NewSurveyPage, ShareSheet, LoginPage, AnalyticsPage,
 import DirectoryPage from "./Directory.jsx";
 import TemplatesPage, { SaveAsTemplateSheet } from "./TemplatesPage.jsx";
 import { checkSurveyAccess } from "./SurveyService.jsx";
+import ToastProvider from "./ToastProvider.jsx";
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -192,7 +193,9 @@ export default function App() {
             onEdit={s=>setModal({type:"edit",data:s})}
             onDelete={s=>setDeleteSurveyTarget(s)}
             onApprove={approveSurvey}
-            onSaveAsTemplate={s=>setSaveAsTemplateTarget(s)}/>
+            onSaveAsTemplate={s=>setSaveAsTemplateTarget(s)}
+            onLifecycleChange={refetch}
+            user={user}/>
         )}
         {tab==="directory" && <DirectoryPage user={user} isAdmin={isAdmin}/>}
         {tab==="templates" && (
@@ -370,6 +373,8 @@ export default function App() {
           </div>
         </div>
       )}
+      <ToastProvider/>
     </div>
   );
 }
+
