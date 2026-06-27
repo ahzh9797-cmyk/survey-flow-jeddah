@@ -231,7 +231,7 @@ function PublicFill({ survey, onBack }) {
             {isOpen && (
               <Card style={{ marginBottom:16 }}>
                 <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:6 }}>
-                  الاسم أو الجهة <span style={{ fontSize:11, fontWeight:400, color:C.muted }}>(اختياري)</span>
+                  الاسم أو الجهة <span style={{ color:C.danger }}>*</span>
                 </label>
                 <input value={respondentLabel} onChange={e=>setRespondentLabel(e.target.value)}
                   placeholder="مثال: إدارة المدرسة الفلانية، أو اسمك"
