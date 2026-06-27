@@ -4,6 +4,7 @@ import { supabase, C, Btn, Card, Tag, Spinner, ErrorBanner, ExportMenu,
   RoleBadge, ViewerNotice, useSchoolCount, useAppSettings, saveSetting } from "./lib.jsx";
 import { SURVEY_TYPES, SURVEY_TYPE_LABELS, SURVEY_STATUS_LABELS,
   SurveyTypeSelector, SurveySettingsPanel } from "./SurveyService.jsx";
+import { AudienceSelector, saveTargeting, loadTargeting, emptyTargeting } from "./TargetingService.jsx";
 
 function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, isAdmin, onDelete, onApprove, onEdit }) {
   const now = new Date();
@@ -116,10 +117,10 @@ function NewSurveyPage({ onSaved, onCancel, user, isAdmin, existingSurvey }) {
   const [title, setTitle] = useState(existingSurvey?.title || "");
   const [desc, setDesc] = useState(existingSurvey?.description || "");
   const [surveyType, setSurveyType] = useState(existingSurvey?.survey_type || "school");
-  // تحديد المدارس المستهدفة (للاستبيانات المدرسية)
-  const [targetMode, setTargetMode] = useState(existingSurvey?.target_stages?.length ? "stages" : "all");
-  const [targetStages, setTargetStages] = useState(existingSurvey?.target_stages || []);
-  // إعدادات الاستبيان الجديدة
+  // New targeting state — replaces old targetMode/targetStages
+  const [targeting, setTargeting] = useState(emptyTargeting());
+  const [targetingLoaded, setTargetingLoaded] = useState(!existingSurvey);
+  // Survey settings
   const [surveySettings, setSurveySettings] = useState({
     response_limit: existingSurvey?.response_limit || "one_per_entity",
     start_date: existingSurvey?.start_date ? new Date(existingSurvey.start_date).toISOString().slice(0,16) : "",
@@ -127,6 +128,25 @@ function NewSurveyPage({ onSaved, onCancel, user, isAdmin, existingSurvey }) {
       ? new Date(existingSurvey.end_date || existingSurvey.expires_at).toISOString().slice(0,16) : "",
     survey_status: existingSurvey?.survey_status || "published",
   });
+
+  // Load existing targeting for edit mode
+  useEffect(() => {
+    if (existingSurvey?.id) {
+      loadTargeting(existingSurvey.id).then(t => {
+        if (t && (t.rules?.length || t.selectedSchools?.length)) {
+          setTargeting(t);
+        } else if (existingSurvey.target_stages?.length) {
+          // Migrate old target_stages to new format
+          setTargeting({
+            rules: existingSurvey.target_stages.map(s => ({ method:'stage', value:s })),
+            selectedSchools: [],
+            excludedSchools: [],
+          });
+        }
+        setTargetingLoaded(true);
+      });
+    }
+  }, [existingSurvey?.id]);
 
   const [qs, setQs] = useState(
     existingSurvey?.questions?.length
@@ -163,13 +183,13 @@ function NewSurveyPage({ onSaved, onCancel, user, isAdmin, existingSurvey }) {
     const surveyPayload = {
       title, description: desc, survey_type: surveyType,
       gate_question_id: null,
-      target_stages: surveyType === "school" && targetMode === "stages" && targetStages.length ? targetStages : null,
+      // keep target_stages for backward compat — set to null for new surveys
+      target_stages: null,
       // new fields
       survey_status: surveySettings.survey_status,
       response_limit: surveySettings.response_limit,
       start_date: surveySettings.start_date ? new Date(surveySettings.start_date).toISOString() : null,
       end_date: surveySettings.end_date ? new Date(surveySettings.end_date).toISOString() : null,
-      // backward compat: keep expires_at in sync with end_date
       expires_at: surveySettings.end_date ? new Date(surveySettings.end_date).toISOString() : null,
     };
 
@@ -217,6 +237,11 @@ function NewSurveyPage({ onSaved, onCancel, user, isAdmin, existingSurvey }) {
       }
     }
 
+    // Save targeting (new system) — only for school surveys
+    if (surveyType === "school" && (targeting.rules?.length || targeting.selectedSchools?.length)) {
+      await saveTargeting(surveyId, targeting);
+    }
+
     setSaving(false);
     logAction({ user, action: isEdit ? "update" : "create", table: "surveys", recordId: surveyId, recordLabel: title });
     onSaved();
@@ -262,52 +287,11 @@ function NewSurveyPage({ onSaved, onCancel, user, isAdmin, existingSurvey }) {
         <SurveySettingsPanel settings={surveySettings} onChange={setSurveySettings}/>
       </Card>
 
-      {surveyType === "school" && (
+      {/* ── AudienceSelector for school surveys ── */}
+      {surveyType === "school" && targetingLoaded && (
         <Card style={{ marginBottom:14 }}>
-          <p style={{ margin:"0 0 10px", fontSize:13, fontWeight:700, color:C.dark }}>🎯 المدارس المستهدفة</p>
-          <div style={{ display:"flex", gap:8, marginBottom:12 }}>
-            {[["all","🏫 جميع المدارس"],["stages","📚 مراحل محددة"]].map(([v,l]) => (
-              <button key={v} onClick={()=>setTargetMode(v)} style={{
-                flex:1, padding:"10px 8px", borderRadius:10, cursor:"pointer",
-                fontFamily:"inherit", fontSize:13, fontWeight:700,
-                border:`2px solid ${targetMode===v?C.primary:C.border}`,
-                background:targetMode===v?C.primaryBg:"#fff",
-                color:targetMode===v?C.primary:C.muted }}>{l}</button>
-            ))}
-          </div>
-          {targetMode === "all" && (
-            <p style={{ margin:0, fontSize:12, color:C.muted }}>سيُرسَل الاستبيان لجميع المدارس</p>
-          )}
-          {targetMode === "stages" && (
-            <div>
-              <p style={{ margin:"0 0 8px", fontSize:12, color:C.muted }}>اختر المراحل المستهدفة:</p>
-              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                {["الابتدائية","المتوسطة","الثانوية"].map(stage => {
-                  const selected = targetStages.includes(stage);
-                  return (
-                    <button key={stage} onClick={()=>{
-                      setTargetStages(p => selected ? p.filter(s=>s!==stage) : [...p,stage]);
-                    }} style={{
-                      padding:"10px 18px", borderRadius:10, cursor:"pointer",
-                      fontFamily:"inherit", fontSize:13, fontWeight:700,
-                      border:`2px solid ${selected?C.primary:C.border}`,
-                      background:selected?C.primaryBg:"#fff",
-                      color:selected?C.primary:C.muted,
-                      boxShadow:selected?`0 2px 8px ${C.primary}30`:"none"
-                    }}>
-                      {selected ? "✓ " : ""}{stage}
-                    </button>
-                  );
-                })}
-              </div>
-[2061 lines total]
-              {targetStages.length > 0 && (
-                <p style={{ margin:"10px 0 0", fontSize:12, color:C.success, fontWeight:700 }}>
-                  ✅ تم تحديد: {targetStages.join(" و")}
-                </p>
-              )}
-            </div>
-          )}
+          <p style={{ margin:"0 0 14px", fontSize:13, fontWeight:700, color:C.dark }}>🎯 المدارس المستهدفة</p>
+          <AudienceSelector entityType="school" value={targeting} onChange={setTargeting}/>
         </Card>
       )}
 
@@ -321,6 +305,12 @@ function NewSurveyPage({ onSaved, onCancel, user, isAdmin, existingSurvey }) {
         <Card style={{ marginBottom:12, background:"#f5eefa", border:"1px solid #7B2D8B40" }}>
           <p style={{ margin:0, fontSize:13, color:"#7B2D8B", fontWeight:700 }}>👤 سؤال رقم الهوية تلقائي</p>
           <p style={{ margin:"4px 0 0", fontSize:12, color:C.muted }}>يُعرض أولاً للتحقق من هوية المشرف عبر رقم هويته، ثم أسئلتك أدناه.</p>
+        </Card>
+      )}
+      {surveyType === "administrator" && (
+        <Card style={{ marginBottom:12, background:"#FFFBEB", border:"1px solid #B7791F40" }}>
+          <p style={{ margin:0, fontSize:13, color:"#B7791F", fontWeight:700 }}>🎓 سؤال رقم الهوية تلقائي</p>
+          <p style={{ margin:"4px 0 0", fontSize:12, color:C.muted }}>يُعرض أولاً للتحقق من هوية الإداري، ثم أسئلتك أدناه.</p>
         </Card>
       )}
       {surveyType === "open" && (
