@@ -7,6 +7,7 @@ import TrackingPage, { OpenSurveyTracking } from "./TrackingPage.jsx";
 import { SurveysList, NewSurveyPage, ShareSheet, LoginPage, AnalyticsPage,
   SchoolsManagementPage, UsersManagementPage, SupervisorsManagementPage,
   AppSettingsPage, AuditLogPage } from "./Management.jsx";
+import DirectoryPage from "./Directory.jsx";
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -87,9 +88,9 @@ export default function App() {
   if (role === null) return <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}><Spinner size={36}/></div>;
 
   const TABS = [
-    {id:"surveys",  i:"📋", l:"الاستبيانات"},
-    {id:"schools",  i:"🏫", l:"المدارس"},
-    {id:"analytics",i:"📊", l:"إحصائيات"},
+    {id:"surveys",   i:"📋", l:"الاستبيانات"},
+    {id:"directory", i:"📁", l:"الدليل"},
+    {id:"analytics", i:"📊", l:"إحصائيات"},
     ...(isAdmin ? [{id:"more",i:"⚙️",l:"المزيد"}] : []),
   ];
 
@@ -148,8 +149,8 @@ export default function App() {
             onDelete={s=>setDeleteSurveyTarget(s)}
             onApprove={approveSurvey}/>
         )}
-        {tab==="analytics" && <AnalyticsPage surveys={surveys} onNavigate={setTab}/>}
-        {tab==="schools" && <SchoolsManagementPage isAdmin={isAdmin} user={user}/>}
+        {tab==="directory" && <DirectoryPage user={user} isAdmin={isAdmin}/>}
+        {tab==="analytics" && <AnalyticsPage surveys={surveys} onNavigate={setTab}/> }
         {tab==="more" && isAdmin && (
           <div style={{ padding:16 }}>
             <h2 style={{ margin:"0 0 16px", fontSize:18, color:C.dark, fontWeight:800 }}>الإعدادات</h2>
@@ -310,3 +311,4 @@ export default function App() {
     </div>
   );
 }
+
