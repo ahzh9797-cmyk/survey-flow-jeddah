@@ -364,11 +364,12 @@ function EntityTable({ config, user, isAdmin }) {
     setLoading(true);
     let all = [], from = 0;
     while (true) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from(config.table)
         .select("*")
-        .order(config.sortBy || config.primaryKey);
-      if (!data?.length) break;
+        .order(config.sortBy || config.primaryKey)
+        .range(from, from + 999);
+      if (error || !data?.length) break;
       all = all.concat(data);
       if (data.length < 1000) break;
       from += 1000;
@@ -379,10 +380,14 @@ function EntityTable({ config, user, isAdmin }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Filtering
   const filtered = useMemo(() => {
     let r = records;
-    if (statusFilter !== "الكل") r = r.filter(x => x.status === statusFilter);
+    if (statusFilter === STATUS_ACTIVE)   r = r.filter(x => !x.status || x.status === STATUS_ACTIVE);
+    if (statusFilter === STATUS_DISABLED) r = r.filter(x => x.status === STATUS_DISABLED);
+    if (config.filterOptions?.includes(statusFilter)) {
+      // فلتر المرحلة للمدارس
+      r = r.filter(x => x[config.stageField || "stage"] === statusFilter);
+    }
     if (search) {
       const q = search.toLowerCase();
       r = r.filter(x => config.searchFields.some(f =>
@@ -390,7 +395,7 @@ function EntityTable({ config, user, isAdmin }) {
       ));
     }
     return r;
-  }, [records, statusFilter, search, config.searchFields]);
+  }, [records, statusFilter, search, config.searchFields, config.filterOptions, config.stageField]);
 
   const paged = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE);
 
@@ -724,6 +729,7 @@ const SCHOOLS_CONFIG = {
   subtitleFields: ["id","stage","district"],
   fieldLabels: { id:"رقم وزاري", stage:"المرحلة", district:"الحي", sector:"القطاع", principal:"المدير" },
   filterOptions: STAGES,
+  stageField: "stage",
   exportSheet: "المدارس",
   exportColumns: [
     {key:"id",          label:"الرقم الوزاري"},
