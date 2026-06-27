@@ -11,6 +11,8 @@ import DirectoryPage from "./Directory.jsx";
 import TemplatesPage, { SaveAsTemplateSheet } from "./TemplatesPage.jsx";
 import { checkSurveyAccess } from "./SurveyService.jsx";
 import ToastProvider from "./ToastProvider.jsx";
+import CommunicationCenter from "./CommunicationCenter.jsx";
+import ReportingCenter from "./ReportingCenter.jsx";
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -135,8 +137,10 @@ export default function App() {
   const TABS = [
     {id:"surveys",   i:"📋", l:"الاستبيانات"},
     {id:"directory", i:"📁", l:"الدليل"},
-    {id:"templates", i:"🗂️", l:"القوالب"},
-    {id:"analytics", i:"📊", l:"إحصائيات"},
+    {id:"templates",      i:"🗂️", l:"القوالب"},
+    {id:"analytics",     i:"📊", l:"إحصائيات"},
+    {id:"communication", i:"📨", l:"الاتصالات"},
+    {id:"reports",       i:"📈", l:"التقارير"},
     ...(isAdmin ? [{id:"more",i:"⚙️",l:"المزيد"}] : []),
   ];
 
@@ -206,6 +210,12 @@ export default function App() {
           />
         )}
         {tab==="analytics" && <AnalyticsPage surveys={surveys} onNavigate={setTab}/> }
+        {tab==="communication" && (
+          <CommunicationCenter surveys={surveys} user={user} isAdmin={isAdmin}/>
+        )}
+        {tab==="reports" && (
+          <ReportingCenter surveys={surveys} user={user} schoolCount={schoolCount}/>
+        )}
         {tab==="more" && isAdmin && (
           <div style={{ padding:16 }}>
             <h2 style={{ margin:"0 0 16px", fontSize:18, color:C.dark, fontWeight:800 }}>الإعدادات</h2>
