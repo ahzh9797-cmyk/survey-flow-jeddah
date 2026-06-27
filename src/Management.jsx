@@ -1991,4 +1991,38 @@ function AuditLogPage() {
             {paged.map((l, i) => {
               const a = ACTION_LABELS[l.action] || { label: l.action, color: C.muted, icon: "•" };
               return (
-                <div key={l.id} style={{ display:"flex", alignItems:"flex-start", gap:10,
+                <div key={l.id} style={{ display:"flex", alignItems:"flex-start", gap:10, padding:"12px 14px",
+                  borderBottom: i < paged.length-1 ? `1px solid ${C.border}` : undefined }}>
+                  <div style={{ width:30, height:30, borderRadius:8, background:a.color+"18", display:"flex",
+                    alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>{a.icon}</div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <p style={{ margin:0, fontSize:13, color:C.dark }}>
+                      <strong>{a.label}</strong> في {TABLE_LABELS[l.table_name] || l.table_name}
+                      {l.record_label && <> — {l.record_label}</>}
+                    </p>
+                    <p style={{ margin:"3px 0 0", fontSize:11, color:C.muted }}>
+                      {l.user_email || "غير معروف"} · {new Date(l.created_at).toLocaleString("ar-SA")}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </Card>
+          {paged.length < filtered.length && (
+            <Btn variant="secondary" full onClick={()=>setPage(p=>p+1)} style={{ marginTop:12 }}>
+              عرض المزيد ({filtered.length - paged.length} متبقي)
+            </Btn>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════════════════════════
+export { SurveysList, NewSurveyPage, ShareSheet, LoginPage, AnalyticsPage,
+  SchoolForm, CsvUploadSheet, DeleteConfirm, SchoolsManagementPage,
+  UsersManagementPage, RoleBadgeStatic, SupervisorsManagementPage,
+  AppSettingsPage, AuditLogPage };
