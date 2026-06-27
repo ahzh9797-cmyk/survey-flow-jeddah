@@ -936,7 +936,7 @@ export default function DirectoryPage({ user, isAdmin }) {
   const TABS = [
     { id:"schools",        label:"🏫 المدارس",   config: SCHOOLS_CONFIG },
     { id:"supervisors",    label:"👤 المشرفون",  config: SUPERVISORS_CONFIG },
-    { id:"administrators", label:"🎓 المديرون",  config: ADMINISTRATORS_CONFIG },
+    { id:"administrators", label:"🎓 الإداريون",  config: ADMINISTRATORS_CONFIG },
   ];
 
   const current = TABS.find(t=>t.id===activeTab);
