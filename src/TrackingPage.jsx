@@ -371,4 +371,3 @@ function TrackingPage({ survey, onBack }) {
 // ═══════════════════════════════════════════════════════
 export { OpenSurveyTracking };
 export default TrackingPage;
-
