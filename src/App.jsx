@@ -8,6 +8,7 @@ import { SurveysList, NewSurveyPage, ShareSheet, LoginPage, AnalyticsPage,
   SchoolsManagementPage, UsersManagementPage, SupervisorsManagementPage,
   AppSettingsPage, AuditLogPage } from "./Management.jsx";
 import DirectoryPage from "./Directory.jsx";
+import { checkSurveyAccess } from "./SurveyService.jsx";
 
 export default function App() {
   const [user, setUser] = useState(null);
