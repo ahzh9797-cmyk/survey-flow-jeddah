@@ -91,7 +91,10 @@ function PublicFill({ survey, onBack }) {
       && ans[survey.gate_question_id] !== undefined
       && ans[survey.gate_question_id] !== survey.gate_required_value;
 
-    setSubmitting(true); setSubmitError("");
+    if (isOpen && !respondentLabel.trim()) {
+  setSubmitError("يرجى إدخال الاسم أو الجهة");
+  return;
+    } setSubmitting(true); setSubmitError("");
     const payload = {
       survey_id: survey.id,
       answers: stoppedAtGate ? { [survey.gate_question_id]: ans[survey.gate_question_id] } : ans,
