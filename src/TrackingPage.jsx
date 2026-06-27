@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase, C, Btn, Card, Tag, Spinner, ErrorBanner, ExportMenu,
-  ensureXLSX, ensurePDF, pdfRTLText, tsStamp, useResponses, logAction } from "./lib.jsx";
+  ensureXLSX, ensurePDF, pdfRTLText, tsStamp, logAction, useResponses } from "./lib.jsx";
+import { SURVEY_TYPE_LABELS } from "./SurveyService.jsx";
 
 function OpenSurveyTracking({ survey, onBack }) {
   const { responses, loading } = useResponses(survey.id);
@@ -87,8 +88,12 @@ function OpenSurveyTracking({ survey, onBack }) {
 
 
 function TrackingPage({ survey, onBack }) {
-  if (survey.survey_type === "open") return <OpenSurveyTracking survey={survey} onBack={onBack}/>;
-
+  // Open, supervisor, and administrator surveys use response-based tracking
+  if (survey.survey_type === "open" ||
+      survey.survey_type === "supervisor" ||
+      survey.survey_type === "administrator") {
+    return <OpenSurveyTracking survey={survey} onBack={onBack}/>;
+  }
   const [allSchools, setAllSchools] = useState([]);
   const [loadingSchools, setLoadingSchools] = useState(true);
   const { responses, loading: loadingResp } = useResponses(survey.id);
