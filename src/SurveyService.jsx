@@ -15,7 +15,7 @@ export const SURVEY_TYPES = {
 export const SURVEY_TYPE_LABELS = {
   school:        "🏫 مدارس",
   supervisor:    "👤 مشرفون",
-  administrator: "🎓 مديرون",
+  administrator: "🎓 الإداريون",
   open:          "🌐 مفتوح",
 };
 
@@ -269,7 +269,7 @@ export function SurveyTypeSelector({ value, onChange }) {
   const types = [
     { v:"school",        i:"🏫", l:"مدارس",    s:"رقم وزاري",    c:C.primary,    bg:C.primaryBg },
     { v:"supervisor",    i:"👤", l:"مشرفون",   s:"رقم هوية",     c:"#7B2D8B",    bg:"#f5eefa" },
-    { v:"administrator", i:"🎓", l:"مديرون",   s:"رقم هوية",     c:"#B7791F",    bg:"#FFFBEB" },
+    { v:"administrator", i:"🎓", l:"الإداريون", s:"رقم هوية",     c:"#B7791F",    bg:"#FFFBEB" },
     { v:"open",          i:"🌐", l:"مفتوح",    s:"بدون تحقق",    c:C.accent,     bg:C.accentLight },
   ];
 
