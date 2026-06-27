@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase, C, Btn, Card, Tag, Spinner, ErrorBanner, ExportMenu,
   ensureXLSX, ensurePDF, pdfRTLText, tsStamp, loadScript, logAction,
   RoleBadge, ViewerNotice, useSchoolCount, useAppSettings, saveSetting } from "./lib.jsx";
+import { SURVEY_TYPES, SURVEY_TYPE_LABELS, SURVEY_STATUS_LABELS,
+  SurveyTypeSelector, SurveySettingsPanel } from "./SurveyService.jsx";
 
 function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, isAdmin, onDelete, onApprove, onEdit }) {
   const now = new Date();
@@ -10,8 +12,38 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
     <div style={{ minHeight:"50vh", display:"flex", alignItems:"center", justifyContent:"center" }}><Spinner size={32}/></div>
   );
 
-  const typeColor = {school:C.primary, supervisor:"#7B2D8B", open:C.accent};
-  const typeLabel = {school:"🏫 مدارس", supervisor:"👤 مشرفون", open:"🌐 مفتوح"};
+  const typeColor = {
+    school:"#006B54", supervisor:"#7B2D8B",
+    administrator:"#B7791F", open:C.accent
+  };
+
+  function getSurveyStatusTag(s) {
+    // Use survey_status (new) if available, fall back to approval_status (old)
+    const surveyStatus = s.survey_status;
+    const approvalStatus = s.approval_status;
+    const endDate = s.end_date || s.expires_at;
+    const isExpired = endDate && new Date(endDate) < now;
+
+    if (isExpired) return <Tag color={C.danger}>⛔ منتهي</Tag>;
+    if (surveyStatus === "closed")   return <Tag color={C.danger}>🔒 مغلق</Tag>;
+    if (surveyStatus === "archived") return <Tag color={C.muted}>📦 مؤرشف</Tag>;
+    if (surveyStatus === "draft" || approvalStatus === "draft") return <Tag color={C.muted}>📝 مسودة</Tag>;
+    if (approvalStatus === "pending_approval") return <Tag color={C.warn}>⏳ بانتظار الاعتماد</Tag>;
+    if (approvalStatus === "rejected") return <Tag color={C.danger}>❌ مرفوض</Tag>;
+    return <Tag color={C.success}>✅ نشط</Tag>;
+  }
+
+  function canShare(s) {
+    const endDate = s.end_date || s.expires_at;
+    const isExpired = endDate && new Date(endDate) < now;
+    const isApproved = s.approval_status === "approved";
+    const status = s.survey_status || "published";
+    return !isExpired && isApproved && status === "published" && isAdmin;
+  }
+
+  function canApprove(s) {
+    return (s.approval_status === "pending_approval" || s.approval_status === "draft") && isAdmin;
+  }
 
   return (
     <div style={{ padding:16 }}>
@@ -29,58 +61,45 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
         </Card>
       )}
       {surveys.map(s => {
-        const isExpired = s.expires_at && new Date(s.expires_at) < now;
-        const expiresTomorrow = s.expires_at && !isExpired &&
-          (new Date(s.expires_at) - now) < 24*60*60*1000;
-        const isPending = s.approval_status === "pending_approval";
-        const isDraft = s.approval_status === "draft";
+        const endDate = s.end_date || s.expires_at;
+        const isExpired = endDate && new Date(endDate) < now;
+        const expiringSoon = endDate && !isExpired && (new Date(endDate)-now) < 24*60*60*1000;
 
         return (
-          <Card key={s.id} style={{ marginBottom:12, opacity: isExpired ? 0.7 : 1 }}>
+          <Card key={s.id} style={{ marginBottom:12, opacity:isExpired?0.75:1 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8, gap:8 }}>
               <h3 style={{ margin:0, fontSize:15, color:C.dark, fontWeight:700, flex:1, lineHeight:1.4 }}>{s.title}</h3>
               <div style={{ display:"flex", gap:4, flexShrink:0, flexWrap:"wrap", justifyContent:"flex-end" }}>
-                <Tag color={typeColor[s.survey_type]||C.primary}>{typeLabel[s.survey_type]||"🏫 مدارس"}</Tag>
-                {isExpired ? <Tag color={C.danger}>⛔ منتهي</Tag>
-                  : isPending ? <Tag color={C.warn}>⏳ بانتظار الاعتماد</Tag>
-                  : isDraft ? <Tag color={C.muted}>📝 مسودة</Tag>
-                  : <Tag color={C.success}>✅ نشط</Tag>}
+                <Tag color={typeColor[s.survey_type]||C.primary}>
+                  {SURVEY_TYPE_LABELS[s.survey_type] || "🏫 مدارس"}
+                </Tag>
+                {getSurveyStatusTag(s)}
               </div>
             </div>
 
-            {expiresTomorrow && (
+            {expiringSoon && (
               <div style={{ background:C.warnBg, border:`1px solid ${C.warn}40`, borderRadius:8, padding:"6px 10px", marginBottom:8 }}>
                 <p style={{ margin:0, fontSize:11, color:C.warn, fontWeight:700 }}>
-                  ⚠️ ينتهي غداً — {new Date(s.expires_at).toLocaleDateString("ar-SA")}
+                  ⚠️ ينتهي غداً — {new Date(endDate).toLocaleDateString("ar-SA")}
                 </p>
               </div>
             )}
-            {isExpired && (
-              <div style={{ background:"#fdf0ee", borderRadius:8, padding:"6px 10px", marginBottom:8 }}>
-                <p style={{ margin:0, fontSize:11, color:C.danger }}>⛔ انتهى في {new Date(s.expires_at).toLocaleDateString("ar-SA")}</p>
-              </div>
-            )}
-            {s.expires_at && !isExpired && !expiresTomorrow && (
-              <p style={{ margin:"0 0 8px", fontSize:11, color:C.muted }}>
-                📅 ينتهي: {new Date(s.expires_at).toLocaleDateString("ar-SA")}
+            {endDate && !isExpired && !expiringSoon && (
+              <p style={{ margin:"0 0 6px", fontSize:11, color:C.muted }}>
+                📅 ينتهي: {new Date(endDate).toLocaleDateString("ar-SA")}
               </p>
+            )}
+            {s.response_limit === "unlimited" && (
+              <p style={{ margin:"0 0 6px", fontSize:11, color:C.muted }}>🔁 ردود غير محدودة</p>
             )}
 
             <p style={{ margin:"0 0 12px", fontSize:12, color:C.muted }}>{s.description}</p>
             <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
               <Btn sm variant="secondary" onClick={()=>onTrack(s)}>📊 متابعة</Btn>
-              {!isPending && !isDraft && !isExpired && isAdmin && (
-                <Btn sm variant="gold" onClick={()=>onShare(s)}>🔗 مشاركة</Btn>
-              )}
-              {(isPending || isDraft) && isAdmin && (
-                <Btn sm variant="primary" onClick={()=>onApprove(s)}>✅ اعتماد ونشر</Btn>
-              )}
-              {isAdmin && (
-                <Btn sm variant="secondary" onClick={()=>onEdit(s)}>✏️ تعديل</Btn>
-              )}
-              {isAdmin && (
-                <Btn sm variant="danger" onClick={()=>onDelete(s)}>🗑️ حذف</Btn>
-              )}
+              {canShare(s) && <Btn sm variant="gold" onClick={()=>onShare(s)}>🔗 مشاركة</Btn>}
+              {canApprove(s) && <Btn sm variant="primary" onClick={()=>onApprove(s)}>✅ اعتماد ونشر</Btn>}
+              {isAdmin && <Btn sm variant="secondary" onClick={()=>onEdit(s)}>✏️ تعديل</Btn>}
+              {isAdmin && <Btn sm variant="danger" onClick={()=>onDelete(s)}>🗑️ حذف</Btn>}
             </div>
           </Card>
         );
@@ -97,12 +116,17 @@ function NewSurveyPage({ onSaved, onCancel, user, isAdmin, existingSurvey }) {
   const [title, setTitle] = useState(existingSurvey?.title || "");
   const [desc, setDesc] = useState(existingSurvey?.description || "");
   const [surveyType, setSurveyType] = useState(existingSurvey?.survey_type || "school");
-  const [expiresAt, setExpiresAt] = useState(
-    existingSurvey?.expires_at ? new Date(existingSurvey.expires_at).toISOString().split("T")[0] : ""
-  );
-  // تحديد المدارس المستهدفة
-  const [targetMode, setTargetMode] = useState(existingSurvey?.target_stages?.length ? "stages" : "all"); // all | stages
+  // تحديد المدارس المستهدفة (للاستبيانات المدرسية)
+  const [targetMode, setTargetMode] = useState(existingSurvey?.target_stages?.length ? "stages" : "all");
   const [targetStages, setTargetStages] = useState(existingSurvey?.target_stages || []);
+  // إعدادات الاستبيان الجديدة
+  const [surveySettings, setSurveySettings] = useState({
+    response_limit: existingSurvey?.response_limit || "one_per_entity",
+    start_date: existingSurvey?.start_date ? new Date(existingSurvey.start_date).toISOString().slice(0,16) : "",
+    end_date: (existingSurvey?.end_date || existingSurvey?.expires_at)
+      ? new Date(existingSurvey.end_date || existingSurvey.expires_at).toISOString().slice(0,16) : "",
+    survey_status: existingSurvey?.survey_status || "published",
+  });
 
   const [qs, setQs] = useState(
     existingSurvey?.questions?.length
@@ -136,24 +160,32 @@ function NewSurveyPage({ onSaved, onCancel, user, isAdmin, existingSurvey }) {
     const approvalStatus = isAdmin ? "approved" : "pending_approval";
     let surveyId = existingSurvey?.id;
 
+    const surveyPayload = {
+      title, description: desc, survey_type: surveyType,
+      gate_question_id: null,
+      target_stages: surveyType === "school" && targetMode === "stages" && targetStages.length ? targetStages : null,
+      // new fields
+      survey_status: surveySettings.survey_status,
+      response_limit: surveySettings.response_limit,
+      start_date: surveySettings.start_date ? new Date(surveySettings.start_date).toISOString() : null,
+      end_date: surveySettings.end_date ? new Date(surveySettings.end_date).toISOString() : null,
+      // backward compat: keep expires_at in sync with end_date
+      expires_at: surveySettings.end_date ? new Date(surveySettings.end_date).toISOString() : null,
+    };
+
     if (isEdit) {
-      const { error: updErr } = await supabase.from("surveys").update({
-        title, description: desc, survey_type: surveyType,
-        expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
-        gate_question_id: null,
-        target_stages: targetMode === "stages" && targetStages.length ? targetStages : null,
-      }).eq("id", surveyId);
+      const { error: updErr } = await supabase.from("surveys")
+        .update(surveyPayload).eq("id", surveyId);
       if (updErr) { setSaving(false); setError("فشل التحديث: " + updErr.message); return; }
       await supabase.from("survey_questions").delete().eq("survey_id", surveyId);
     } else {
       const { data: survey, error: surveyErr } = await supabase
         .from("surveys")
         .insert({
-          title, description: desc, status: "active",
-          survey_type: surveyType, gate_question_id: null,
-          expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
-          approval_status: approvalStatus, created_by: user?.id,
-          target_stages: targetMode === "stages" && targetStages.length ? targetStages : null,
+          ...surveyPayload,
+          status: "active",
+          approval_status: approvalStatus,
+          created_by: user?.id,
         })
         .select().single();
       if (surveyErr) {
@@ -199,28 +231,13 @@ function NewSurveyPage({ onSaved, onCancel, user, isAdmin, existingSurvey }) {
       {!isAdmin && (
         <div style={{ background:C.warnBg, border:`1px solid ${C.warn}40`, borderRadius:10, padding:"10px 14px",
           fontSize:12, color:"#9a5a10", marginBottom:14 }}>
-          ℹ️ سيُحفظ الاستبيان كـ<strong> مسودة بانتظار اعتماد المسؤول</strong> قبل نشره. لن يظهر الرابط لك حتى يعتمده المسؤول.
+          ℹ️ سيُحفظ الاستبيان كـ<strong> مسودة بانتظار اعتماد المسؤول</strong> قبل نشره.
         </div>
       )}
 
+      {/* Reusable type selector from SurveyService */}
       <Card style={{ marginBottom:14 }}>
-        <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:8 }}>نوع الاستبيان</label>
-        <div style={{ display:"flex", gap:6, marginBottom:4, flexWrap:"wrap" }}>
-          {[
-            {v:"school",i:"🏫",l:"خاص بالمدارس",s:"يتطلب رقم وزاري",c:C.primary,bg:C.primaryBg},
-            {v:"supervisor",i:"👤",l:"خاص بالمشرفين",s:"يتطلب رقم هوية",c:"#7B2D8B",bg:"#f5eefa"},
-            {v:"open",i:"🌐",l:"مفتوح",s:"بدون قيود",c:C.accent,bg:C.accentLight},
-          ].map(t => (
-            <button key={t.v} onClick={()=>setSurveyType(t.v)} style={{
-              flex:1, minWidth:90, padding:"10px 6px", borderRadius:10, cursor:"pointer", fontFamily:"inherit",
-              border:`2px solid ${surveyType===t.v?t.c:C.border}`,
-              background:surveyType===t.v?t.bg:"#fff", textAlign:"center" }}>
-              <div style={{ fontSize:18, marginBottom:3 }}>{t.i}</div>
-              <div style={{ fontSize:11.5, fontWeight:700, color:surveyType===t.v?t.c:C.text }}>{t.l}</div>
-              <div style={{ fontSize:10, color:C.muted, marginTop:1 }}>{t.s}</div>
-            </button>
-          ))}
-        </div>
+        <SurveyTypeSelector value={surveyType} onChange={setSurveyType}/>
       </Card>
 
       <Card style={{ marginBottom:14 }}>
@@ -232,20 +249,17 @@ function NewSurveyPage({ onSaved, onCancel, user, isAdmin, existingSurvey }) {
             style={{ width:"100%", padding:"11px 13px", border:`1.5px solid ${C.border}`, borderRadius:10,
               fontSize:14, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", outline:"none" }}/>
         </div>
-        <div style={{ marginBottom:12 }}>
+        <div>
           <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:5 }}>وصف الاستبيان</label>
           <textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={2} placeholder="وصف مختصر"
             style={{ width:"100%", padding:"11px 13px", border:`1.5px solid ${C.border}`, borderRadius:10,
               fontSize:14, fontFamily:"inherit", direction:"rtl", resize:"vertical", boxSizing:"border-box", outline:"none" }}/>
         </div>
-        <div>
-          <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:5 }}>
-            📅 تاريخ انتهاء الاستبيان <span style={{ fontSize:11, fontWeight:400, color:C.muted }}>(اختياري — بعده يُقفل تلقائياً)</span>
-          </label>
-          <input type="date" value={expiresAt} onChange={e=>setExpiresAt(e.target.value)}
-            style={{ width:"100%", padding:"11px 13px", border:`1.5px solid ${C.border}`, borderRadius:10,
-              fontSize:14, fontFamily:"inherit", direction:"ltr", boxSizing:"border-box", outline:"none" }}/>
-        </div>
+      </Card>
+
+      {/* Reusable settings panel from SurveyService */}
+      <Card style={{ marginBottom:14 }}>
+        <SurveySettingsPanel settings={surveySettings} onChange={setSurveySettings}/>
       </Card>
 
       {surveyType === "school" && (
@@ -262,7 +276,7 @@ function NewSurveyPage({ onSaved, onCancel, user, isAdmin, existingSurvey }) {
             ))}
           </div>
           {targetMode === "all" && (
-            <p style={{ margin:0, fontSize:12, color:C.muted }}>سيُرسَل الاستبيان لجميع المدارس الـ {1046}</p>
+            <p style={{ margin:0, fontSize:12, color:C.muted }}>سيُرسَل الاستبيان لجميع المدارس</p>
           )}
           {targetMode === "stages" && (
             <div>
@@ -286,6 +300,7 @@ function NewSurveyPage({ onSaved, onCancel, user, isAdmin, existingSurvey }) {
                   );
                 })}
               </div>
+[2061 lines total]
               {targetStages.length > 0 && (
                 <p style={{ margin:"10px 0 0", fontSize:12, color:C.success, fontWeight:700 }}>
                   ✅ تم تحديد: {targetStages.join(" و")}
