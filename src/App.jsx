@@ -15,6 +15,271 @@ import CommunicationCenter from "./CommunicationCenter.jsx";
 import ReportingCenter from "./ReportingCenter.jsx";
 import ExecutiveDashboard from "./ExecutiveDashboard.jsx";
 
+// ── Premium styles injection ──────────────────────────
+if (typeof document !== "undefined" && !document.getElementById("app-premium-styles")) {
+  const s = document.createElement("style");
+  s.id = "app-premium-styles";
+  s.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { font-family: 'Tajawal','Segoe UI',Tahoma,Arial,sans-serif !important; background:#F0F4F8; margin:0; }
+    .nav-btn { transition: color 0.2s ease, transform 0.15s ease; }
+    .nav-btn:active { transform: scale(0.92); }
+    .nav-icon { transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1), filter 0.2s ease; }
+    .nav-btn.active .nav-icon { transform: scale(1.15) translateY(-2px); }
+    .card-hover { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+    .card-hover:active { transform: scale(0.98); }
+    .modal-action-card { transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease; }
+    .modal-action-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,107,84,0.15) !important; }
+    .modal-action-card:active { transform: scale(0.97); }
+    @keyframes fadeSlideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+    .page-enter { animation: fadeSlideUp 0.3s cubic-bezier(0.22,1,0.36,1) both; }
+    @keyframes spin { to { transform: rotate(360deg) } }
+  `;
+  document.head.appendChild(s);
+}
+
+// ── Design tokens ──────────────────────────────────────
+const T = {
+  emerald900: "#064E3B", emerald800: "#065F46", emerald700: "#047857",
+  emerald600: "#059669", emerald500: "#10B981", emerald100: "#D1FAE5",
+  gold: "#C9A84C", goldLight: "#FEF3C7",
+  slate900: "#0F172A", slate700: "#334155", slate500: "#64748B",
+  slate400: "#94A3B8", slate200: "#E2E8F0", slate100: "#F1F5F9",
+  white: "#FFFFFF", bg: "#F0F4F8",
+  danger: "#DC2626", warn: "#D97706", success: "#059669",
+};
+
+// ── Premium Header ─────────────────────────────────────
+function PremiumHeader({ settings, role, schoolCount, user, onSignOut }) {
+  const now = new Date();
+  const hour = now.getHours();
+  const greeting = hour < 12 ? "صباح الخير" : hour < 17 ? "مساء الخير" : "مساء النور";
+  const dateStr = now.toLocaleDateString("ar-SA", { weekday:"long", day:"numeric", month:"long" });
+
+  return (
+    <div style={{
+      background: `linear-gradient(135deg, ${T.emerald900} 0%, ${T.emerald800} 60%, #083d2e 100%)`,
+      position: "sticky", top: 0, zIndex: 20,
+      boxShadow: "0 4px 24px rgba(6,78,59,0.35)",
+    }}>
+      <div style={{ padding: "14px 16px 0" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 12 }}>
+
+          {/* Logo + name */}
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            {settings.logo_url ? (
+              <img src={settings.logo_url} alt="logo" style={{
+                width:42, height:42, borderRadius:12, objectFit:"contain",
+                background:"rgba(255,255,255,0.12)", padding:4,
+                border:"1px solid rgba(255,255,255,0.15)",
+              }}/>
+            ) : (
+              <div style={{
+                width:42, height:42, borderRadius:12, fontSize:20,
+                background:"rgba(255,255,255,0.12)", border:"1px solid rgba(255,255,255,0.15)",
+                display:"flex", alignItems:"center", justifyContent:"center",
+              }}>📋</div>
+            )}
+            <div>
+              <div style={{ color:"#fff", fontWeight:800, fontSize:15, lineHeight:1.2, letterSpacing:"-0.01em" }}>
+                {settings.app_name || "منظومة الاستبيانات"}
+              </div>
+              <div style={{ color:"rgba(255,255,255,0.55)", fontSize:11, marginTop:2 }}>
+                {settings.app_subtitle || "إدارة التعليم — جدة"} · {schoolCount} مدرسة
+              </div>
+            </div>
+          </div>
+
+          {/* User + logout */}
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <div style={{
+              background:"rgba(255,255,255,0.1)", borderRadius:10,
+              padding:"6px 10px", border:"1px solid rgba(255,255,255,0.15)",
+              display:"flex", alignItems:"center", gap:6,
+            }}>
+              <span style={{ fontSize:11, color:"rgba(255,255,255,0.8)", fontWeight:600 }}>
+                {role === "admin" ? "👑" : "👁️"}
+              </span>
+              <RoleBadge role={role}/>
+            </div>
+            <button onClick={onSignOut} style={{
+              background:"rgba(255,255,255,0.12)", border:"1px solid rgba(255,255,255,0.2)",
+              color:"#fff", borderRadius:10, padding:"8px 14px",
+              fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+              display:"flex", alignItems:"center", gap:5,
+            }}>
+              <span>خروج</span>
+              <span style={{ fontSize:14, opacity:0.8 }}>→</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Greeting bar */}
+        <div style={{
+          background:"rgba(255,255,255,0.07)", borderRadius:"12px 12px 0 0",
+          padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center",
+          border:"1px solid rgba(255,255,255,0.1)", borderBottom:"none",
+        }}>
+          <div>
+            <p style={{ margin:0, fontSize:13, fontWeight:700, color:"#fff" }}>
+              {greeting} 👋
+            </p>
+            <p style={{ margin:"1px 0 0", fontSize:11, color:"rgba(255,255,255,0.5)" }}>
+              {dateStr}
+            </p>
+          </div>
+          <div style={{
+            background: `linear-gradient(135deg, ${T.gold}, #a8883a)`,
+            borderRadius:8, padding:"5px 10px",
+          }}>
+            <p style={{ margin:0, fontSize:10, color:"#fff", fontWeight:700 }}>🏫 {schoolCount} مدرسة</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Wave separator */}
+      <svg viewBox="0 0 375 10" style={{ display:"block", marginBottom:-1 }} preserveAspectRatio="none">
+        <path d="M0,0 C120,10 255,10 375,0 L375,10 L0,10 Z" fill={T.bg}/>
+      </svg>
+    </div>
+  );
+}
+
+// ── Premium Bottom Nav ─────────────────────────────────
+function PremiumNav({ tabs, activeTab, setTab, pendingCount }) {
+  return (
+    <div style={{
+      position:"fixed", bottom:0, left:0, right:0, zIndex:20,
+      paddingBottom:"env(safe-area-inset-bottom)",
+    }}>
+      {/* floating container */}
+      <div style={{
+        margin:"0 10px 10px",
+        background:"rgba(255,255,255,0.95)",
+        backdropFilter:"blur(20px)",
+        WebkitBackdropFilter:"blur(20px)",
+        borderRadius:20,
+        boxShadow:"0 -2px 0 rgba(0,0,0,0.04), 0 8px 32px rgba(0,0,0,0.12)",
+        border:"1px solid rgba(255,255,255,0.8)",
+        display:"flex", overflow:"hidden",
+      }}>
+        {tabs.map(item => {
+          const isActive = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => setTab(item.id)}
+              className={`nav-btn${isActive ? " active" : ""}`}
+              style={{
+                flex:1, padding:"10px 0 8px", border:"none",
+                background: isActive
+                  ? `linear-gradient(180deg, ${T.emerald600}10 0%, transparent 100%)`
+                  : "transparent",
+                cursor:"pointer", display:"flex", flexDirection:"column",
+                alignItems:"center", gap:2, position:"relative",
+                fontFamily:"inherit",
+              }}>
+              {/* active indicator */}
+              {isActive && (
+                <span style={{
+                  position:"absolute", top:0, left:"50%",
+                  transform:"translateX(-50%)",
+                  width:28, height:3,
+                  background:`linear-gradient(90deg, ${T.emerald600}, ${T.emerald500})`,
+                  borderRadius:"0 0 6px 6px",
+                  boxShadow:`0 2px 8px ${T.emerald600}50`,
+                }}/>
+              )}
+
+              <span
+                className="nav-icon"
+                style={{
+                  fontSize:21, position:"relative", lineHeight:1,
+                  filter: isActive ? "none" : "grayscale(30%) opacity(0.7)",
+                }}>
+                {item.i}
+                {item.id === "more" && pendingCount > 0 && (
+                  <span style={{
+                    position:"absolute", top:-5, right:-8,
+                    background:T.danger, color:"#fff",
+                    borderRadius:10, fontSize:8, fontWeight:800,
+                    padding:"1px 4px", minWidth:14, textAlign:"center",
+                    border:"1.5px solid #fff", lineHeight:1.4,
+                  }}>{pendingCount}</span>
+                )}
+              </span>
+              <span style={{
+                fontSize:9, fontWeight: isActive ? 800 : 500,
+                color: isActive ? T.emerald700 : T.slate400,
+                letterSpacing:"0.01em", lineHeight:1,
+              }}>{item.l}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Settings Menu Item ─────────────────────────────────
+function SettingsItem({ icon, title, sub, accent, badge, onClick }) {
+  return (
+    <div onClick={onClick} className="modal-action-card"
+      style={{
+        background:T.white, borderRadius:16, border:`1px solid ${T.slate200}`,
+        padding:"14px 16px", marginBottom:10, cursor:"pointer",
+        display:"flex", alignItems:"center", gap:14,
+        boxShadow:"0 2px 8px rgba(0,0,0,0.05)",
+        borderRight:`4px solid ${accent}`,
+      }}>
+      <div style={{
+        width:46, height:46, background:`${accent}15`, borderRadius:13,
+        display:"flex", alignItems:"center", justifyContent:"center",
+        fontSize:22, flexShrink:0,
+      }}>
+        {icon}
+      </div>
+      <div style={{ flex:1 }}>
+        <p style={{ margin:0, fontSize:14, fontWeight:700, color:T.slate900 }}>{title}</p>
+        <p style={{ margin:"2px 0 0", fontSize:12, color:T.slate500 }}>{sub}</p>
+      </div>
+      {badge && (
+        <span style={{
+          background:T.danger, color:"#fff", borderRadius:20,
+          fontSize:11, fontWeight:800, padding:"3px 10px",
+          boxShadow:"0 2px 8px rgba(220,38,38,0.35)",
+        }}>{badge} 🔔</span>
+      )}
+      <span style={{ color:T.slate400, fontSize:16, flexShrink:0 }}>‹</span>
+    </div>
+  );
+}
+
+// ── Modal overlay wrapper ──────────────────────────────
+function ModalPage({ title, onClose, children }) {
+  return (
+    <div style={{ position:"fixed", inset:0, background:T.bg, zIndex:50, overflowY:"auto" }}>
+      <div style={{
+        background:`linear-gradient(135deg, ${T.emerald800}, ${T.emerald900})`,
+        padding:"14px 16px", display:"flex", alignItems:"center", gap:12,
+        position:"sticky", top:0, zIndex:5,
+        boxShadow:"0 2px 12px rgba(6,78,59,0.3)",
+      }}>
+        <button onClick={onClose} style={{
+          background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.2)",
+          color:"#fff", borderRadius:10, width:36, height:36,
+          display:"flex", alignItems:"center", justifyContent:"center",
+          fontSize:18, cursor:"pointer",
+        }}>←</button>
+        <span style={{ color:"#fff", fontWeight:800, fontSize:15 }}>{title}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ── Main App ───────────────────────────────────────────
 export default function App() {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -28,6 +293,7 @@ export default function App() {
   const [deleteSurveyTarget, setDeleteSurveyTarget] = useState(null);
   const [saveAsTemplateTarget, setSaveAsTemplateTarget] = useState(null);
 
+  // ── All handlers preserved exactly ──────────────────
   async function deleteSurvey(s) {
     await supabase.from("survey_questions").delete().eq("survey_id", s.id);
     await supabase.from("survey_responses").delete().eq("survey_id", s.id);
@@ -43,7 +309,6 @@ export default function App() {
     refetch();
   }
 
-  // check public survey link: ?survey=uuid
   const params = new URLSearchParams(window.location.search);
   const publicSurveyId = params.get("survey");
 
@@ -52,8 +317,8 @@ export default function App() {
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => setUser(session?.user || null));
     return () => sub.subscription.unsubscribe();
   }, []);
+  // ────────────────────────────────────────────────────
 
-  // public survey fill mode — works WITHOUT login
   if (publicSurveyId) {
     const survey = surveys.find(s => s.id === publicSurveyId);
     if (loadingSurveys) return <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}><Spinner size={32}/></div>;
@@ -72,32 +337,33 @@ export default function App() {
   if (modal?.type === "new") {
     if (!modal.choiceMade) {
       return (
-        <div style={{ minHeight:"100vh", background:C.bg, direction:"rtl", display:"flex",
+        <div style={{ minHeight:"100vh", background:T.bg, direction:"rtl", display:"flex",
           flexDirection:"column", alignItems:"center", justifyContent:"center", padding:24 }}>
-          <div style={{ fontSize:40, marginBottom:12 }}>📋</div>
-          <h2 style={{ margin:"0 0 6px", fontSize:18, color:C.dark, fontWeight:800 }}>استبيان جديد</h2>
-          <p style={{ margin:"0 0 28px", fontSize:13, color:C.muted }}>اختر طريقة الإنشاء</p>
+          <div style={{ fontSize:44, marginBottom:14 }}>📋</div>
+          <h2 style={{ margin:"0 0 6px", fontSize:19, color:T.slate900, fontWeight:800 }}>استبيان جديد</h2>
+          <p style={{ margin:"0 0 28px", fontSize:13, color:T.slate500 }}>اختر طريقة الإنشاء</p>
           <div style={{ width:"100%", maxWidth:360, display:"flex", flexDirection:"column", gap:12 }}>
-            <button
-              onClick={()=>setModal({type:"new", choiceMade:true, fromTemplate:null})}
-              style={{ background:C.white, border:`2px solid ${C.primary}`, borderRadius:16,
-                padding:"18px 20px", cursor:"pointer", fontFamily:"inherit", textAlign:"right",
-                boxShadow:"0 2px 12px rgba(0,107,84,0.1)" }}>
-              <div style={{ fontSize:28, marginBottom:6 }}>📝</div>
-              <div style={{ fontSize:15, fontWeight:800, color:C.dark }}>استبيان فارغ</div>
-              <div style={{ fontSize:12, color:C.muted, marginTop:3 }}>ابدأ من الصفر وأضف أسئلتك</div>
+            <button onClick={()=>setModal({type:"new", choiceMade:true, fromTemplate:null})}
+              className="modal-action-card"
+              style={{ background:T.white, border:`2px solid ${T.emerald600}`, borderRadius:18,
+                padding:"20px", cursor:"pointer", fontFamily:"inherit", textAlign:"right",
+                boxShadow:"0 4px 20px rgba(5,150,105,0.15)" }}>
+              <div style={{ fontSize:30, marginBottom:8 }}>📝</div>
+              <div style={{ fontSize:15, fontWeight:800, color:T.slate900 }}>استبيان فارغ</div>
+              <div style={{ fontSize:12, color:T.slate500, marginTop:4 }}>ابدأ من الصفر وأضف أسئلتك</div>
             </button>
-            <button
-              onClick={()=>{ setModal(null); setTab("templates"); }}
-              style={{ background:C.white, border:`2px solid ${C.border}`, borderRadius:16,
-                padding:"18px 20px", cursor:"pointer", fontFamily:"inherit", textAlign:"right" }}>
-              <div style={{ fontSize:28, marginBottom:6 }}>🗂️</div>
-              <div style={{ fontSize:15, fontWeight:800, color:C.dark }}>من قالب</div>
-              <div style={{ fontSize:12, color:C.muted, marginTop:3 }}>اختر قالباً جاهزاً وعدّله</div>
+            <button onClick={()=>{ setModal(null); setTab("templates"); }}
+              className="modal-action-card"
+              style={{ background:T.white, border:`2px solid ${T.slate200}`, borderRadius:18,
+                padding:"20px", cursor:"pointer", fontFamily:"inherit", textAlign:"right",
+                boxShadow:"0 2px 10px rgba(0,0,0,0.06)" }}>
+              <div style={{ fontSize:30, marginBottom:8 }}>🗂️</div>
+              <div style={{ fontSize:15, fontWeight:800, color:T.slate900 }}>من قالب</div>
+              <div style={{ fontSize:12, color:T.slate500, marginTop:4 }}>اختر قالباً جاهزاً وعدّله</div>
             </button>
             <button onClick={()=>setModal(null)}
-              style={{ background:"none", border:"none", color:C.muted, fontSize:13,
-                cursor:"pointer", fontFamily:"inherit", padding:"8px 0", textAlign:"center" }}>
+              style={{ background:"none", border:"none", color:T.slate400, fontSize:13,
+                cursor:"pointer", fontFamily:"inherit", padding:"10px 0", textAlign:"center" }}>
               إلغاء
             </button>
           </div>
@@ -105,26 +371,20 @@ export default function App() {
       );
     }
     return (
-      <div style={{ paddingBottom:80 }}>
-        <NewSurveyPage
-          onSaved={()=>{ refetch(); setModal(null); }}
-          onCancel={()=>setModal(null)}
-          user={user}
-          isAdmin={isAdmin}
+      <div style={{ paddingBottom:100 }}>
+        <NewSurveyPage onSaved={()=>{ refetch(); setModal(null); }} onCancel={()=>setModal(null)}
+          user={user} isAdmin={isAdmin}
           initialQuestions={modal.fromTemplate?.questions}
-          initialSurveyType={modal.fromTemplate?.survey_type}
-        />
+          initialSurveyType={modal.fromTemplate?.survey_type}/>
       </div>
     );
   }
 
   if (modal?.type === "edit") {
     return (
-      <div style={{ paddingBottom:80 }}>
-        <NewSurveyPage
-          existingSurvey={modal.data}
-          onSaved={()=>{ refetch(); setModal(null); }}
-          onCancel={()=>setModal(null)}
+      <div style={{ paddingBottom:100 }}>
+        <NewSurveyPage existingSurvey={modal.data}
+          onSaved={()=>{ refetch(); setModal(null); }} onCancel={()=>setModal(null)}
           user={user} isAdmin={isAdmin}/>
       </div>
     );
@@ -132,64 +392,28 @@ export default function App() {
 
   if (!user) return <LoginPage onLogin={setUser}/>;
 
-  // role still loading (null) — brief spinner to avoid flash of wrong permissions
   if (role === null) return <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}><Spinner size={36}/></div>;
 
   const TABS = [
-    {id:"dashboard", i:"🏠", l:"الرئيسية"},
-    {id:"surveys",   i:"📋", l:"الاستبيانات"},
-    {id:"directory", i:"📁", l:"الدليل"},
-    {id:"templates",      i:"🗂️", l:"القوالب"},
+    {id:"dashboard",     i:"🏠", l:"الرئيسية"},
+    {id:"surveys",       i:"📋", l:"الاستبيانات"},
+    {id:"directory",     i:"📁", l:"الدليل"},
+    {id:"templates",     i:"🗂️", l:"القوالب"},
     {id:"analytics",     i:"📊", l:"إحصائيات"},
     {id:"communication", i:"📨", l:"الاتصالات"},
     {id:"reports",       i:"📈", l:"التقارير"},
-    ...(isAdmin ? [{id:"more",i:"⚙️",l:"المزيد"}] : []),
+    ...(isAdmin ? [{id:"more", i:"⚙️", l:"المزيد"}] : []),
   ];
 
   return (
-    <div style={{ minHeight:"100vh", background:C.bg, direction:"rtl", fontFamily:"'Tajawal','Segoe UI',Tahoma,Arial,sans-serif" }}>
+    <div style={{ minHeight:"100vh", background:T.bg, direction:"rtl",
+      fontFamily:"'Tajawal','Segoe UI',Tahoma,Arial,sans-serif" }}>
 
-      {/* ── الهيدر ── */}
-      <div style={{
-        background:`linear-gradient(135deg, ${C.primary} 0%, ${C.primaryDark} 100%)`,
-        padding:"0 16px", color:"#fff",
-        position:"sticky", top:0, zIndex:10,
-        boxShadow:"0 2px 16px rgba(0,107,84,0.25)"
-      }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", paddingTop:12, paddingBottom:12 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-            {settings.logo_url ? (
-              <img src={settings.logo_url} alt="logo"
-                style={{ width:40, height:40, borderRadius:10, objectFit:"contain",
-                  background:"rgba(255,255,255,0.15)", padding:4, backdropFilter:"blur(4px)" }}/>
-            ) : (
-              <div style={{ width:40, height:40, background:"rgba(255,255,255,0.15)", borderRadius:10,
-                display:"flex", alignItems:"center", justifyContent:"center", fontSize:20,
-                backdropFilter:"blur(4px)", border:"1px solid rgba(255,255,255,0.2)" }}>📋</div>
-            )}
-            <div>
-              <div style={{ fontWeight:800, fontSize:16, display:"flex", alignItems:"center", gap:8, letterSpacing:"-0.01em" }}>
-                {settings.app_name || "منظومة الاستبيانات"}
-                <RoleBadge role={role}/>
-              </div>
-              <div style={{ fontSize:11, opacity:0.75, marginTop:2, fontWeight:500 }}>
-                {settings.app_subtitle || "إدارة التعليم — جدة"} · {schoolCount} مدرسة
-              </div>
-            </div>
-          </div>
-          <button onClick={()=>supabase.auth.signOut()} style={{
-            background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.25)",
-            color:"#fff", borderRadius:10, padding:"8px 16px", fontSize:13, cursor:"pointer",
-            fontFamily:"inherit", fontWeight:600, backdropFilter:"blur(4px)",
-            transition:"background 0.15s"
-          }}>خروج</button>
-        </div>
-        <svg viewBox="0 0 375 12" style={{ display:"block", marginBottom:-1 }} preserveAspectRatio="none">
-          <path d="M0,0 C100,12 275,12 375,0 L375,12 L0,12 Z" fill={C.bg}/>
-        </svg>
-      </div>
+      <PremiumHeader
+        settings={settings} role={role} schoolCount={schoolCount}
+        user={user} onSignOut={()=>supabase.auth.signOut()}/>
 
-      <div style={{ paddingBottom:88 }}>
+      <div style={{ paddingBottom:100 }} className="page-enter">
         {tab==="dashboard" && (
           <ExecutiveDashboard surveys={surveys} schoolCount={schoolCount} onNavigate={setTab} user={user}/>
         )}
@@ -206,181 +430,97 @@ export default function App() {
             onLifecycleChange={refetch}
             user={user}/>
         )}
-        {tab==="directory" && <DirectoryPage user={user} isAdmin={isAdmin}/>}
-        {tab==="templates" && (
-          <TemplatesPage
-            user={user}
-            isAdmin={isAdmin}
-            onUseTemplate={t => setModal({ type:"new", choiceMade:true, fromTemplate:t })}
-          />
+        {tab==="directory"     && <DirectoryPage user={user} isAdmin={isAdmin}/>}
+        {tab==="templates"     && (
+          <TemplatesPage user={user} isAdmin={isAdmin}
+            onUseTemplate={t=>setModal({type:"new", choiceMade:true, fromTemplate:t})}/>
         )}
-        {tab==="analytics" && <AnalyticsPage surveys={surveys} onNavigate={setTab}/> }
-        {tab==="communication" && (
-          <CommunicationCenter surveys={surveys} user={user} isAdmin={isAdmin}/>
-        )}
-        {tab==="reports" && (
-          <ReportingCenter surveys={surveys} user={user} schoolCount={schoolCount}/>
-        )}
+        {tab==="analytics"     && <AnalyticsPage surveys={surveys} onNavigate={setTab}/>}
+        {tab==="communication" && <CommunicationCenter surveys={surveys} user={user} isAdmin={isAdmin}/>}
+        {tab==="reports"       && <ReportingCenter surveys={surveys} user={user} schoolCount={schoolCount}/>}
+
         {tab==="more" && isAdmin && (
           <div style={{ padding:16 }}>
-            <h2 style={{ margin:"0 0 16px", fontSize:18, color:C.dark, fontWeight:800 }}>الإعدادات</h2>
+            {/* Settings header */}
+            <div style={{ marginBottom:20 }}>
+              <h2 style={{ margin:0, fontSize:18, color:T.slate900, fontWeight:800 }}>الإعدادات</h2>
+              <p style={{ margin:"4px 0 0", fontSize:12, color:T.slate500 }}>إدارة النظام والصلاحيات</p>
+            </div>
+
             {[
-              { icon:"👥", title:"إدارة المستخدمين", sub:"الصلاحيات والحسابات", type:"users", accent:C.primary,
-                badge: pendingCount > 0 ? pendingCount : null },
-              { icon:"👤", title:"إدارة المشرفين", sub:"إضافة وإرسال الاستبيانات", type:"supervisors", accent:"#7B2D8B" },
-              { icon:"📜", title:"سجل التدقيق", sub:"كل عمليات النظام", type:"auditlog", accent:C.accent },
-              { icon:"🎨", title:"إعدادات التطبيق", sub:"اللوغو والعناوين", type:"settings", accent:C.primaryLight },
+              { icon:"👥", title:"إدارة المستخدمين", sub:"الصلاحيات والحسابات",        type:"users",    accent:T.emerald700, badge: pendingCount > 0 ? pendingCount : null },
+              { icon:"👤", title:"إدارة المشرفين",   sub:"إضافة وإرسال الاستبيانات",   type:"supervisors", accent:"#7B2D8B" },
+              { icon:"📜", title:"سجل التدقيق",      sub:"كل عمليات النظام",            type:"auditlog", accent:T.gold },
+              { icon:"🎨", title:"إعدادات التطبيق",  sub:"اللوغو والعناوين والإعدادات", type:"settings", accent:"#0284C7" },
             ].map(item => (
-              <div key={item.type} onClick={()=>setModal({type:item.type})}
-                className="card-hover"
-                style={{ background:C.white, borderRadius:16, border:`1px solid ${C.border}`,
-                  padding:"14px 16px", marginBottom:10, cursor:"pointer",
-                  display:"flex", alignItems:"center", gap:14,
-                  boxShadow:"0 2px 8px rgba(0,0,0,0.06)",
-                  borderRight:`4px solid ${item.accent}` }}>
-                <div style={{ width:44, height:44, background:`${item.accent}15`, borderRadius:12,
-                  display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>
-                  {item.icon}
-                </div>
-                <div style={{ flex:1 }}>
-                  <p style={{ margin:0, fontSize:14, fontWeight:700, color:C.dark }}>{item.title}</p>
-                  <p style={{ margin:"2px 0 0", fontSize:12, color:C.muted }}>{item.sub}</p>
-                </div>
-                {item.badge && (
-                  <span style={{ background:C.danger, color:"#fff", borderRadius:20, fontSize:12,
-                    fontWeight:700, padding:"3px 10px", boxShadow:"0 2px 6px rgba(197,48,48,0.4)" }}>
-                    {item.badge} 🔔
-                  </span>
-                )}
-                <span style={{ color:C.subtle, fontSize:18, flexShrink:0 }}>‹</span>
-              </div>
+              <SettingsItem key={item.type} {...item} onClick={()=>setModal({type:item.type})}/>
             ))}
-            <div style={{ background:C.primaryBg, borderRadius:16, padding:16, marginTop:6,
-              border:`1px solid ${C.primary}20` }}>
-              <p style={{ margin:"0 0 8px", fontSize:13, fontWeight:700, color:C.primary }}>📲 تثبيت التطبيق</p>
-              <p style={{ margin:"0 0 6px", fontSize:12, color:C.muted, lineHeight:1.8 }}>
-                <strong>آيفون:</strong> Safari ← زر المشاركة ← "إضافة إلى الشاشة الرئيسية"
+
+            {/* Install card */}
+            <div style={{
+              background:`linear-gradient(135deg, ${T.emerald800}, ${T.emerald900})`,
+              borderRadius:18, padding:18, marginTop:6,
+              border:`1px solid ${T.emerald700}40`,
+            }}>
+              <p style={{ margin:"0 0 10px", fontSize:14, fontWeight:800, color:"#fff" }}>📲 تثبيت التطبيق</p>
+              <p style={{ margin:"0 0 6px", fontSize:12, color:"rgba(255,255,255,0.65)", lineHeight:1.8 }}>
+                <strong style={{color:"#fff"}}>آيفون:</strong> Safari ← زر المشاركة ← "إضافة إلى الشاشة الرئيسية"
               </p>
-              <p style={{ margin:0, fontSize:12, color:C.muted, lineHeight:1.8 }}>
-                <strong>أندرويد:</strong> ستظهر رسالة تثبيت تلقائياً
+              <p style={{ margin:0, fontSize:12, color:"rgba(255,255,255,0.65)", lineHeight:1.8 }}>
+                <strong style={{color:"#fff"}}>أندرويد:</strong> ستظهر رسالة تثبيت تلقائياً
               </p>
             </div>
           </div>
         )}
       </div>
 
-      {/* ── شريط التنقل السفلي ── */}
-      <div style={{
-        position:"fixed", bottom:0, left:0, right:0,
-        background:C.white,
-        borderTop:`1px solid ${C.border}`,
-        display:"flex", zIndex:10,
-        boxShadow:"0 -4px 20px rgba(0,0,0,0.08)",
-        paddingBottom:"env(safe-area-inset-bottom)"
-      }}>
-        {TABS.map(item => (
-          <button key={item.id} onClick={()=>setTab(item.id)} style={{
-            flex:1, padding:"10px 0 8px", border:"none", background:"none", cursor:"pointer",
-            display:"flex", flexDirection:"column", alignItems:"center", gap:3,
-            color: tab===item.id ? C.primary : C.subtle,
-            fontFamily:"inherit", position:"relative",
-            transition:"color 0.15s"
-          }}>
-            {tab===item.id && (
-              <span style={{
-                position:"absolute", top:0, left:"50%", transform:"translateX(-50%)",
-                width:32, height:3, background:C.primary, borderRadius:"0 0 4px 4px"
-              }}/>
-            )}
-            <span style={{
-              fontSize:22,
-              position:"relative",
-              filter: tab===item.id ? "none" : "grayscale(40%)",
-              transform: tab===item.id ? "scale(1.1)" : "scale(1)",
-              transition:"transform 0.15s"
-            }}>
-              {item.i}
-              {item.id==="more" && pendingCount > 0 && (
-                <span style={{
-                  position:"absolute", top:-4, right:-10,
-                  background:C.danger, color:"#fff",
-                  borderRadius:10, fontSize:9, fontWeight:700,
-                  padding:"1px 5px", minWidth:16, textAlign:"center",
-                  border:"2px solid #fff", lineHeight:1.4,
-                  boxShadow:"0 1px 4px rgba(197,48,48,0.5)"
-                }}>{pendingCount}</span>
-              )}
-            </span>
-            <span style={{ fontSize:10, fontWeight:tab===item.id?700:500, letterSpacing:"0.01em" }}>{item.l}</span>
-          </button>
-        ))}
-      </div>
+      {/* Premium bottom nav */}
+      <PremiumNav tabs={TABS} activeTab={tab} setTab={setTab} pendingCount={pendingCount}/>
 
+      {/* ── Modals (logic unchanged) ── */}
       {modal?.type==="share" && <ShareSheet survey={modal.data} onClose={()=>setModal(null)}/>}
 
       {modal?.type==="users" && isAdmin && (
-        <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:50, overflowY:"auto" }}>
-          <div style={{ background:C.primary, padding:"14px 16px", color:"#fff", display:"flex", alignItems:"center", gap:10, position:"sticky", top:0 }}>
-            <button onClick={()=>setModal(null)} style={{ background:"none", border:"none", color:"#fff", fontSize:20, cursor:"pointer" }}>←</button>
-            <span style={{ fontWeight:800, fontSize:15 }}>إدارة المستخدمين</span>
-          </div>
+        <ModalPage title="إدارة المستخدمين" onClose={()=>setModal(null)}>
           <UsersManagementPage currentUser={user}/>
-        </div>
+        </ModalPage>
       )}
-
       {modal?.type==="auditlog" && isAdmin && (
-        <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:50, overflowY:"auto" }}>
-          <div style={{ background:C.primary, padding:"14px 16px", color:"#fff", display:"flex", alignItems:"center", gap:10, position:"sticky", top:0 }}>
-            <button onClick={()=>setModal(null)} style={{ background:"none", border:"none", color:"#fff", fontSize:20, cursor:"pointer" }}>←</button>
-            <span style={{ fontWeight:800, fontSize:15 }}>سجل التدقيق</span>
-          </div>
+        <ModalPage title="سجل التدقيق" onClose={()=>setModal(null)}>
           <AuditLogPage/>
-        </div>
+        </ModalPage>
       )}
-
       {modal?.type==="supervisors" && isAdmin && (
-        <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:50, overflowY:"auto" }}>
-          <div style={{ background:C.primary, padding:"14px 16px", color:"#fff", display:"flex", alignItems:"center", gap:10, position:"sticky", top:0 }}>
-            <button onClick={()=>setModal(null)} style={{ background:"none", border:"none", color:"#fff", fontSize:20, cursor:"pointer" }}>←</button>
-            <span style={{ fontWeight:800, fontSize:15 }}>إدارة المشرفين</span>
-          </div>
+        <ModalPage title="إدارة المشرفين" onClose={()=>setModal(null)}>
           <SupervisorsManagementPage user={user}/>
-        </div>
+        </ModalPage>
       )}
-
       {modal?.type==="settings" && isAdmin && (
-        <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:50, overflowY:"auto" }}>
-          <div style={{ background:C.primary, padding:"14px 16px", color:"#fff", display:"flex", alignItems:"center", gap:10, position:"sticky", top:0 }}>
-            <button onClick={()=>setModal(null)} style={{ background:"none", border:"none", color:"#fff", fontSize:20, cursor:"pointer" }}>←</button>
-            <span style={{ fontWeight:800, fontSize:15 }}>إعدادات التطبيق</span>
-          </div>
+        <ModalPage title="إعدادات التطبيق" onClose={()=>setModal(null)}>
           <AppSettingsPage onSaved={()=>setModal(null)}/>
-        </div>
+        </ModalPage>
       )}
 
       {saveAsTemplateTarget && (
-        <SaveAsTemplateSheet
-          survey={saveAsTemplateTarget}
-          user={user}
-          isAdmin={isAdmin}
-          onSaved={()=>setSaveAsTemplateTarget(null)}
-          onClose={()=>setSaveAsTemplateTarget(null)}
-        />
+        <SaveAsTemplateSheet survey={saveAsTemplateTarget} user={user} isAdmin={isAdmin}
+          onSaved={()=>setSaveAsTemplateTarget(null)} onClose={()=>setSaveAsTemplateTarget(null)}/>
       )}
 
       {deleteSurveyTarget && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:100, display:"flex",
-          alignItems:"center", justifyContent:"center", padding:20, direction:"rtl" }}>
-          <div style={{ background:C.white, borderRadius:16, padding:22, width:"100%", maxWidth:360 }}>
-            <p style={{ textAlign:"center", fontSize:16, fontWeight:700, color:C.dark, margin:"0 0 6px" }}>
-              حذف الاستبيان؟
-            </p>
-            <p style={{ textAlign:"center", color:C.danger, fontSize:13, fontWeight:700, margin:"0 0 6px" }}>
-              {deleteSurveyTarget.title}
-            </p>
-            <p style={{ textAlign:"center", color:C.muted, fontSize:12, margin:"0 0 16px" }}>
-              سيُحذف الاستبيان وجميع إجاباته بشكل نهائي ولا يمكن التراجع.
-            </p>
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:100,
+          display:"flex", alignItems:"center", justifyContent:"center", padding:20, direction:"rtl" }}>
+          <div style={{ background:T.white, borderRadius:20, padding:24, width:"100%", maxWidth:360,
+            boxShadow:"0 24px 64px rgba(0,0,0,0.2)" }}>
+            <div style={{ textAlign:"center", marginBottom:16 }}>
+              <div style={{ fontSize:40, marginBottom:8 }}>🗑️</div>
+              <p style={{ margin:0, fontSize:16, fontWeight:800, color:T.slate900 }}>حذف الاستبيان؟</p>
+              <p style={{ margin:"6px 0 0", fontSize:13, fontWeight:700, color:T.danger }}>
+                {deleteSurveyTarget.title}
+              </p>
+              <p style={{ margin:"8px 0 0", fontSize:12, color:T.slate500, lineHeight:1.6 }}>
+                سيُحذف الاستبيان وجميع إجاباته بشكل نهائي ولا يمكن التراجع.
+              </p>
+            </div>
             <div style={{ display:"flex", gap:10 }}>
               <Btn full variant="secondary" onClick={()=>setDeleteSurveyTarget(null)}>إلغاء</Btn>
               <Btn full variant="danger" onClick={()=>deleteSurvey(deleteSurveyTarget)}>🗑️ حذف نهائياً</Btn>
@@ -388,9 +528,9 @@ export default function App() {
           </div>
         </div>
       )}
+
       <ToastProvider/>
     </div>
   );
 }
-
 
