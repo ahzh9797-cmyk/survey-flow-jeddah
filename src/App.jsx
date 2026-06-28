@@ -13,6 +13,7 @@ import { checkSurveyAccess } from "./SurveyService.jsx";
 import ToastProvider from "./ToastProvider.jsx";
 import CommunicationCenter from "./CommunicationCenter.jsx";
 import ReportingCenter from "./ReportingCenter.jsx";
+import ExecutiveDashboard from "./ExecutiveDashboard.jsx";
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -135,6 +136,7 @@ export default function App() {
   if (role === null) return <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}><Spinner size={36}/></div>;
 
   const TABS = [
+    {id:"dashboard", i:"🏠", l:"الرئيسية"},
     {id:"surveys",   i:"📋", l:"الاستبيانات"},
     {id:"directory", i:"📁", l:"الدليل"},
     {id:"templates",      i:"🗂️", l:"القوالب"},
@@ -188,6 +190,9 @@ export default function App() {
       </div>
 
       <div style={{ paddingBottom:88 }}>
+        {tab==="dashboard" && (
+          <ExecutiveDashboard surveys={surveys} schoolCount={schoolCount} onNavigate={setTab} user={user}/>
+        )}
         {tab==="surveys" && <InstallAppBanner/>}
         {tab==="surveys" && (
           <SurveysList surveys={surveys} loading={loadingSurveys} schoolCount={schoolCount} isAdmin={isAdmin}
