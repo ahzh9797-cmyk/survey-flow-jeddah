@@ -9,6 +9,7 @@ import { genId, deepClone } from "./utils.js";
 import { audit, AUDIT_ACTION_LABELS } from "./AuditService.js";
 import LifecycleActions, { LifecycleBadge } from "./LifecycleActions.jsx";
 import { resolveState, LIFECYCLE_STATE_CONFIG } from "./SurveyLifecycleService.js";
+import LoginPage from "./LoginPage.jsx";
 
 function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, isAdmin, onDelete, onApprove, onEdit, onSaveAsTemplate, onLifecycleChange, user }) {
   const now = new Date();
@@ -451,107 +452,6 @@ function ShareSheet({ survey, onClose }) {
   );
 }
 
-function LoginPage({ onLogin }) {
-  const [mode, setMode] = useState("login");
-  const [email, setEmail] = useState("");
-  const [pass, setPass] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [err, setErr] = useState("");
-  const [info, setInfo] = useState("");
-  const [loading, setLoading] = useState(false);
-  const schoolCount = useSchoolCount();
-
-  function resetMessages() { setErr(""); setInfo(""); }
-
-  async function handleLogin() {
-    resetMessages(); setLoading(true);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
-    if (error) { setLoading(false); setErr("البريد أو كلمة المرور غير صحيحة"); return; }
-    const { data: roleRow } = await supabase.from("user_roles").select("status").eq("user_id", data.user.id).maybeSingle();
-    setLoading(false);
-    if (roleRow?.status === "pending") { setErr("حسابك بانتظار موافقة المدير العام."); await supabase.auth.signOut(); return; }
-    if (roleRow?.status === "rejected") { setErr("تم رفض طلب تسجيلك."); await supabase.auth.signOut(); return; }
-    onLogin(data.user);
-  }
-
-  async function handleSignup() {
-    resetMessages();
-    if (!displayName.trim()) { setErr("الرجاء إدخال الاسم"); return; }
-    if (pass.length < 6) { setErr("كلمة المرور يجب أن تكون 6 أحرف على الأقل"); return; }
-    setLoading(true);
-    const { data, error } = await supabase.auth.signUp({ email, password: pass });
-    if (error) { setLoading(false); setErr(error.message.includes("already") ? "هذا البريد مسجّل مسبقاً" : "فشل إنشاء الحساب"); return; }
-    if (data.user) await supabase.from("user_roles").insert({ user_id: data.user.id, role: "viewer", status: "pending", display_name: displayName.trim() });
-    setLoading(false);
-    setInfo("تم إنشاء حسابك بنجاح. هو الآن بانتظار موافقة المدير العام.");
-    setMode("login"); setPass("");
-  }
-
-  async function handleReset() {
-    resetMessages();
-    if (!email.trim()) { setErr("الرجاء إدخال البريد الإلكتروني أولاً"); return; }
-    setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
-    setLoading(false);
-    if (error) { setErr("تعذّر إرسال رابط إعادة التعيين"); return; }
-    setInfo("تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني");
-  }
-
-  const inputStyle = { width:"100%", padding:"12px 14px", border:`1.5px solid ${C.border}`, borderRadius:10,
-    fontSize:15, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", outline:"none" };
-
-  return (
-    <div style={{ minHeight:"100vh", background:`linear-gradient(160deg,${C.primary} 0%,#083d3d 100%)`,
-      display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:20, direction:"rtl" }}>
-      <div style={{ textAlign:"center", marginBottom:28 }}>
-        <div style={{ width:76, height:76, background:C.accent, borderRadius:20, display:"inline-flex", alignItems:"center",
-          justifyContent:"center", fontSize:36, marginBottom:14, boxShadow:"0 8px 24px rgba(196,154,40,0.4)" }}>📋</div>
-        <h1 style={{ color:"#fff", margin:0, fontSize:24, fontWeight:800 }}>منظومة الاستبيانات</h1>
-        <p style={{ color:"rgba(255,255,255,0.65)", margin:"6px 0 0", fontSize:13 }}>إدارة التعليم — جدة · {schoolCount} مدرسة</p>
-      </div>
-      <div style={{ width:"100%", maxWidth:400, background:C.white, borderRadius:18, padding:24, boxShadow:"0 20px 60px rgba(0,0,0,0.25)" }}>
-        {mode !== "reset" && (
-          <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:20 }}>
-            {[["login","تسجيل الدخول"],["signup","حساب جديد"]].map(([k,l]) => (
-              <button key={k} onClick={()=>{ setMode(k); resetMessages(); }} style={{
-                flex:1, padding:"10px 4px", border:"none", background:"none", cursor:"pointer",
-                fontSize:14, fontFamily:"inherit", fontWeight:mode===k?700:400, color:mode===k?C.primary:C.muted,
-                borderBottom:`2px solid ${mode===k?C.primary:"transparent"}`, marginBottom:-1 }}>{l}</button>
-            ))}
-          </div>
-        )}
-        {mode === "reset" && (
-          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:20 }}>
-            <button onClick={()=>{ setMode("login"); resetMessages(); }} style={{ background:"none", border:"none", color:C.primary, fontSize:18, cursor:"pointer", padding:0 }}>←</button>
-            <h2 style={{ margin:0, fontSize:17, color:C.dark }}>استرجاع كلمة المرور</h2>
-          </div>
-        )}
-        {mode === "signup" && (
-          <div style={{ marginBottom:14 }}>
-            <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:5 }}>الاسم</label>
-            <input value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder="اسمك الكامل" style={inputStyle}/>
-          </div>
-        )}
-        <div style={{ marginBottom:14 }}>
-          <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:5 }}>البريد الإلكتروني</label>
-          <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="admin@moe.sa" style={inputStyle}/>
-        </div>
-        {mode !== "reset" && (
-          <div style={{ marginBottom:14 }}>
-            <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:5 }}>كلمة المرور</label>
-            <input type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••"
-              onKeyDown={e=>e.key==="Enter"&&(mode==="login"?handleLogin():handleSignup())} style={inputStyle}/>
-          </div>
-        )}
-        <ErrorBanner message={err}/>
-        {info && <div style={{ background:C.successBg, border:`1px solid ${C.success}40`, borderRadius:10, padding:"10px 14px", fontSize:13, color:C.success, marginBottom:14, lineHeight:1.7 }}>✅ {info}</div>}
-        {mode === "login" && (<><Btn full onClick={handleLogin} loading={loading}>دخول</Btn><button onClick={()=>{ setMode("reset"); resetMessages(); }} style={{ background:"none", border:"none", color:C.primary, fontSize:12.5, cursor:"pointer", marginTop:14, width:"100%", textAlign:"center", fontFamily:"inherit" }}>نسيت كلمة المرور؟</button></>)}
-        {mode === "signup" && <Btn full onClick={handleSignup} loading={loading}>إنشاء حساب</Btn>}
-        {mode === "reset" && <Btn full onClick={handleReset} loading={loading}>إرسال رابط إعادة التعيين</Btn>}
-      </div>
-    </div>
-  );
-}
 
 const GREEN_API_INSTANCE = "7107658040";
 const GREEN_API_TOKEN = "5057056a62c9475db20433c433349df534e9ee32ba0b47c0a0";
