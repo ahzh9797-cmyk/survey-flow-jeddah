@@ -59,17 +59,6 @@ if (typeof document !== "undefined" && !document.getElementById("surveys-premium
   document.head.appendChild(_s);
 }
 
-const PT = {
-  e900:"#064E3B",e800:"#065F46",e700:"#047857",e600:"#059669",e500:"#10B981",
-  e100:"#D1FAE5",e50:"#ECFDF5",
-  gold:"#C9A84C",goldL:"#FEF3C7",
-  s900:"#0F172A",s700:"#334155",s500:"#64748B",s400:"#94A3B8",
-  s300:"#CBD5E1",s200:"#E2E8F0",s100:"#F1F5F9",s50:"#F8FAFC",
-  white:"#FFFFFF",bg:"#F0F4F8",
-  danger:"#DC2626",dangerBg:"#FEF2F2",warn:"#D97706",warnBg:"#FFFBEB",
-  success:"#059669",successBg:"#ECFDF5",purple:"#7B2D8B",purpleBg:"#F5EEFA",
-  amber:"#B7791F",
-};
 
 
 
@@ -1437,4 +1426,3 @@ export { SurveysList, NewSurveyPage, ShareSheet, LoginPage, AnalyticsPage,
   SchoolForm, CsvUploadSheet, DeleteConfirm, SchoolsManagementPage,
   UsersManagementPage, RoleBadgeStatic, SupervisorsManagementPage,
   AppSettingsPage, AuditLogPage };
-
