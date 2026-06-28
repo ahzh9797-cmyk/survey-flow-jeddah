@@ -1,508 +1,677 @@
 /**
- * ReportingCenter — مركز التقارير الاحترافية
- * Module B2
+ * CommunicationCenter — مركز الاتصالات
+ * Premium UI redesign — logic 100% unchanged
  */
 
-import { useState, useEffect, useMemo, useCallback } from "react";
-import { supabase, C, Btn, Card, Tag, Spinner, ExportMenu, useAppSettings } from "./lib.jsx";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { supabase, C, Btn, Card, Tag, Spinner, ErrorBanner } from "./lib.jsx";
 import { SURVEY_TYPE_LABELS } from "./SurveyService.jsx";
-import { resolveTargetedSchools } from "./TargetingService.jsx";
+import { resolveTargetedSchools, emptyTargeting, loadTargeting } from "./TargetingService.jsx";
 import {
-  fetchSurveyReportData, fetchExecutiveData,
-  computeQuestionStats, computeAudienceStats,
-  exportSurveyExcel, exportSurveyCSV, exportSurveyPDF,
-  exportExecutiveExcel,
-} from "./ReportingService.js";
+  TEMPLATE_CATEGORIES, TEMPLATE_VARIABLES,
+  resolveTemplate, buildTemplateVariables,
+  fetchTemplates, createTemplate, updateTemplate,
+  archiveTemplate, duplicateTemplate,
+  sendCommunication, fetchCommunicationLog, fetchNonRespondents,
+} from "./CommunicationService.js";
+import { NOTIFICATION_CHANNELS } from "./NotificationService.js";
 
-// ═══════════════════════════════════════════════════════
-// مكوّنات مشتركة — قابلة لإعادة الاستخدام
-// ═══════════════════════════════════════════════════════
+// ── Premium styles ──────────────────────────────────────
+if (typeof document !== "undefined" && !document.getElementById("comm-premium-styles")) {
+  const _s = document.createElement("style");
+  _s.id = "comm-premium-styles";
+  _s.textContent = `
+    .comm-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+    .comm-card:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,0,0,0.09) !important; }
+    .comm-btn { transition: all 0.12s ease; }
+    .comm-btn:active { transform: scale(0.95); }
+    .comm-search:focus { border-color: #059669 !important; box-shadow: 0 0 0 3px rgba(5,150,105,0.12) !important; outline: none; }
+    .comm-chip { transition: all 0.15s ease; }
+    @keyframes comm-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+    .comm-in { animation: comm-in 0.2s ease both; }
+    @keyframes spin { to { transform: rotate(360deg) } }
+  `;
+  document.head.appendChild(_s);
+}
 
-export function StatCard({ icon, label, value, color = C.primary, sub }) {
+const CC = {
+  e900:"#064E3B",e800:"#065F46",e700:"#047857",e600:"#059669",e500:"#10B981",
+  e100:"#D1FAE5",e50:"#ECFDF5",
+  gold:"#C9A84C",goldL:"#FEF3C7",
+  s900:"#0F172A",s700:"#334155",s500:"#64748B",s400:"#94A3B8",
+  s300:"#CBD5E1",s200:"#E2E8F0",s100:"#F1F5F9",s50:"#F8FAFC",
+  white:"#FFFFFF",bg:"#F0F4F8",
+  danger:"#DC2626",dangerBg:"#FEF2F2",warn:"#D97706",warnBg:"#FFFBEB",
+  success:"#059669",successBg:"#ECFDF5",purple:"#7B2D8B",purpleBg:"#F5EEFA",
+};
+
+// ── Shared UI ───────────────────────────────────────────
+function StatusBadge({ status }) {
+  const cfg = {
+    sent:    { label:"✅ تم الإرسال", color:CC.success, bg:CC.successBg },
+    partial: { label:"⚠️ جزئي",       color:CC.warn,    bg:CC.warnBg },
+    failed:  { label:"❌ فشل",        color:CC.danger,  bg:CC.dangerBg },
+    active:  { label:"✅ نشط",        color:CC.success, bg:CC.successBg },
+    archived:{ label:"📦 مؤرشف",      color:CC.s400,    bg:CC.s100 },
+  }[status] || { label:status, color:CC.s400, bg:CC.s100 };
   return (
-    <div style={{ background:C.white, borderRadius:16, padding:16, border:`1px solid ${C.border}`,
-      borderTop:`3px solid ${color}`, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", textAlign:"center" }}>
-      <div style={{ fontSize:26, marginBottom:4 }}>{icon}</div>
-      <div style={{ fontSize:24, fontWeight:800, color, lineHeight:1 }}>{value}</div>
-      <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>{label}</div>
-      {sub && <div style={{ fontSize:10, color, marginTop:2, fontWeight:600 }}>{sub}</div>}
+    <span style={{ background:cfg.bg, color:cfg.color, border:`1px solid ${cfg.color}30`,
+      borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>
+      {cfg.label}
+    </span>
+  );
+}
+
+function SectionCard({ title, step, children }) {
+  return (
+    <div className="comm-card" style={{ background:CC.white, borderRadius:18,
+      border:`1px solid ${CC.s200}`, marginBottom:14,
+      boxShadow:"0 2px 8px rgba(0,0,0,0.05)", overflow:"hidden" }}>
+      {title && (
+        <div style={{ padding:"12px 16px 10px", borderBottom:`1px solid ${CC.s100}`,
+          display:"flex", alignItems:"center", gap:10 }}>
+          {step && (
+            <span style={{ background:`linear-gradient(135deg,${CC.e600},${CC.e800})`,
+              color:"#fff", borderRadius:8, width:24, height:24,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              fontSize:12, fontWeight:800, flexShrink:0 }}>{step}</span>
+          )}
+          <p style={{ margin:0, fontSize:14, fontWeight:800, color:CC.s900 }}>{title}</p>
+        </div>
+      )}
+      <div style={{ padding:"14px 16px" }}>{children}</div>
     </div>
   );
 }
 
-export function ProgressBar({ value, max, color = C.primary, label, showPct = true }) {
-  const pct = max ? Math.round(value/max*100) : 0;
+function FilterChip({ label, active, color=CC.e600, bg, onClick }) {
   return (
-    <div style={{ marginBottom:10 }}>
-      {label && (
-        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-          <span style={{ fontSize:13, color:C.dark }}>{label}</span>
-          {showPct && <span style={{ fontSize:12, fontWeight:700, color }}>{pct}%</span>}
-        </div>
-      )}
-      <div style={{ height:10, background:C.border, borderRadius:6, overflow:"hidden" }}>
-        <div style={{ height:"100%", width:`${pct}%`,
-          background:`linear-gradient(90deg,${color},${color}cc)`,
-          borderRadius:6, transition:"width 0.4s" }}/>
-      </div>
-      {!label && showPct && (
-        <div style={{ textAlign:"left", fontSize:11, color:C.muted, marginTop:2 }}>{value}/{max}</div>
-      )}
-    </div>
+    <button onClick={onClick} className="comm-chip" style={{
+      padding:"5px 12px", borderRadius:20, fontSize:11, fontFamily:"inherit",
+      cursor:"pointer", whiteSpace:"nowrap", fontWeight:active?700:500,
+      border:`1.5px solid ${active?color:CC.s200}`,
+      background:active?(bg||`${color}10`):CC.white,
+      color:active?color:CC.s500,
+    }}>{label}</button>
   );
 }
 
-export function FilterPanel({ filters, onChange, surveys = [] }) {
-  function set(k,v) { onChange({...filters,[k]:v}); }
-
-  const inputStyle = { padding:"8px 12px", border:`1.5px solid ${C.border}`, borderRadius:10,
-    fontSize:13, fontFamily:"inherit", background:C.white, color:C.text, cursor:"pointer" };
-
-  return (
-    <Card style={{ marginBottom:14 }}>
-      <p style={{ margin:"0 0 12px", fontSize:13, fontWeight:700, color:C.dark }}>🔍 الفلاتر</p>
-      <div style={{ display:"flex", flexWrap:"wrap", gap:10 }}>
-        <div style={{ flex:1, minWidth:160 }}>
-          <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted, marginBottom:4 }}>الاستبيان</label>
-          <select value={filters.surveyId||""} onChange={e=>set("surveyId",e.target.value)}
-            style={{ ...inputStyle, width:"100%" }}>
-            <option value="">كل الاستبيانات</option>
-            {surveys.map(s=><option key={s.id} value={s.id}>{s.title}</option>)}
-          </select>
-        </div>
-        <div style={{ flex:1, minWidth:130 }}>
-          <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted, marginBottom:4 }}>نوع المستهدف</label>
-          <select value={filters.surveyType||""} onChange={e=>set("surveyType",e.target.value)}
-            style={{ ...inputStyle, width:"100%" }}>
-            <option value="">الكل</option>
-            {Object.entries(SURVEY_TYPE_LABELS).map(([v,l])=><option key={v} value={v}>{l}</option>)}
-          </select>
-        </div>
-        <div style={{ flex:1, minWidth:130 }}>
-          <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted, marginBottom:4 }}>الحالة</label>
-          <select value={filters.status||""} onChange={e=>set("status",e.target.value)}
-            style={{ ...inputStyle, width:"100%" }}>
-            <option value="">الكل</option>
-            <option value="published">✅ منشور</option>
-            <option value="draft">📝 مسودة</option>
-            <option value="closed">🔒 مغلق</option>
-            <option value="archived">📦 مؤرشف</option>
-          </select>
-        </div>
-        <div style={{ flex:1, minWidth:130 }}>
-          <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted, marginBottom:4 }}>من تاريخ</label>
-          <input type="date" value={filters.dateFrom||""} onChange={e=>set("dateFrom",e.target.value)}
-            style={{ ...inputStyle, width:"100%", direction:"ltr" }}/>
-        </div>
-        <div style={{ flex:1, minWidth:130 }}>
-          <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted, marginBottom:4 }}>إلى تاريخ</label>
-          <input type="date" value={filters.dateTo||""} onChange={e=>set("dateTo",e.target.value)}
-            style={{ ...inputStyle, width:"100%", direction:"ltr" }}/>
-        </div>
-      </div>
-      {(filters.surveyId||filters.surveyType||filters.status||filters.dateFrom||filters.dateTo) && (
-        <button onClick={()=>onChange({})} style={{ marginTop:10, background:"none",
-          border:`1px solid ${C.danger}`, borderRadius:20, padding:"4px 12px",
-          fontSize:11, color:C.danger, cursor:"pointer", fontFamily:"inherit" }}>
-          ✕ مسح الفلاتر
-        </button>
-      )}
-    </Card>
-  );
-}
+const iSt = {
+  width:"100%", padding:"11px 13px", border:`1.5px solid ${CC.s200}`,
+  borderRadius:12, fontSize:14, fontFamily:"inherit", direction:"rtl",
+  boxSizing:"border-box", outline:"none", background:CC.white, color:CC.s900,
+  transition:"border-color 0.2s",
+};
 
 // ═══════════════════════════════════════════════════════
-// التقرير التنفيذي
+// TEMPLATE FORM — logic unchanged, premium UI
 // ═══════════════════════════════════════════════════════
-function ExecutiveReport({ surveys, user, schoolCount }) {
-  const [stats,   setStats]   = useState({});
-  const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({});
-  const { settings } = useAppSettings();
+function TemplateForm({ existing, user, onSaved, onCancel }) {
+  // ── All logic unchanged ──
+  const isEdit = !!existing;
+  const [title,    setTitle]    = useState(existing?.title    || "");
+  const [subject,  setSubject]  = useState(existing?.subject  || "");
+  const [body,     setBody]     = useState(existing?.body     || "");
+  const [category, setCategory] = useState(existing?.category || "reminder");
+  const [saving,   setSaving]   = useState(false);
+  const [error,    setError]    = useState("");
 
-  useEffect(() => {
-    setLoading(true);
-    fetchExecutiveData(surveys).then(s=>{ setStats(s); setLoading(false); });
-  }, [surveys]);
-
-  const filtered = useMemo(() => {
-    let list = surveys;
-    if (filters.surveyType) list = list.filter(s=>s.survey_type===filters.surveyType);
-    if (filters.status)     list = list.filter(s=>(s.survey_status||"published")===filters.status);
-    if (filters.dateFrom)   list = list.filter(s=>s.created_at && new Date(s.created_at)>=new Date(filters.dateFrom));
-    if (filters.dateTo)     list = list.filter(s=>s.created_at && new Date(s.created_at)<=new Date(filters.dateTo+"T23:59"));
-    return list;
-  }, [surveys, filters]);
-
-  const totalResponses = filtered.reduce((a,s)=>a+(stats[s.id]||0), 0);
-  const activeSurveys  = filtered.filter(s=>(s.survey_status||"published")==="published").length;
-  const avgPct = schoolCount && filtered.length
-    ? Math.round(totalResponses / filtered.length / schoolCount * 100) : 0;
-
-  if (loading) return <div style={{ textAlign:"center", padding:40 }}><Spinner size={28}/></div>;
-
-  return (
-    <div>
-      <FilterPanel filters={filters} onChange={setFilters} surveys={surveys}/>
-
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:12, marginBottom:20 }}>
-        <StatCard icon="📋" label="إجمالي الاستبيانات" value={filtered.length} color={C.primary}/>
-        <StatCard icon="✅" label="استبيانات نشطة" value={activeSurveys} color={C.success}/>
-        <StatCard icon="📝" label="إجمالي الردود" value={totalResponses} color={C.accent}/>
-        <StatCard icon="📊" label="متوسط الاستجابة" value={`${avgPct}%`} color="#7B2D8B"/>
-      </div>
-
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-        <p style={{ margin:0, fontSize:13, color:C.muted }}>{filtered.length} استبيان</p>
-        <ExportMenu options={[
-          { key:"xlsx", icon:"📊", label:"تصدير Excel",
-            action:()=>exportExecutiveExcel({surveys:filtered, stats, schoolCount, user, settings}) },
-        ]}/>
-      </div>
-
-      {filtered.map(s => {
-        const count = stats[s.id]||0;
-        const pct   = schoolCount ? Math.round(count/schoolCount*100) : 0;
-        const state = s.survey_status || "published";
-        const stateConfig = {
-          published:{color:C.success,label:"✅ نشط"},
-          draft:{color:C.muted,label:"📝 مسودة"},
-          closed:{color:C.danger,label:"🔒 مغلق"},
-          archived:{color:C.muted,label:"📦 مؤرشف"},
-          paused:{color:C.warn,label:"⏸️ موقوف"},
-        }[state]||{color:C.muted,label:state};
-
-        return (
-          <Card key={s.id} style={{ marginBottom:12 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
-              <div style={{ flex:1 }}>
-                <p style={{ margin:0, fontSize:14, fontWeight:700, color:C.dark }}>{s.title}</p>
-                <p style={{ margin:"2px 0 0", fontSize:11, color:C.muted }}>
-                  {SURVEY_TYPE_LABELS[s.survey_type]||"—"} ·
-                  {s.created_at ? new Date(s.created_at).toLocaleDateString("ar-SA") : "—"}
-                </p>
-              </div>
-              <span style={{ background:`${stateConfig.color}15`, color:stateConfig.color,
-                border:`1px solid ${stateConfig.color}40`, borderRadius:20,
-                padding:"3px 10px", fontSize:11, fontWeight:700, flexShrink:0 }}>
-                {stateConfig.label}
-              </span>
-            </div>
-            <ProgressBar value={count} max={schoolCount} color={C.primary}
-              label={`${count} من ${schoolCount} مدرسة`}/>
-          </Card>
-        );
-      })}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════
-// تقرير استبيان محدد
-// ═══════════════════════════════════════════════════════
-function SurveyDetailReport({ surveys, user }) {
-  const [selectedId, setSelectedId] = useState("");
-  const [data,       setData]       = useState(null);
-  const [allSchools, setAllSchools] = useState([]);
-  const [loading,    setLoading]    = useState(false);
-  const [exporting,  setExporting]  = useState(false);
-  const { settings } = useAppSettings();
-
-  // جلب المدارس مرة واحدة
-  useEffect(() => {
-    async function load() {
-      let all=[], from=0;
-      while(true) {
-        const{data}=await supabase.from("survey_schools")
-          .select("id,name,stage,sector,district,principal,phone").range(from,from+999);
-        if(!data?.length) break; all=all.concat(data);
-        if(data.length<1000) break; from+=1000;
-      }
-      setAllSchools(all);
-    }
-    load();
-  }, []);
-
-  async function loadReport(surveyId) {
-    if (!surveyId) return;
-    setLoading(true);
-    const reportData = await fetchSurveyReportData(surveyId);
-    setData(reportData);
-    setLoading(false);
+  async function save() {
+    if (!title.trim() || !body.trim()) { setError("العنوان والنص حقلان إلزاميان"); return; }
+    setSaving(true); setError("");
+    const payload = { title:title.trim(), subject:subject.trim()||null, body:body.trim(), category };
+    const { error:err } = isEdit
+      ? await updateTemplate(existing.id, payload, user)
+      : await createTemplate(payload, user);
+    setSaving(false);
+    if (err) { setError("فشل الحفظ: "+err.message); return; }
+    onSaved();
   }
-
-  useEffect(() => { loadReport(selectedId); }, [selectedId]);
-
-  const qStats     = useMemo(() => data ? computeQuestionStats(data.questions, data.responses) : [], [data]);
-  const audStats   = useMemo(() => data ? computeAudienceStats(data.responses, allSchools) : {byStage:{},bySector:{},byDistrict:{}}, [data, allSchools]);
-  const respondedIds = useMemo(() => new Set(data?.responses?.map(r=>r.school_id).filter(Boolean)||[]), [data]);
-
-  async function handleExport(format) {
-    if (!data) return;
-    setExporting(true);
-    try {
-      const params = { survey:data.survey, responses:data.responses, questions:data.questions, allSchools, user, settings };
-      if (format==="xlsx") await exportSurveyExcel(params);
-      if (format==="csv")  await exportSurveyCSV(params);
-      if (format==="pdf")  await exportSurveyPDF(params);
-    } finally { setExporting(false); }
-  }
+  // ── End unchanged logic ──
 
   return (
-    <div>
-      <Card style={{ marginBottom:14 }}>
-        <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:8 }}>
-          اختر الاستبيان
-        </label>
-        <select value={selectedId} onChange={e=>setSelectedId(e.target.value)}
-          style={{ width:"100%", padding:"11px 13px", border:`1.5px solid ${C.border}`,
-            borderRadius:10, fontSize:14, fontFamily:"inherit", background:C.white, direction:"rtl" }}>
-          <option value="">— اختر استبياناً —</option>
-          {surveys.map(s=><option key={s.id} value={s.id}>{s.title}</option>)}
-        </select>
-      </Card>
-
-      {loading && <div style={{ textAlign:"center", padding:40 }}><Spinner size={28}/></div>}
-
-      {data && !loading && (
-        <>
-          {/* رأس التقرير */}
-          <Card style={{ marginBottom:14, background:C.primaryBg, border:`1px solid ${C.primary}30` }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-              <div>
-                <p style={{ margin:0, fontSize:16, fontWeight:800, color:C.dark }}>{data.survey.title}</p>
-                <p style={{ margin:"4px 0 0", fontSize:12, color:C.muted }}>
-                  {SURVEY_TYPE_LABELS[data.survey.survey_type]||"—"} ·
-                  {data.survey.created_at ? new Date(data.survey.created_at).toLocaleDateString("ar-SA") : "—"}
-                </p>
-              </div>
-              <ExportMenu options={[
-                {key:"xlsx", icon:"📊", label:"Excel", action:()=>handleExport("xlsx")},
-                {key:"pdf",  icon:"📄", label:"PDF",   action:()=>handleExport("pdf")},
-                {key:"csv",  icon:"📋", label:"CSV",   action:()=>handleExport("csv")},
-              ]}/>
-            </div>
-          </Card>
-
-          {/* الإحصاءات الرئيسية */}
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:16 }}>
-            <StatCard icon="📝" label="عدد الردود" value={data.responses.length} color={C.success}/>
-            <StatCard icon="❓" label="عدد الأسئلة" value={data.questions.length} color={C.primary}/>
-            <StatCard icon="📊" label="نسبة الاستجابة"
-              value={allSchools.length ? `${Math.round(data.responses.length/allSchools.length*100)}%` : "—"}
-              color={C.accent}/>
-            <StatCard icon="⏳" label="لم تستجب"
-              value={allSchools.length - respondedIds.size}
-              color={C.danger}/>
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200,
+      display:"flex", alignItems:"flex-end", direction:"rtl" }}
+      onClick={e=>{ if(e.target===e.currentTarget) onCancel(); }}>
+      <div style={{ width:"100%", background:CC.white, borderRadius:"24px 24px 0 0",
+        maxHeight:"90vh", overflowY:"auto", paddingBottom:32 }}>
+        <div style={{ display:"flex", justifyContent:"center", padding:"14px 0 4px" }}>
+          <div style={{ width:44, height:4, background:CC.s200, borderRadius:4 }}/>
+        </div>
+        <div style={{ padding:"8px 18px 0" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+            <h3 style={{ margin:0, fontSize:17, color:CC.s900, fontWeight:800 }}>
+              {isEdit ? "تعديل القالب" : "قالب جديد"}
+            </h3>
+            <button onClick={onCancel} style={{ background:CC.s100, border:"none", borderRadius:10,
+              width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center",
+              fontSize:16, cursor:"pointer", color:CC.s500 }}>✕</button>
           </div>
 
-          {/* حسب المرحلة */}
-          {Object.keys(audStats.byStage).length > 0 && (
-            <Card style={{ marginBottom:14 }}>
-              <p style={{ margin:"0 0 12px", fontSize:13, fontWeight:700, color:C.dark }}>
-                الاستجابة حسب المرحلة
-              </p>
-              {Object.entries(audStats.byStage).map(([stage,d]) => (
-                <ProgressBar key={stage}
-                  value={d.responded} max={d.total}
-                  label={`${stage} (${d.responded}/${d.total})`}/>
+          <div style={{ marginBottom:12 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:700, color:CC.s700, marginBottom:6 }}>
+              اسم القالب <span style={{color:CC.danger}}>*</span>
+            </label>
+            <input value={title} onChange={e=>setTitle(e.target.value)} style={iSt}/>
+          </div>
+
+          <div style={{ marginBottom:12 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:700, color:CC.s700, marginBottom:6 }}>الفئة</label>
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+              {Object.values(TEMPLATE_CATEGORIES).map(cat => (
+                <button key={cat.id} onClick={()=>setCategory(cat.id)} className="comm-chip" style={{
+                  padding:"7px 12px", borderRadius:20, fontSize:12, fontFamily:"inherit", cursor:"pointer",
+                  border:`1.5px solid ${category===cat.id?CC.e600:CC.s200}`,
+                  background:category===cat.id?CC.e50:CC.white,
+                  color:category===cat.id?CC.e700:CC.s500,
+                  fontWeight:category===cat.id?700:400,
+                }}>{cat.icon} {cat.label}</button>
               ))}
-            </Card>
-          )}
+            </div>
+          </div>
 
-          {/* حسب القطاع */}
-          {Object.keys(audStats.bySector).length > 0 && (
-            <Card style={{ marginBottom:14 }}>
-              <p style={{ margin:"0 0 12px", fontSize:13, fontWeight:700, color:C.dark }}>
-                الاستجابة حسب القطاع
-              </p>
-              {Object.entries(audStats.bySector).map(([sec,d]) => (
-                <ProgressBar key={sec}
-                  value={d.responded} max={d.total}
-                  color="#7B2D8B"
-                  label={`${sec} (${d.responded}/${d.total})`}/>
-              ))}
-            </Card>
-          )}
+          <div style={{ marginBottom:12 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:700, color:CC.s700, marginBottom:6 }}>موضوع الرسالة</label>
+            <input value={subject} onChange={e=>setSubject(e.target.value)}
+              placeholder="يُستخدم في البريد الإلكتروني مستقبلاً" style={iSt}/>
+          </div>
 
-          {/* إحصاءات الأسئلة */}
-          {qStats.filter(q=>q.type==="select"||q.type==="rating").map(q => (
-            <Card key={q.id} style={{ marginBottom:12 }}>
-              <p style={{ margin:"0 0 8px", fontSize:13, fontWeight:700, color:C.dark }}>
-                {q.label}
-                <span style={{ fontSize:11, fontWeight:400, color:C.muted, marginRight:6 }}>
-                  ({q.responseCount} إجابة)
-                </span>
-              </p>
-              {q.type==="select" && q.distribution && (
-                <div>
-                  {Object.entries(q.distribution)
-                    .sort((a,b)=>b[1]-a[1])
-                    .map(([opt,cnt]) => (
-                      <ProgressBar key={opt}
-                        value={cnt} max={q.responseCount}
-                        color={C.accent}
-                        label={opt}/>
-                    ))}
-                </div>
-              )}
-              {q.type==="rating" && (
-                <div>
-                  <p style={{ fontSize:20, fontWeight:800, color:C.accent, margin:"0 0 8px" }}>
-                    ⭐ {q.average} / 5
-                  </p>
-                  {q.distribution && Object.entries(q.distribution)
-                    .sort((a,b)=>Number(b[0])-Number(a[0]))
-                    .map(([stars,cnt]) => (
-                      <ProgressBar key={stars}
-                        value={cnt} max={q.responseCount}
-                        color={C.accent}
-                        label={`${"★".repeat(Number(stars))} (${cnt})`}/>
-                    ))}
-                </div>
-              )}
-            </Card>
-          ))}
-
-          {/* جدول المدارس غير المستجيبة */}
-          {allSchools.filter(s=>!respondedIds.has(s.id)).length > 0 && (
-            <Card style={{ marginBottom:14 }}>
-              <p style={{ margin:"0 0 10px", fontSize:13, fontWeight:700, color:C.danger }}>
-                ⏳ المدارس غير المستجيبة ({allSchools.filter(s=>!respondedIds.has(s.id)).length})
-              </p>
-              <div style={{ maxHeight:240, overflowY:"auto" }}>
-                {allSchools.filter(s=>!respondedIds.has(s.id)).slice(0,50).map(s => (
-                  <div key={s.id} style={{ display:"flex", justifyContent:"space-between",
-                    padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
-                    <div>
-                      <p style={{ margin:0, fontSize:12, fontWeight:600, color:C.dark }}>{s.name}</p>
-                      <p style={{ margin:0, fontSize:10, color:C.muted }}>{s.stage||"—"} · {s.sector||"—"}</p>
-                    </div>
-                    <p style={{ margin:0, fontSize:11, color:C.muted, alignSelf:"center" }}>
-                      {s.phone ? "📱" : "—"}
-                    </p>
-                  </div>
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:700, color:CC.s700, marginBottom:6 }}>
+              نص الرسالة <span style={{color:CC.danger}}>*</span>
+            </label>
+            <textarea value={body} onChange={e=>setBody(e.target.value)} rows={7}
+              placeholder="اكتب نص الرسالة..."
+              style={{ ...iSt, resize:"vertical" }}/>
+            <div style={{ background:CC.s50, borderRadius:10, padding:"10px 12px", marginTop:8,
+              border:`1px solid ${CC.s100}` }}>
+              <p style={{ margin:"0 0 6px", fontSize:11, fontWeight:700, color:CC.s500 }}>المتغيرات المتاحة:</p>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                {TEMPLATE_VARIABLES.map(v => (
+                  <button key={v.key} onClick={()=>setBody(b=>b+v.key)} className="comm-btn" style={{
+                    background:CC.e50, border:`1px solid ${CC.e100}`, borderRadius:6,
+                    padding:"3px 8px", fontSize:10, color:CC.e700,
+                    cursor:"pointer", fontFamily:"monospace", fontWeight:600,
+                  }}>{v.key}</button>
                 ))}
-                {allSchools.filter(s=>!respondedIds.has(s.id)).length > 50 && (
-                  <p style={{ textAlign:"center", fontSize:11, color:C.muted, padding:"8px 0", margin:0 }}>
-                    ...و{allSchools.filter(s=>!respondedIds.has(s.id)).length-50} مدرسة أخرى
-                  </p>
-                )}
               </div>
-            </Card>
-          )}
-        </>
-      )}
+            </div>
+          </div>
+
+          {error && <div style={{ background:CC.dangerBg, border:"1px solid #FECACA", borderRadius:12,
+            padding:"10px 14px", fontSize:13, color:CC.danger, marginBottom:12,
+            display:"flex", gap:8 }}><span>⚠️</span>{error}</div>}
+
+          <button onClick={save} disabled={saving} style={{
+            width:"100%", padding:"14px",
+            background:saving?`${CC.e600}70`:`linear-gradient(135deg,${CC.e600},${CC.e800})`,
+            color:"#fff", border:"none", borderRadius:14, fontSize:14, fontWeight:800,
+            cursor:saving?"not-allowed":"pointer", fontFamily:"inherit",
+            boxShadow:saving?"none":`0 4px 14px ${CC.e600}40`,
+          }}>{saving?"جاري الحفظ...":"💾 حفظ القالب"}</button>
+        </div>
+      </div>
     </div>
   );
 }
 
 // ═══════════════════════════════════════════════════════
-// تقرير الجمهور
+// TEMPLATES LIBRARY — logic unchanged, premium UI
 // ═══════════════════════════════════════════════════════
-function AudienceReport({ surveys, user }) {
-  const [allSchools, setAllSchools] = useState([]);
+function TemplatesLibrary({ user, isAdmin, onUseTemplate }) {
+  const [templates,  setTemplates]  = useState([]);
   const [loading,    setLoading]    = useState(true);
-  const [filters,    setFilters]    = useState({});
+  const [formTarget, setFormTarget] = useState(null);
+  const [filterCat,  setFilterCat]  = useState("all");
 
-  useEffect(() => {
-    async function load() {
-      let all=[], from=0;
-      while(true) {
-        const{data}=await supabase.from("survey_schools")
-          .select("id,name,stage,sector,district,status").range(from,from+999);
-        if(!data?.length) break; all=all.concat(data);
-        if(data.length<1000) break; from+=1000;
-      }
-      setAllSchools(all); setLoading(false);
-    }
-    load();
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data } = await fetchTemplates();
+    setTemplates(data);
+    setLoading(false);
   }, []);
+  useEffect(() => { load(); }, [load]);
 
-  const stages    = useMemo(()=>[...new Set(allSchools.map(s=>s.stage).filter(Boolean))].sort(),[allSchools]);
-  const sectors   = useMemo(()=>[...new Set(allSchools.map(s=>s.sector).filter(Boolean))].sort(),[allSchools]);
-  const districts = useMemo(()=>[...new Set(allSchools.map(s=>s.district).filter(Boolean))].sort(),[allSchools]);
+  const filtered = useMemo(() => {
+    if (filterCat === "all")      return templates.filter(t=>t.status==="active");
+    if (filterCat === "archived") return templates.filter(t=>t.status==="archived");
+    return templates.filter(t=>t.status==="active" && t.category===filterCat);
+  }, [templates, filterCat]);
 
-  const byStage    = useMemo(()=>stages.map(st=>({ name:st, count:allSchools.filter(s=>s.stage===st).length })),[allSchools,stages]);
-  const bySector   = useMemo(()=>sectors.map(sec=>({ name:sec, count:allSchools.filter(s=>s.sector===sec).length })),[allSchools,sectors]);
-  const byDistrict = useMemo(()=>districts.map(d=>({ name:d, count:allSchools.filter(s=>s.district===d).length })).sort((a,b)=>b.count-a.count),[allSchools,districts]);
-
-  if (loading) return <div style={{ textAlign:"center", padding:40 }}><Spinner size={28}/></div>;
+  async function handleArchive(t)   { await archiveTemplate(t.id, user); load(); }
+  async function handleDuplicate(t) { await duplicateTemplate(t, user);  load(); }
 
   return (
     <div>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:16 }}>
-        <StatCard icon="🏫" label="إجمالي المدارس" value={allSchools.length} color={C.primary}/>
-        <StatCard icon="🎓" label="المراحل الدراسية" value={stages.length} color="#7B2D8B"/>
-        <StatCard icon="🗺️" label="القطاعات" value={sectors.length} color={C.accent}/>
-        <StatCard icon="📍" label="الأحياء" value={districts.length} color="#B7791F"/>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+        <div>
+          <p style={{ margin:0, fontSize:14, fontWeight:800, color:CC.s900 }}>قوالب الرسائل</p>
+          <p style={{ margin:"1px 0 0", fontSize:11, color:CC.s500 }}>{filtered.length} قالب</p>
+        </div>
+        {isAdmin && (
+          <button onClick={()=>setFormTarget({})} className="comm-btn" style={{
+            background:`linear-gradient(135deg,${CC.e600},${CC.e800})`,
+            color:"#fff", border:"none", borderRadius:10, padding:"8px 14px",
+            fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+            boxShadow:`0 3px 10px ${CC.e600}35`,
+          }}>＋ قالب جديد</button>
+        )}
       </div>
 
-      {byStage.length > 0 && (
-        <Card style={{ marginBottom:14 }}>
-          <p style={{ margin:"0 0 12px", fontSize:13, fontWeight:700, color:C.dark }}>حسب المرحلة</p>
-          {byStage.map(({name,count}) => (
-            <ProgressBar key={name} value={count} max={allSchools.length} label={`${name} (${count})`}/>
-          ))}
-        </Card>
-      )}
+      <div style={{ display:"flex", gap:5, marginBottom:14, overflowX:"auto", paddingBottom:4 }}>
+        {[{id:"all",label:"الكل",icon:"📋"},{id:"archived",label:"المؤرشفة",icon:"📦"},
+          ...Object.values(TEMPLATE_CATEGORIES)].map(cat => (
+          <FilterChip key={cat.id} label={`${cat.icon} ${cat.label}`}
+            active={filterCat===cat.id} onClick={()=>setFilterCat(cat.id)}/>
+        ))}
+      </div>
 
-      {bySector.length > 0 && (
-        <Card style={{ marginBottom:14 }}>
-          <p style={{ margin:"0 0 12px", fontSize:13, fontWeight:700, color:C.dark }}>حسب القطاع</p>
-          {bySector.map(({name,count}) => (
-            <ProgressBar key={name} value={count} max={allSchools.length} color="#7B2D8B"
-              label={`${name} (${count})`}/>
-          ))}
-        </Card>
-      )}
+      {loading ? (
+        <div style={{ textAlign:"center", padding:"30px" }}>
+          <div style={{ width:32, height:32, borderRadius:"50%", border:`3px solid ${CC.e100}`,
+            borderTopColor:CC.e600, animation:"spin 0.7s linear infinite", margin:"0 auto" }}/>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign:"center", padding:"30px", background:CC.white,
+          borderRadius:16, border:`1px solid ${CC.s200}` }}>
+          <div style={{ fontSize:36, marginBottom:8 }}>📋</div>
+          <p style={{ margin:0, color:CC.s500, fontSize:13 }}>لا توجد قوالب في هذه الفئة</p>
+        </div>
+      ) : filtered.map((t, idx) => (
+        <div key={t.id} className="comm-card comm-in" style={{
+          background:CC.white, borderRadius:16, border:`1px solid ${CC.s200}`,
+          marginBottom:10, overflow:"hidden", opacity:t.status==="archived"?0.7:1,
+          boxShadow:"0 2px 6px rgba(0,0,0,0.04)",
+          animationDelay:`${idx*0.04}s`,
+          borderRight:`3px solid ${CC.e500}`,
+        }}>
+          <div style={{ padding:"14px 16px" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+              <div style={{ flex:1 }}>
+                <p style={{ margin:0, fontSize:14, fontWeight:700, color:CC.s900 }}>{t.title}</p>
+                <p style={{ margin:"2px 0 0", fontSize:11, color:CC.s400 }}>
+                  {TEMPLATE_CATEGORIES[t.category?.toUpperCase()]?.icon}{" "}
+                  {TEMPLATE_CATEGORIES[t.category?.toUpperCase()]?.label || t.category}
+                </p>
+              </div>
+              <StatusBadge status={t.status}/>
+            </div>
+            <p style={{ margin:"0 0 12px", fontSize:12, color:CC.s500, lineHeight:1.6 }}>
+              {t.body.slice(0,100)}{t.body.length>100?"...":""}
+            </p>
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+              {t.status==="active" && onUseTemplate && (
+                <button onClick={()=>onUseTemplate(t)} className="comm-btn" style={{
+                  background:`linear-gradient(135deg,${CC.e600},${CC.e800})`,
+                  color:"#fff", border:"none", borderRadius:9, padding:"7px 14px",
+                  fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+                }}>📨 استخدام</button>
+              )}
+              {isAdmin && t.status==="active" && (
+                <button onClick={()=>setFormTarget(t)} className="comm-btn" style={{
+                  background:CC.s100, color:CC.s700, border:"none", borderRadius:9,
+                  padding:"7px 12px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit",
+                }}>✏️ تعديل</button>
+              )}
+              {isAdmin && (
+                <button onClick={()=>handleDuplicate(t)} className="comm-btn" style={{
+                  background:CC.s100, color:CC.s700, border:"none", borderRadius:9,
+                  padding:"7px 12px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit",
+                }}>📄 نسخ</button>
+              )}
+              {isAdmin && t.status==="active" && (
+                <button onClick={()=>handleArchive(t)} className="comm-btn" style={{
+                  background:CC.dangerBg, color:CC.danger, border:"none", borderRadius:9,
+                  padding:"7px 12px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit",
+                }}>📦 أرشفة</button>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
 
-      {byDistrict.length > 0 && (
-        <Card style={{ marginBottom:14 }}>
-          <p style={{ margin:"0 0 12px", fontSize:13, fontWeight:700, color:C.dark }}>
-            أبرز الأحياء (أعلى 15)
-          </p>
-          {byDistrict.slice(0,15).map(({name,count}) => (
-            <ProgressBar key={name} value={count} max={allSchools.length} color="#B7791F"
-              label={`${name} (${count})`}/>
-          ))}
-        </Card>
+      {formTarget && (
+        <TemplateForm existing={formTarget.id?formTarget:null} user={user}
+          onSaved={()=>{ setFormTarget(null); load(); }} onCancel={()=>setFormTarget(null)}/>
       )}
     </div>
   );
 }
 
 // ═══════════════════════════════════════════════════════
-// الصفحة الرئيسية
+// SEND MESSAGE PANEL — logic unchanged, premium UI
 // ═══════════════════════════════════════════════════════
-export default function ReportingCenter({ surveys, user, schoolCount }) {
-  const [activeTab, setActiveTab] = useState("executive");
+function SendMessagePanel({ surveys, user, isAdmin }) {
+  // ── All state & logic unchanged ──
+  const [selectedSurvey,   setSelectedSurvey]   = useState(null);
+  const [allSchools,       setAllSchools]        = useState([]);
+  const [nonRespondents,   setNonRespondents]    = useState([]);
+  const [recipients,       setRecipients]        = useState([]);
+  const [loadingSchools,   setLoadingSchools]    = useState(false);
+  const [messageBody,      setMessageBody]       = useState("");
+  const [templates,        setTemplates]         = useState([]);
+  const [selectedTemplate, setSelectedTemplate]  = useState(null);
+  const [sending,          setSending]           = useState(false);
+  const [result,           setResult]            = useState(null);
+  const [error,            setError]             = useState("");
+  const [stageFilter,   setStageFilter]   = useState("الكل");
+  const [sectorFilter,  setSectorFilter]  = useState("الكل");
+
+  useEffect(() => {
+    async function loadSchools() {
+      setLoadingSchools(true);
+      let all=[], from=0;
+      while(true) {
+        const{data}=await supabase.from("survey_schools").select("id,name,stage,sector,district,principal,phone").range(from,from+999);
+        if(!data?.length) break;
+        all=all.concat(data); if(data.length<1000) break; from+=1000;
+      }
+      setAllSchools(all); setLoadingSchools(false);
+    }
+    loadSchools();
+    fetchTemplates().then(({data})=>setTemplates(data.filter(t=>t.status==="active")));
+  }, []);
+
+  useEffect(() => {
+    if (!selectedSurvey || !allSchools.length) return;
+    fetchNonRespondents(selectedSurvey, allSchools).then(nr => {
+      setNonRespondents(nr);
+      setRecipients(nr);
+    });
+  }, [selectedSurvey, allSchools]);
+
+  const filteredRecipients = useMemo(() => {
+    let list = nonRespondents;
+    if (stageFilter  !== "الكل") list = list.filter(s=>s.stage===stageFilter);
+    if (sectorFilter !== "الكل") list = list.filter(s=>s.sector===sectorFilter);
+    return list;
+  }, [nonRespondents, stageFilter, sectorFilter]);
+
+  const stages  = useMemo(()=>[...new Set(nonRespondents.map(s=>s.stage).filter(Boolean))].sort(),  [nonRespondents]);
+  const sectors = useMemo(()=>[...new Set(nonRespondents.map(s=>s.sector).filter(Boolean))].sort(), [nonRespondents]);
+
+  function applyTemplate(template) {
+    if (!selectedSurvey) return;
+    const vars = buildTemplateVariables(selectedSurvey);
+    setMessageBody(resolveTemplate(template.body, vars));
+    setSelectedTemplate(template);
+  }
+
+  async function handleSend() {
+    if (!selectedSurvey)    { setError("اختر استبياناً أولاً"); return; }
+    if (!recipients.length) { setError("لا يوجد مستلمون محددون"); return; }
+    if (!messageBody.trim()){ setError("اكتب نص الرسالة"); return; }
+    setSending(true); setError(""); setResult(null);
+    const res = await sendCommunication({
+      survey: selectedSurvey, recipients: recipients.filter(r=>r.phone),
+      messageBody: messageBody.trim(), channel: NOTIFICATION_CHANNELS.WHATSAPP,
+      user, templateId: selectedTemplate?.id || null,
+    });
+    setSending(false); setResult(res);
+  }
+  // ── End unchanged logic ──
+
+  return (
+    <div>
+      {/* Survey selector */}
+      <SectionCard title="اختر الاستبيان" step="1">
+        <select value={selectedSurvey?.id||""} onChange={e=>{
+          const s=surveys.find(sv=>sv.id===e.target.value)||null;
+          setSelectedSurvey(s); setResult(null); setStageFilter("الكل"); setSectorFilter("الكل");
+        }} style={{ ...iSt, background:CC.white }}>
+          <option value="">— اختر استبياناً —</option>
+          {surveys.filter(s=>s.approval_status==="approved").map(s=>(
+            <option key={s.id} value={s.id}>{s.title}</option>
+          ))}
+        </select>
+      </SectionCard>
+
+      {/* Recipients */}
+      {selectedSurvey && (
+        <SectionCard step="2" title={
+          `المستلمون غير المستجيبين · ${filteredRecipients.length} بجوال من ${nonRespondents.length}`
+        }>
+          {loadingSchools ? (
+            <div style={{ textAlign:"center", padding:16 }}>
+              <div style={{ width:28, height:28, borderRadius:"50%", border:`3px solid ${CC.e100}`,
+                borderTopColor:CC.e600, animation:"spin 0.7s linear infinite", margin:"0 auto" }}/>
+            </div>
+          ) : (
+            <>
+              {stages.length > 0 && (
+                <div style={{ marginBottom:10 }}>
+                  <p style={{ margin:"0 0 6px", fontSize:11, fontWeight:700, color:CC.s500 }}>المرحلة:</p>
+                  <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                    {["الكل",...stages].map(s=>(
+                      <FilterChip key={s} label={s} active={stageFilter===s}
+                        onClick={()=>{ setStageFilter(s); setRecipients([]); }}/>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {sectors.length > 0 && (
+                <div style={{ marginBottom:10 }}>
+                  <p style={{ margin:"0 0 6px", fontSize:11, fontWeight:700, color:CC.s500 }}>القطاع:</p>
+                  <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                    {["الكل",...sectors].map(s=>(
+                      <FilterChip key={s} label={s} active={sectorFilter===s}
+                        color={CC.purple} onClick={()=>{ setSectorFilter(s); setRecipients([]); }}/>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+                <button onClick={()=>setRecipients(filteredRecipients)} className="comm-btn" style={{
+                  background:CC.e50, color:CC.e700, border:`1px solid ${CC.e100}`,
+                  borderRadius:10, padding:"8px 14px", fontSize:12, fontWeight:700,
+                  cursor:"pointer", fontFamily:"inherit",
+                }}>✓ تحديد الكل ({filteredRecipients.length})</button>
+                <button onClick={()=>setRecipients([])} className="comm-btn" style={{
+                  background:CC.s100, color:CC.s700, border:"none",
+                  borderRadius:10, padding:"8px 14px", fontSize:12, fontWeight:600,
+                  cursor:"pointer", fontFamily:"inherit",
+                }}>إلغاء الكل</button>
+              </div>
+              <div style={{ background:CC.e50, borderRadius:10, padding:"10px 14px",
+                border:`1px solid ${CC.e100}` }}>
+                <p style={{ margin:0, fontSize:12, color:CC.e700, fontWeight:700 }}>
+                  📱 سيتم الإرسال لـ <strong>{recipients.filter(r=>r.phone).length}</strong> مدرسة لديها رقم جوال
+                </p>
+              </div>
+            </>
+          )}
+        </SectionCard>
+      )}
+
+      {/* Message */}
+      {selectedSurvey && (
+        <SectionCard step="3" title="اختر قالباً أو اكتب رسالة">
+          {templates.length > 0 && (
+            <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:12 }}>
+              {templates.map(t=>(
+                <button key={t.id} onClick={()=>applyTemplate(t)} className="comm-chip" style={{
+                  padding:"6px 12px", borderRadius:20, fontSize:11, fontFamily:"inherit",
+                  cursor:"pointer",
+                  border:`1.5px solid ${selectedTemplate?.id===t.id?CC.e600:CC.s200}`,
+                  background:selectedTemplate?.id===t.id?CC.e50:CC.white,
+                  color:selectedTemplate?.id===t.id?CC.e700:CC.s500,
+                  fontWeight:selectedTemplate?.id===t.id?700:400,
+                }}>
+                  {TEMPLATE_CATEGORIES[t.category?.toUpperCase()]?.icon||"📋"} {t.title}
+                </button>
+              ))}
+            </div>
+          )}
+          <textarea value={messageBody} onChange={e=>setMessageBody(e.target.value)} rows={6}
+            placeholder="اكتب نص الرسالة هنا..."
+            style={{ ...iSt, resize:"vertical" }}
+            onFocus={e=>{e.target.style.borderColor=CC.e600;e.target.style.boxShadow=`0 0 0 3px rgba(5,150,105,0.12)`;}}
+            onBlur={e=>{e.target.style.borderColor=CC.s200;e.target.style.boxShadow="none";}}/>
+        </SectionCard>
+      )}
+
+      {error && <div style={{ background:CC.dangerBg, border:"1px solid #FECACA", borderRadius:12,
+        padding:"10px 14px", fontSize:13, color:CC.danger, marginBottom:12,
+        display:"flex", gap:8 }}><span>⚠️</span>{error}</div>}
+
+      {result && (
+        <div style={{ background:result.sent>0?CC.successBg:CC.dangerBg,
+          border:`1px solid ${result.sent>0?CC.success+"40":"#FECACA"}`,
+          borderRadius:14, padding:16, marginBottom:14 }}>
+          <p style={{ margin:"0 0 4px", fontSize:14, fontWeight:800,
+            color:result.sent>0?CC.success:CC.danger }}>
+            {result.sent>0 ? "✅ تم الإرسال بنجاح" : "❌ فشل الإرسال"}
+          </p>
+          <p style={{ margin:0, fontSize:12, color:CC.s500 }}>
+            أُرسل: {result.sent} · فشل: {result.failed} · تجاوز: {result.skipped}
+          </p>
+        </div>
+      )}
+
+      {selectedSurvey && (
+        <button onClick={handleSend} disabled={sending||!messageBody.trim()||!recipients.length}
+          style={{
+            width:"100%", padding:"14px",
+            background:(sending||!messageBody.trim()||!recipients.length)
+              ?`${CC.e600}50`:`linear-gradient(135deg,${CC.e600},${CC.e800})`,
+            color:"#fff", border:"none", borderRadius:14, fontSize:14, fontWeight:800,
+            cursor:(sending||!messageBody.trim()||!recipients.length)?"not-allowed":"pointer",
+            fontFamily:"inherit",
+            boxShadow:(sending||!messageBody.trim()||!recipients.length)?"none":`0 4px 16px ${CC.e600}40`,
+            display:"flex", alignItems:"center", justifyContent:"center", gap:10,
+          }}>
+          {sending ? (
+            <><div style={{ width:18, height:18, borderRadius:"50%",
+              border:"2px solid rgba(255,255,255,0.3)", borderTopColor:"#fff",
+              animation:"spin 0.7s linear infinite" }}/>جاري الإرسال...</>
+          ) : `📱 إرسال لـ ${recipients.filter(r=>r.phone).length} مدرسة`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// COMMUNICATION HISTORY — logic unchanged, premium UI
+// ═══════════════════════════════════════════════════════
+function CommunicationHistory({ surveys }) {
+  const [logs,    setLogs]    = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search,  setSearch]  = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    fetchCommunicationLog({ limit:200 }).then(({data})=>{ setLogs(data); setLoading(false); });
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return logs;
+    const q = search.toLowerCase();
+    return logs.filter(l =>
+      (l.surveys?.title||"").toLowerCase().includes(q) ||
+      (l.sent_by_email||"").toLowerCase().includes(q)
+    );
+  }, [logs, search]);
+
+  const CHANNEL_LABELS = {
+    whatsapp:"📱 واتساب", email:"📧 بريد", sms:"💬 رسالة نصية", in_app:"🔔 إشعار"
+  };
+
+  return (
+    <div>
+      {/* Search */}
+      <div style={{ position:"relative", marginBottom:14 }}>
+        <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:15, pointerEvents:"none" }}>🔍</span>
+        <input className="comm-search" value={search} onChange={e=>setSearch(e.target.value)}
+          placeholder="ابحث بعنوان الاستبيان أو المرسل..."
+          style={{ ...iSt, padding:"11px 42px 11px 14px" }}/>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign:"center", padding:"30px" }}>
+          <div style={{ width:32, height:32, borderRadius:"50%", border:`3px solid ${CC.e100}`,
+            borderTopColor:CC.e600, animation:"spin 0.7s linear infinite", margin:"0 auto" }}/>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign:"center", padding:"30px", background:CC.white,
+          borderRadius:16, border:`1px solid ${CC.s200}` }}>
+          <div style={{ fontSize:36, marginBottom:8 }}>📜</div>
+          <p style={{ margin:0, color:CC.s500, fontSize:13 }}>لا يوجد سجل اتصالات بعد</p>
+        </div>
+      ) : (
+        <div style={{ background:CC.white, borderRadius:18, border:`1px solid ${CC.s200}`,
+          overflow:"hidden", boxShadow:"0 2px 8px rgba(0,0,0,0.05)" }}>
+          {filtered.map((l, i) => (
+            <div key={l.id} style={{ padding:"12px 16px",
+              borderBottom:i<filtered.length-1?`1px solid ${CC.s100}`:"none",
+              transition:"background 0.1s" }}
+              onMouseEnter={e=>e.currentTarget.style.background=CC.s50}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4 }}>
+                <p style={{ margin:0, fontSize:13, fontWeight:700, color:CC.s900, flex:1 }}>
+                  {l.surveys?.title || "استبيان محذوف"}
+                </p>
+                <StatusBadge status={l.status}/>
+              </div>
+              <p style={{ margin:"3px 0 2px", fontSize:11, color:CC.s500 }}>
+                {CHANNEL_LABELS[l.delivery_method]||l.delivery_method} ·{" "}
+                {l.recipient_count} مستلم ·{" "}
+                {l.sent_by_email||"غير معروف"}
+              </p>
+              <p style={{ margin:0, fontSize:10, color:CC.s400 }}>
+                {new Date(l.sent_at).toLocaleString("ar-SA")}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// MAIN — logic unchanged, premium tab bar
+// ═══════════════════════════════════════════════════════
+export default function CommunicationCenter({ surveys, user, isAdmin }) {
+  const [activeTab, setActiveTab] = useState("send");
 
   const TABS = [
-    { id:"executive",  label:"📊 تنفيذي",     component:<ExecutiveReport surveys={surveys} user={user} schoolCount={schoolCount}/> },
-    { id:"survey",     label:"📋 استبيان",     component:<SurveyDetailReport surveys={surveys} user={user}/> },
-    { id:"audience",   label:"👥 الجمهور",    component:<AudienceReport surveys={surveys} user={user}/> },
+    { id:"send",      label:"📨 إرسال"  },
+    { id:"templates", label:"📋 القوالب" },
+    { id:"history",   label:"📜 السجل"  },
   ];
 
   return (
     <div style={{ padding:16, direction:"rtl" }}>
-      <h2 style={{ margin:"0 0 4px", fontSize:18, color:C.dark, fontWeight:800 }}>مركز التقارير</h2>
-      <p style={{ margin:"0 0 16px", fontSize:12, color:C.muted }}>تقارير احترافية قابلة للتصدير</p>
-
-      <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:16 }}>
-        {TABS.map(tab => (
-          <button key={tab.id} onClick={()=>setActiveTab(tab.id)} style={{
-            flex:1, padding:"10px 4px", border:"none", background:"none", cursor:"pointer",
-            fontSize:12, fontFamily:"inherit", fontWeight:activeTab===tab.id?700:400,
-            color:activeTab===tab.id?C.primary:C.muted,
-            borderBottom:`2px solid ${activeTab===tab.id?C.primary:"transparent"}`,
-            marginBottom:-1 }}>
-            {tab.label}
-          </button>
-        ))}
+      {/* Header */}
+      <div style={{ marginBottom:16 }}>
+        <h2 style={{ margin:0, fontSize:18, color:CC.s900, fontWeight:800 }}>مركز الاتصالات</h2>
+        <p style={{ margin:"2px 0 0", fontSize:12, color:CC.s500 }}>إدارة الرسائل والتذكيرات</p>
       </div>
 
-      {TABS.find(t=>t.id===activeTab)?.component}
+      {/* Premium tab bar */}
+      <div style={{ display:"flex", background:CC.s100, borderRadius:14,
+        padding:4, marginBottom:16, gap:2 }}>
+        {TABS.map(tab => {
+          const isActive = activeTab===tab.id;
+          return (
+            <button key={tab.id} onClick={()=>setActiveTab(tab.id)} style={{
+              flex:1, padding:"9px 8px", border:"none",
+              background:isActive?CC.white:"transparent",
+              cursor:"pointer", fontFamily:"inherit", fontSize:12,
+              fontWeight:isActive?700:500,
+              color:isActive?CC.e700:CC.s500,
+              borderRadius:10,
+              boxShadow:isActive?"0 1px 4px rgba(0,0,0,0.08)":"none",
+              transition:"all 0.15s",
+            }}>{tab.label}</button>
+          );
+        })}
+      </div>
+
+      {activeTab==="send"      && <SendMessagePanel surveys={surveys} user={user} isAdmin={isAdmin}/>}
+      {activeTab==="templates" && <TemplatesLibrary user={user} isAdmin={isAdmin} onUseTemplate={null}/>}
+      {activeTab==="history"   && <CommunicationHistory surveys={surveys}/>}
     </div>
   );
 }
