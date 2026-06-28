@@ -44,20 +44,6 @@ const PT = {
 
 
 // ── Premium UI styles ──────────────────────────────────
-if (typeof document !== "undefined" && !document.getElementById("surveys-premium-styles")) {
-  const _s = document.createElement("style");
-  _s.id = "surveys-premium-styles";
-  _s.textContent = `
-    .survey-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
-    .survey-card:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(0,0,0,0.10) !important; }
-    .survey-card:active { transform: scale(0.99); }
-    .search-input:focus { border-color: #059669 !important; box-shadow: 0 0 0 3px rgba(5,150,105,0.12) !important; outline: none; }
-    .filter-chip { transition: all 0.15s ease; }
-    @keyframes card-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
-    .card-in { animation: card-in 0.2s ease both; }
-  `;
-  document.head.appendChild(_s);
-}
 
 
 
@@ -1215,19 +1201,22 @@ function SupervisorsManagementPage({ user }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════
+// APP SETTINGS PAGE — Premium UI
+// ═══════════════════════════════════════════════════════
 function AppSettingsPage({ onSaved }) {
   const { settings, reload } = useAppSettings();
-  const [logoUrl, setLogoUrl] = useState("");
-  const [appName, setAppName] = useState("");
-  const [appSubtitle, setAppSubtitle] = useState("");
-  const [defaultSurveyType, setDefaultSurveyType] = useState("school");
+  const [logoUrl,            setLogoUrl]            = useState("");
+  const [appName,            setAppName]            = useState("");
+  const [appSubtitle,        setAppSubtitle]        = useState("");
+  const [defaultSurveyType,  setDefaultSurveyType]  = useState("school");
   const [defaultReminderMsg, setDefaultReminderMsg] = useState("");
-  const [reportHeader, setReportHeader] = useState("");
-  const [reportFooter, setReportFooter] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [info, setInfo] = useState("");
-  const [error, setError] = useState("");
+  const [reportHeader,       setReportHeader]       = useState("");
+  const [reportFooter,       setReportFooter]       = useState("");
+  const [uploading,          setUploading]          = useState(false);
+  const [saving,             setSaving]             = useState(false);
+  const [info,               setInfo]               = useState("");
+  const [error,              setError]              = useState("");
 
   useEffect(() => {
     setLogoUrl(settings.logo_url || "");
@@ -1264,73 +1253,137 @@ function AppSettingsPage({ onSaved }) {
     if(onSaved) onSaved();
   }
 
-  const inputStyle={width:"100%",padding:"11px 13px",border:`1.5px solid ${C.border}`,borderRadius:10,fontSize:14,fontFamily:"inherit",direction:"rtl",boxSizing:"border-box",outline:"none"};
+  const iSt = {
+    width:"100%", padding:"12px 14px",
+    border:`1.5px solid ${PT.s200}`, borderRadius:12,
+    fontSize:14, fontFamily:"inherit", direction:"rtl",
+    boxSizing:"border-box", outline:"none", background:PT.white,
+    color:PT.s900, transition:"border-color 0.2s",
+  };
+  const lSt = { display:"block", fontSize:12, fontWeight:700, color:PT.s700, marginBottom:6 };
+
+  function SettingSection({ icon, title, children }) {
+    return (
+      <div style={{ background:PT.white, borderRadius:18, border:`1px solid ${PT.s200}`,
+        overflow:"hidden", marginBottom:14, boxShadow:"0 2px 8px rgba(0,0,0,0.04)" }}>
+        <div style={{ padding:"14px 16px 12px", borderBottom:`1px solid ${PT.s100}`,
+          display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ fontSize:18 }}>{icon}</span>
+          <p style={{ margin:0, fontSize:14, fontWeight:800, color:PT.s900 }}>{title}</p>
+        </div>
+        <div style={{ padding:"16px" }}>{children}</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding:16, direction:"rtl" }}>
-      <h2 style={{ margin:"0 0 4px", fontSize:17, color:C.dark }}>إعدادات التطبيق</h2>
-      <p style={{ margin:"0 0 16px", fontSize:12, color:C.muted }}>تخصيص اللوغو وعناوين النظام والإعدادات الافتراضية</p>
+      <div style={{ marginBottom:18 }}>
+        <h2 style={{ margin:0, fontSize:18, color:PT.s900, fontWeight:800 }}>إعدادات التطبيق</h2>
+        <p style={{ margin:"3px 0 0", fontSize:12, color:PT.s500 }}>تخصيص الهوية البصرية والإعدادات الافتراضية</p>
+      </div>
 
-      <Card style={{ marginBottom:14 }}>
-        <p style={{ margin:"0 0 12px", fontSize:13, fontWeight:700, color:C.dark }}>🖼️ اللوغو</p>
-        {logoUrl?<div style={{ textAlign:"center", marginBottom:12 }}><img src={logoUrl} alt="logo" style={{ maxHeight:80, maxWidth:"100%", borderRadius:10, objectFit:"contain" }}/></div>
-        :<div style={{ textAlign:"center", marginBottom:12, padding:20, background:C.bg, borderRadius:10 }}><p style={{ margin:0, fontSize:12, color:C.muted }}>لا يوجد لوغو حالياً</p></div>}
-        <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:6 }}>رفع صورة جديدة:</label>
-        <input type="file" accept="image/*" onChange={e=>uploadLogo(e.target.files?.[0])} disabled={uploading} style={{ width:"100%", fontSize:13, marginBottom:10 }}/>
-        {uploading&&<p style={{ fontSize:12, color:C.primary, margin:"0 0 8px" }}>جاري الرفع...</p>}
-        <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:6 }}>أو أدخل رابط URL:</label>
-        <input value={logoUrl} onChange={e=>setLogoUrl(e.target.value)} placeholder="https://example.com/logo.png" style={{ ...inputStyle, direction:"ltr" }}/>
-        <button onClick={()=>setLogoUrl("")} style={{ background:"none", border:"none", color:C.danger, fontSize:11, cursor:"pointer", marginTop:6, fontFamily:"inherit" }}>✕ إزالة اللوغو</button>
-      </Card>
+      {/* Logo */}
+      <SettingSection icon="🖼️" title="الشعار الرسمي">
+        {logoUrl ? (
+          <div style={{ textAlign:"center", marginBottom:14, padding:"16px", background:PT.s50, borderRadius:12 }}>
+            <img src={logoUrl} alt="logo" style={{ maxHeight:80, maxWidth:"100%", borderRadius:10, objectFit:"contain" }}/>
+          </div>
+        ) : (
+          <div style={{ textAlign:"center", marginBottom:14, padding:"20px", background:PT.s50,
+            borderRadius:12, border:`2px dashed ${PT.s200}` }}>
+            <div style={{ fontSize:32, marginBottom:4 }}>🏛️</div>
+            <p style={{ margin:0, fontSize:12, color:PT.s400 }}>لا يوجد شعار حالياً</p>
+          </div>
+        )}
+        <label style={lSt}>رفع شعار جديد:</label>
+        <label style={{ display:"block", padding:"14px 16px", border:`2px dashed ${PT.s200}`,
+          borderRadius:12, textAlign:"center", cursor:"pointer", background:PT.s50, marginBottom:10 }}>
+          <input type="file" accept="image/*" onChange={e=>uploadLogo(e.target.files?.[0])}
+            disabled={uploading} style={{ display:"none" }}/>
+          <span style={{ fontSize:13, color:PT.s500 }}>
+            {uploading ? "⏳ جاري الرفع..." : "اضغط لاختيار صورة"}
+          </span>
+        </label>
+        <label style={lSt}>أو رابط URL:</label>
+        <input value={logoUrl} onChange={e=>setLogoUrl(e.target.value)}
+          placeholder="https://example.com/logo.png"
+          style={{ ...iSt, direction:"ltr", marginBottom:8 }}/>
+        {logoUrl && (
+          <button onClick={()=>setLogoUrl("")} style={{ background:"none", border:"none",
+            color:PT.danger, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+            ✕ إزالة الشعار
+          </button>
+        )}
+      </SettingSection>
 
-      <Card style={{ marginBottom:14 }}>
-        <p style={{ margin:"0 0 12px", fontSize:13, fontWeight:700, color:C.dark }}>📝 عناوين النظام</p>
-        <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:5 }}>اسم النظام:</label>
-        <input value={appName} onChange={e=>setAppName(e.target.value)} style={{ ...inputStyle, marginBottom:12 }}/>
-        <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:5 }}>العنوان الفرعي:</label>
-        <input value={appSubtitle} onChange={e=>setAppSubtitle(e.target.value)} style={inputStyle}/>
-      </Card>
+      {/* System titles */}
+      <SettingSection icon="📝" title="عناوين النظام">
+        <label style={lSt}>اسم النظام:</label>
+        <input value={appName} onChange={e=>setAppName(e.target.value)} style={{ ...iSt, marginBottom:12 }}/>
+        <label style={lSt}>العنوان الفرعي:</label>
+        <input value={appSubtitle} onChange={e=>setAppSubtitle(e.target.value)} style={iSt}/>
+      </SettingSection>
 
-      <Card style={{ marginBottom:14 }}>
-        <p style={{ margin:"0 0 12px", fontSize:13, fontWeight:700, color:C.dark }}>⚙️ الإعدادات الافتراضية للاستبيانات</p>
-        <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:5 }}>نوع الاستبيان الافتراضي:</label>
-        <select value={defaultSurveyType} onChange={e=>setDefaultSurveyType(e.target.value)} style={{ ...inputStyle, background:C.white, marginBottom:12 }}>
-          <option value="school">🏫 مدارس</option>
-          <option value="supervisor">👤 مشرفون</option>
-          <option value="administrator">🎓 إداريون</option>
-          <option value="open">🌐 مفتوح</option>
-        </select>
-        <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:5 }}>رسالة التذكير الافتراضية:</label>
+      {/* Survey defaults */}
+      <SettingSection icon="⚙️" title="الإعدادات الافتراضية">
+        <label style={lSt}>نوع الاستبيان الافتراضي:</label>
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
+          {[["school","🏫 مدارس"],["supervisor","👤 مشرفون"],["administrator","🎓 إداريون"],["open","🌐 مفتوح"]].map(([v,l])=>(
+            <button key={v} onClick={()=>setDefaultSurveyType(v)} style={{
+              padding:"8px 14px", borderRadius:10, fontSize:12, fontFamily:"inherit", cursor:"pointer",
+              border:`1.5px solid ${defaultSurveyType===v?PT.e600:PT.s200}`,
+              background:defaultSurveyType===v?PT.e50:PT.white,
+              color:defaultSurveyType===v?PT.e700:PT.s500,
+              fontWeight:defaultSurveyType===v?700:400,
+            }}>{l}</button>
+          ))}
+        </div>
+        <label style={lSt}>رسالة التذكير الافتراضية:</label>
         <textarea value={defaultReminderMsg} onChange={e=>setDefaultReminderMsg(e.target.value)} rows={3}
           placeholder="مثال: نرجو تعبئة الاستبيان في أقرب وقت ممكن"
-          style={{ ...inputStyle, resize:"vertical" }}/>
-      </Card>
+          style={{ ...iSt, resize:"vertical" }}/>
+      </SettingSection>
 
-      <Card style={{ marginBottom:14 }}>
-        <p style={{ margin:"0 0 12px", fontSize:13, fontWeight:700, color:C.dark }}>📄 علامة التقارير التجارية</p>
-        <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:5 }}>ترويسة التقارير:</label>
+      {/* Report branding */}
+      <SettingSection icon="📄" title="هوية التقارير">
+        <label style={lSt}>ترويسة التقارير:</label>
         <input value={reportHeader} onChange={e=>setReportHeader(e.target.value)}
           placeholder="مثال: إدارة التعليم بجدة — قسم الاستبيانات"
-          style={{ ...inputStyle, marginBottom:12 }}/>
-        <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:5 }}>تذييل التقارير:</label>
+          style={{ ...iSt, marginBottom:12 }}/>
+        <label style={lSt}>تذييل التقارير:</label>
         <input value={reportFooter} onChange={e=>setReportFooter(e.target.value)}
           placeholder="مثال: سري وخاص — لا يُعاد توزيعه"
-          style={inputStyle}/>
-      </Card>
+          style={iSt}/>
+      </SettingSection>
 
-      <ErrorBanner message={error}/>
-      {info&&<div style={{ background:C.successBg, border:`1px solid ${C.success}40`, borderRadius:10, padding:"10px 14px", fontSize:13, color:C.success, marginBottom:12 }}>✅ {info}</div>}
-      <Btn full loading={saving} onClick={save}>💾 حفظ الإعدادات</Btn>
+      {error && <div style={{ background:PT.dangerBg, border:"1px solid #FECACA", borderRadius:12,
+        padding:"10px 14px", fontSize:13, color:PT.danger, marginBottom:12,
+        display:"flex", gap:8 }}><span>⚠️</span>{error}</div>}
+      {info && <div style={{ background:PT.successBg, border:`1px solid ${PT.success}30`, borderRadius:12,
+        padding:"10px 14px", fontSize:13, color:PT.success, marginBottom:12,
+        display:"flex", gap:8 }}><span>✅</span>{info}</div>}
+
+      <button onClick={save} disabled={saving} style={{
+        width:"100%", padding:"14px",
+        background:saving?`${PT.e600}70`:`linear-gradient(135deg,${PT.e600},${PT.e800})`,
+        color:"#fff", border:"none", borderRadius:14, fontSize:14, fontWeight:800,
+        cursor:saving?"not-allowed":"pointer", fontFamily:"inherit",
+        boxShadow:saving?"none":`0 4px 16px ${PT.e600}40`,
+      }}>{saving?"جاري الحفظ...":"💾 حفظ الإعدادات"}</button>
     </div>
   );
 }
 
+// ═══════════════════════════════════════════════════════
+// AUDIT LOG PAGE — Premium timeline UI
+// ═══════════════════════════════════════════════════════
 function AuditLogPage() {
-  const [logs, setLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [logs,         setLogs]         = useState([]);
+  const [loading,      setLoading]      = useState(true);
   const [actionFilter, setActionFilter] = useState("الكل");
-  const [categoryFilter, setCategoryFilter] = useState("الكل");
-  const [page, setPage] = useState(1);
+  const [search,       setSearch]       = useState("");
+  const [page,         setPage]         = useState(1);
   const PAGE_SIZE = 40;
 
   useEffect(() => {
@@ -1341,7 +1394,12 @@ function AuditLogPage() {
 
   const filtered = logs.filter(l => {
     if (actionFilter !== "الكل" && l.action !== actionFilter) return false;
-    if (categoryFilter !== "الكل" && (l.category || l.table_name) !== categoryFilter) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      if (!(l.record_label||"").toLowerCase().includes(q) &&
+          !(l.user_email||"").toLowerCase().includes(q) &&
+          !(l.action||"").toLowerCase().includes(q)) return false;
+    }
     return true;
   });
   const paged = filtered.slice(0, page * PAGE_SIZE);
@@ -1363,59 +1421,141 @@ function AuditLogPage() {
   }
 
   const QUICK_FILTERS = [
-    {v:"الكل",l:"الكل"},
-    {v:"survey_publish",l:"🚀 نشر"},
-    {v:"survey_pause",l:"⏸️ إيقاف"},
-    {v:"survey_close",l:"🔒 إغلاق"},
-    {v:"survey_archive",l:"📦 أرشفة"},
-    {v:"survey_duplicate",l:"📄 نسخ"},
-    {v:"create",l:"➕ إضافة"},
-    {v:"update",l:"✏️ تعديل"},
-    {v:"delete",l:"🗑️ حذف"},
+    {v:"الكل",l:"الكل"},{v:"survey_publish",l:"🚀 نشر"},
+    {v:"survey_pause",l:"⏸️ إيقاف"},{v:"survey_close",l:"🔒 إغلاق"},
+    {v:"survey_archive",l:"📦 أرشفة"},{v:"survey_duplicate",l:"📄 نسخ"},
+    {v:"create",l:"➕ إضافة"},{v:"update",l:"✏️ تعديل"},{v:"delete",l:"🗑️ حذف"},
   ];
+
+  // Group logs by date
+  function dateLabel(dateStr) {
+    const d = new Date(dateStr);
+    const today = new Date();
+    const yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
+    if (d.toDateString()===today.toDateString()) return "اليوم";
+    if (d.toDateString()===yesterday.toDateString()) return "أمس";
+    return d.toLocaleDateString("ar-SA", { weekday:"long", day:"numeric", month:"long" });
+  }
 
   return (
     <div style={{ padding:16, direction:"rtl" }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
-        <h2 style={{ margin:0, fontSize:17, color:C.dark }}>سجل التدقيق</h2>
-        {logs.length > 0 && <ExportMenu options={[{key:"xlsx",icon:"📊",label:"تصدير Excel",action:exportLogExcel}]}/>}
+      {/* Header */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+        <div>
+          <h2 style={{ margin:0, fontSize:18, color:PT.s900, fontWeight:800 }}>سجل التدقيق</h2>
+          <p style={{ margin:"2px 0 0", fontSize:12, color:PT.s500 }}>{filtered.length} سجل</p>
+        </div>
+        {logs.length > 0 && (
+          <button onClick={exportLogExcel} style={{
+            background:PT.e50, color:PT.e700, border:`1px solid ${PT.e100}`,
+            borderRadius:10, padding:"8px 14px", fontSize:12, fontWeight:700,
+            cursor:"pointer", fontFamily:"inherit",
+          }}>📊 تصدير</button>
+        )}
       </div>
-      <p style={{ margin:"0 0 14px", fontSize:12, color:C.muted }}>سجل كل عمليات النظام</p>
 
-      <div style={{ display:"flex", gap:6, marginBottom:10, overflowX:"auto" }}>
+      {/* Search */}
+      <div style={{ position:"relative", marginBottom:10 }}>
+        <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:15, pointerEvents:"none" }}>🔍</span>
+        <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}
+          placeholder="ابحث بالمستخدم أو الإجراء أو العنصر..."
+          style={{ width:"100%", padding:"11px 42px 11px 14px", border:`1.5px solid ${PT.s200}`,
+            borderRadius:12, fontSize:13, fontFamily:"inherit", direction:"rtl",
+            boxSizing:"border-box", background:PT.white, color:PT.s900 }}
+          onFocus={e=>{e.target.style.borderColor=PT.e600;e.target.style.boxShadow=`0 0 0 3px rgba(5,150,105,0.12)`;}}
+          onBlur={e=>{e.target.style.borderColor=PT.s200;e.target.style.boxShadow="none";}}/>
+        {search && <button onClick={()=>setSearch("")} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:PT.s400, cursor:"pointer", fontSize:16 }}>✕</button>}
+      </div>
+
+      {/* Filters */}
+      <div style={{ display:"flex", gap:5, marginBottom:14, overflowX:"auto", paddingBottom:4 }}>
         {QUICK_FILTERS.map(f => (
           <button key={f.v} onClick={()=>{ setActionFilter(f.v); setPage(1); }} style={{
-            padding:"6px 14px", borderRadius:18, fontSize:12, fontFamily:"inherit", cursor:"pointer", whiteSpace:"nowrap",
-            border:`1.5px solid ${actionFilter===f.v?C.primary:C.border}`,
-            background:actionFilter===f.v?C.primaryBg:"#fff", color:actionFilter===f.v?C.primary:C.muted,
-            fontWeight:actionFilter===f.v?700:400 }}>{f.l}</button>
+            padding:"6px 12px", borderRadius:18, fontSize:11, fontFamily:"inherit",
+            cursor:"pointer", whiteSpace:"nowrap", fontWeight:actionFilter===f.v?700:500,
+            border:`1.5px solid ${actionFilter===f.v?PT.e600:PT.s200}`,
+            background:actionFilter===f.v?PT.e50:PT.white,
+            color:actionFilter===f.v?PT.e700:PT.s500,
+            transition:"all 0.15s",
+          }}>{f.l}</button>
         ))}
       </div>
 
-      {loading?<div style={{ textAlign:"center", padding:40 }}><Spinner size={28}/></div>
-      :filtered.length===0?<p style={{ textAlign:"center", color:C.muted, fontSize:13, padding:30 }}>لا توجد سجلات بعد</p>
-      :(
+      {loading ? (
+        <div style={{ textAlign:"center", padding:"50px 20px" }}>
+          <div style={{ width:40, height:40, borderRadius:"50%", border:`3px solid ${PT.e100}`,
+            borderTopColor:PT.e600, animation:"spin 0.7s linear infinite", margin:"0 auto 12px" }}/>
+          <p style={{ margin:0, color:PT.s500, fontSize:13 }}>جاري التحميل...</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign:"center", padding:"40px 20px", background:PT.white,
+          borderRadius:18, border:`1px solid ${PT.s200}` }}>
+          <div style={{ fontSize:40, marginBottom:10 }}>📋</div>
+          <p style={{ margin:0, color:PT.s500, fontSize:13 }}>لا توجد سجلات مطابقة</p>
+        </div>
+      ) : (
         <>
-          <Card style={{ padding:0, overflow:"hidden" }}>
-            {paged.map((l,i) => {
-              const a = ACTION_LABELS[l.action] || {label:l.action, color:C.muted, icon:"•"};
+          {/* Timeline */}
+          <div style={{ background:PT.white, borderRadius:18, border:`1px solid ${PT.s200}`,
+            overflow:"hidden", boxShadow:"0 2px 8px rgba(0,0,0,0.05)" }}>
+            {paged.map((l, i) => {
+              const a = ACTION_LABELS[l.action] || {label:l.action, color:PT.s400, icon:"•"};
+              const showDateLabel = i===0 || dateLabel(l.created_at) !== dateLabel(paged[i-1].created_at);
               return (
-                <div key={l.id} style={{ display:"flex", alignItems:"flex-start", gap:10, padding:"12px 14px", borderBottom:i<paged.length-1?`1px solid ${C.border}`:undefined }}>
-                  <div style={{ width:30, height:30, borderRadius:8, background:a.color+"18", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>{a.icon}</div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <p style={{ margin:0, fontSize:13, color:C.dark }}>
-                      <strong>{a.label}</strong>
-                      {l.record_label && <> — {l.record_label}</>}
-                    </p>
-                    <p style={{ margin:"3px 0 0", fontSize:11, color:C.muted }}>
-                      {l.user_email||"غير معروف"} · {new Date(l.created_at).toLocaleString("ar-SA")}
-                    </p>
+                <div key={l.id}>
+                  {showDateLabel && (
+                    <div style={{ padding:"8px 16px", background:PT.s50,
+                      borderBottom:`1px solid ${PT.s100}`,
+                      borderTop:i>0?`1px solid ${PT.s100}`:"none" }}>
+                      <span style={{ fontSize:11, fontWeight:700, color:PT.s400 }}>
+                        {dateLabel(l.created_at)}
+                      </span>
+                    </div>
+                  )}
+                  <div style={{ display:"flex", alignItems:"flex-start", gap:12, padding:"12px 16px",
+                    borderBottom:i<paged.length-1?`1px solid ${PT.s100}`:"none",
+                    transition:"background 0.1s" }}
+                    onMouseEnter={e=>e.currentTarget.style.background=PT.s50}
+                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    {/* Icon */}
+                    <div style={{
+                      width:34, height:34, borderRadius:10, flexShrink:0,
+                      background:`${a.color}15`,
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      fontSize:16,
+                    }}>{a.icon}</div>
+
+                    {/* Content */}
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <p style={{ margin:0, fontSize:13, color:PT.s900, fontWeight:600 }}>
+                        <span style={{ color:a.color, fontWeight:700 }}>{a.label}</span>
+                        {l.record_label && <span style={{ color:PT.s700 }}> — {l.record_label}</span>}
+                      </p>
+                      <p style={{ margin:"3px 0 0", fontSize:11, color:PT.s400 }}>
+                        {l.user_email||"غير معروف"} ·{" "}
+                        {new Date(l.created_at).toLocaleTimeString("ar-SA", {hour:"2-digit",minute:"2-digit"})}
+                      </p>
+                    </div>
+
+                    {/* Time badge */}
+                    <span style={{ fontSize:10, color:PT.s300, flexShrink:0, marginTop:2 }}>
+                      {new Date(l.created_at).toLocaleDateString("ar-SA")}
+                    </span>
                   </div>
                 </div>
               );
             })}
-          </Card>
-          {paged.length<filtered.length&&<Btn variant="secondary" full onClick={()=>setPage(p=>p+1)} style={{ marginTop:12 }}>عرض المزيد ({filtered.length-paged.length} متبقي)</Btn>}
+          </div>
+
+          {paged.length < filtered.length && (
+            <button onClick={()=>setPage(p=>p+1)} style={{
+              width:"100%", marginTop:12, padding:"11px",
+              background:PT.s100, color:PT.s700, border:"none", borderRadius:12,
+              fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+            }}>
+              عرض المزيد ({filtered.length-paged.length} متبقي)
+            </button>
+          )}
         </>
       )}
     </div>
@@ -1426,3 +1566,4 @@ export { SurveysList, NewSurveyPage, ShareSheet, LoginPage, AnalyticsPage,
   SchoolForm, CsvUploadSheet, DeleteConfirm, SchoolsManagementPage,
   UsersManagementPage, RoleBadgeStatic, SupervisorsManagementPage,
   AppSettingsPage, AuditLogPage };
+
