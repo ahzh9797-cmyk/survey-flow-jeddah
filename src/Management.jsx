@@ -11,103 +11,277 @@ import LifecycleActions, { LifecycleBadge } from "./LifecycleActions.jsx";
 import { resolveState, LIFECYCLE_STATE_CONFIG } from "./SurveyLifecycleService.js";
 import LoginPage from "./LoginPage.jsx";
 
+// ── Premium UI styles ──────────────────────────────────
+if (typeof document !== "undefined" && !document.getElementById("surveys-premium-styles")) {
+  const _s = document.createElement("style");
+  _s.id = "surveys-premium-styles";
+  _s.textContent = `
+    .survey-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+    .survey-card:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(0,0,0,0.10) !important; }
+    .action-btn { transition: all 0.12s ease; }
+    .action-btn:hover { filter: brightness(0.95); }
+    .action-btn:active { transform: scale(0.95); }
+    .search-input:focus { border-color: #059669 !important; box-shadow: 0 0 0 3px rgba(5,150,105,0.12) !important; outline: none; }
+    .filter-chip { transition: all 0.15s ease; }
+    @keyframes card-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    .card-in { animation: card-in 0.25s ease both; }
+    @keyframes spin { to { transform: rotate(360deg) } }
+  `;
+  document.head.appendChild(_s);
+}
+
+const PT = {
+  e900:"#064E3B",e800:"#065F46",e700:"#047857",e600:"#059669",e500:"#10B981",
+  e100:"#D1FAE5",e50:"#ECFDF5",
+  gold:"#C9A84C",goldL:"#FEF3C7",
+  s900:"#0F172A",s700:"#334155",s500:"#64748B",s400:"#94A3B8",
+  s300:"#CBD5E1",s200:"#E2E8F0",s100:"#F1F5F9",s50:"#F8FAFC",
+  white:"#FFFFFF",bg:"#F0F4F8",
+  danger:"#DC2626",dangerBg:"#FEF2F2",warn:"#D97706",warnBg:"#FFFBEB",
+  success:"#059669",successBg:"#ECFDF5",purple:"#7B2D8B",purpleBg:"#F5EEFA",amber:"#B7791F",
+};
+
+
+
+// ── Premium UI styles ──────────────────────────────────
+if (typeof document !== "undefined" && !document.getElementById("surveys-premium-styles")) {
+  const _s = document.createElement("style");
+  _s.id = "surveys-premium-styles";
+  _s.textContent = `
+    .survey-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+    .survey-card:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(0,0,0,0.10) !important; }
+    .survey-card:active { transform: scale(0.99); }
+    .search-input:focus { border-color: #059669 !important; box-shadow: 0 0 0 3px rgba(5,150,105,0.12) !important; outline: none; }
+    .filter-chip { transition: all 0.15s ease; }
+    @keyframes card-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    .card-in { animation: card-in 0.2s ease both; }
+  `;
+  document.head.appendChild(_s);
+}
+
+const PT = {
+  e900:"#064E3B",e800:"#065F46",e700:"#047857",e600:"#059669",e500:"#10B981",
+  e100:"#D1FAE5",e50:"#ECFDF5",
+  gold:"#C9A84C",goldL:"#FEF3C7",
+  s900:"#0F172A",s700:"#334155",s500:"#64748B",s400:"#94A3B8",
+  s300:"#CBD5E1",s200:"#E2E8F0",s100:"#F1F5F9",s50:"#F8FAFC",
+  white:"#FFFFFF",bg:"#F0F4F8",
+  danger:"#DC2626",dangerBg:"#FEF2F2",warn:"#D97706",warnBg:"#FFFBEB",
+  success:"#059669",successBg:"#ECFDF5",purple:"#7B2D8B",purpleBg:"#F5EEFA",
+  amber:"#B7791F",
+};
+
+
+
 function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, isAdmin, onDelete, onApprove, onEdit, onSaveAsTemplate, onLifecycleChange, user }) {
   const now = new Date();
+  const [search, setSearch] = useState("");
+  const [stateFilter, setStateFilter] = useState("الكل");
 
   if (loading) return (
-    <div style={{ minHeight:"50vh", display:"flex", alignItems:"center", justifyContent:"center" }}><Spinner size={32}/></div>
+    <div style={{ minHeight:"50vh", display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ textAlign:"center" }}>
+        <div style={{ width:48, height:48, borderRadius:"50%", border:`3px solid ${PT.e100}`, borderTopColor:PT.e600, animation:"spin 0.7s linear infinite", margin:"0 auto 12px" }}/>
+        <p style={{ color:PT.s500, fontSize:13, margin:0 }}>جاري التحميل...</p>
+      </div>
+    </div>
   );
 
-  const typeColor = {
-    school:"#006B54", supervisor:"#7B2D8B",
-    administrator:"#B7791F", open:C.accent
-  };
+  const typeColor = { school:PT.e700, supervisor:PT.purple, administrator:PT.amber, open:PT.gold };
+  const typeBg    = { school:PT.e50,   supervisor:PT.purpleBg, administrator:PT.warnBg, open:PT.goldL };
+
+  const STATE_FILTERS = ["الكل","منشورة","مسودة","موقوفة","مغلقة","مؤرشفة"];
+  const STATE_MAP = { "منشورة":"published","مسودة":"draft","موقوفة":"paused","مغلقة":"closed","مؤرشفة":"archived" };
+
+  const filtered = surveys.filter(s => {
+    const state = resolveState(s);
+    const stateOk = stateFilter === "الكل" || state === STATE_MAP[stateFilter];
+    const searchOk = !search.trim() || s.title.includes(search) || (s.description||"").includes(search);
+    return stateOk && searchOk;
+  });
 
   function canShare(s) {
     const endDate = s.end_date || s.expires_at;
     const isExpired = endDate && new Date(endDate) < now;
-    const isApproved = s.approval_status === "approved";
-    const state = resolveState(s);
-    return !isExpired && isApproved && state === "published" && isAdmin;
+    return !isExpired && s.approval_status==="approved" && resolveState(s)==="published" && isAdmin;
+  }
+  function canApprove(s) {
+    return (s.approval_status==="pending_approval"||s.approval_status==="draft") && isAdmin;
   }
 
-  function canApprove(s) {
-    return (s.approval_status === "pending_approval" || s.approval_status === "draft") && isAdmin;
-  }
+  // State badge config
+  const STATE_BADGE = {
+    published: { label:"✅ منشور",      bg:PT.e50,      color:PT.e700,   border:`${PT.e500}40` },
+    draft:     { label:"📝 مسودة",       bg:PT.s100,     color:PT.s700,   border:`${PT.s300}` },
+    paused:    { label:"⏸️ موقوف",      bg:PT.warnBg,   color:PT.warn,   border:`${PT.warn}40` },
+    closed:    { label:"🔒 مغلق",        bg:PT.dangerBg, color:PT.danger, border:"#FECACA" },
+    archived:  { label:"📦 مؤرشف",      bg:PT.s100,     color:PT.s400,   border:PT.s200 },
+  };
 
   return (
-    <div style={{ padding:16 }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
-        <div>
-          <h2 style={{ margin:0, fontSize:18, color:C.dark, fontWeight:800 }}>الاستبيانات</h2>
-          <p style={{ margin:"2px 0 0", color:C.muted, fontSize:12 }}>{surveys.length} استبيان · {schoolCount} مدرسة</p>
+    <div style={{ padding:16, direction:"rtl" }}>
+      {/* Header */}
+      <div style={{ marginBottom:16 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+          <div>
+            <h2 style={{ margin:0, fontSize:18, color:PT.s900, fontWeight:800, letterSpacing:"-0.01em" }}>الاستبيانات</h2>
+            <p style={{ margin:"2px 0 0", color:PT.s500, fontSize:12 }}>{surveys.length} استبيان · {schoolCount} مدرسة</p>
+          </div>
+          <button onClick={onNew} style={{
+            background:`linear-gradient(135deg,${PT.e600},${PT.e800})`,
+            color:"#fff", border:"none", borderRadius:12,
+            padding:"10px 18px", fontSize:13, fontWeight:800,
+            cursor:"pointer", fontFamily:"inherit",
+            boxShadow:`0 4px 16px ${PT.e600}40`,
+            display:"flex", alignItems:"center", gap:6,
+          }}>
+            <span style={{ fontSize:16 }}>＋</span> جديد
+          </button>
         </div>
-        <Btn sm onClick={onNew}>＋ جديد</Btn>
+
+        {/* Search */}
+        <div style={{ position:"relative", marginBottom:10 }}>
+          <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:16, pointerEvents:"none" }}>🔍</span>
+          <input
+            className="search-input"
+            value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder="ابحث باسم الاستبيان أو الوصف..."
+            style={{ width:"100%", padding:"11px 42px 11px 14px", border:`1.5px solid ${PT.s200}`,
+              borderRadius:12, fontSize:13, fontFamily:"inherit", direction:"rtl",
+              boxSizing:"border-box", background:PT.white, color:PT.s900, transition:"all 0.2s" }}/>
+          {search && (
+            <button onClick={()=>setSearch("")} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:PT.s400, cursor:"pointer", fontSize:16 }}>✕</button>
+          )}
+        </div>
+
+        {/* State filters */}
+        <div style={{ display:"flex", gap:6, overflowX:"auto", paddingBottom:4 }}>
+          {STATE_FILTERS.map(f => (
+            <button key={f} onClick={()=>setStateFilter(f)} className="filter-chip" style={{
+              padding:"6px 14px", borderRadius:20, fontSize:12, fontFamily:"inherit",
+              cursor:"pointer", whiteSpace:"nowrap", fontWeight:stateFilter===f?700:500,
+              border:`1.5px solid ${stateFilter===f ? PT.e600 : PT.s200}`,
+              background: stateFilter===f ? PT.e50 : PT.white,
+              color: stateFilter===f ? PT.e700 : PT.s500,
+            }}>{f}</button>
+          ))}
+        </div>
       </div>
 
-      {surveys.length === 0 && (
-        <Card style={{ textAlign:"center", padding:32 }}>
-          <p style={{ color:C.muted, margin:0 }}>لا توجد استبيانات بعد.</p>
-        </Card>
+      {/* Empty state */}
+      {filtered.length === 0 && (
+        <div style={{ textAlign:"center", padding:"40px 20px", background:PT.white,
+          borderRadius:20, border:`1px solid ${PT.s200}` }}>
+          <div style={{ fontSize:48, marginBottom:12 }}>📋</div>
+          <p style={{ margin:"0 0 6px", fontSize:15, fontWeight:700, color:PT.s900 }}>
+            {surveys.length === 0 ? "لا توجد استبيانات بعد" : "لا توجد نتائج مطابقة"}
+          </p>
+          <p style={{ margin:0, fontSize:13, color:PT.s500 }}>
+            {surveys.length === 0 ? "اضغط ＋ جديد لإنشاء أول استبيان" : "جرب تغيير الفلاتر أو البحث"}
+          </p>
+        </div>
       )}
-      {surveys.map(s => {
+
+      {/* Survey cards */}
+      {filtered.map((s, idx) => {
         const endDate = s.end_date || s.expires_at;
         const isExpired = endDate && new Date(endDate) < now;
         const expiringSoon = endDate && !isExpired && (new Date(endDate)-now) < 24*60*60*1000;
+        const state = resolveState(s);
+        const badge = STATE_BADGE[state] || STATE_BADGE.draft;
+        const tc = typeColor[s.survey_type] || PT.e700;
+        const tb = typeBg[s.survey_type] || PT.e50;
 
         return (
-          <Card key={s.id} style={{ marginBottom:12, opacity:isExpired?0.75:1 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8, gap:8 }}>
-              <h3 style={{ margin:0, fontSize:15, color:C.dark, fontWeight:700, flex:1, lineHeight:1.4 }}>{s.title}</h3>
-              <div style={{ display:"flex", gap:4, flexShrink:0, flexWrap:"wrap", justifyContent:"flex-end" }}>
-                <Tag color={typeColor[s.survey_type]||C.primary}>
-                  {SURVEY_TYPE_LABELS[s.survey_type] || "🏫 مدارس"}
-                </Tag>
-                <LifecycleBadge survey={s}/>
-              </div>
-            </div>
+          <div key={s.id} className="survey-card card-in"
+            style={{ background:PT.white, borderRadius:18, border:`1px solid ${PT.s200}`,
+              marginBottom:12, overflow:"hidden", opacity:isExpired?0.7:1,
+              boxShadow:"0 2px 8px rgba(0,0,0,0.06)",
+              animationDelay:`${idx*0.04}s`,
+              borderRight:`4px solid ${tc}`,
+            }}>
+            <div style={{ padding:"14px 16px" }}>
 
-            {expiringSoon && (
-              <div style={{ background:C.warnBg, border:`1px solid ${C.warn}40`, borderRadius:8, padding:"6px 10px", marginBottom:8 }}>
-                <p style={{ margin:0, fontSize:11, color:C.warn, fontWeight:700 }}>
-                  ⚠️ ينتهي غداً — {new Date(endDate).toLocaleDateString("ar-SA")}
+              {/* Top row: title + badges */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10, gap:10 }}>
+                <h3 style={{ margin:0, fontSize:15, color:PT.s900, fontWeight:700, flex:1, lineHeight:1.4 }}>{s.title}</h3>
+                <div style={{ display:"flex", gap:4, flexShrink:0, flexWrap:"wrap", justifyContent:"flex-end" }}>
+                  {/* Type badge */}
+                  <span style={{ background:tb, color:tc, border:`1px solid ${tc}30`,
+                    borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700, whiteSpace:"nowrap" }}>
+                    {({ school:"🏫 مدارس", supervisor:"👤 مشرفون", administrator:"🎓 إداريون", open:"🌐 مفتوح" })[s.survey_type] || "🏫 مدارس"}
+                  </span>
+                  {/* State badge */}
+                  <span style={{ background:badge.bg, color:badge.color,
+                    border:`1px solid ${badge.border}`, borderRadius:20,
+                    padding:"3px 10px", fontSize:11, fontWeight:700, whiteSpace:"nowrap" }}>
+                    {badge.label}
+                  </span>
+                </div>
+              </div>
+
+              {/* Expiry warning */}
+              {expiringSoon && (
+                <div style={{ background:PT.warnBg, border:`1px solid ${PT.warn}30`, borderRadius:8,
+                  padding:"6px 10px", marginBottom:8, display:"flex", alignItems:"center", gap:6 }}>
+                  <span style={{ fontSize:14 }}>⚠️</span>
+                  <p style={{ margin:0, fontSize:11, color:PT.warn, fontWeight:700 }}>
+                    ينتهي غداً — {new Date(endDate).toLocaleDateString("ar-SA")}
+                  </p>
+                </div>
+              )}
+              {endDate && !isExpired && !expiringSoon && (
+                <p style={{ margin:"0 0 6px", fontSize:11, color:PT.s400 }}>
+                  📅 ينتهي: {new Date(endDate).toLocaleDateString("ar-SA")}
                 </p>
-              </div>
-            )}
-            {endDate && !isExpired && !expiringSoon && (
-              <p style={{ margin:"0 0 6px", fontSize:11, color:C.muted }}>
-                📅 ينتهي: {new Date(endDate).toLocaleDateString("ar-SA")}
-              </p>
-            )}
-            {s.response_limit === "unlimited" && (
-              <p style={{ margin:"0 0 6px", fontSize:11, color:C.muted }}>🔁 ردود غير محدودة</p>
-            )}
+              )}
 
-            <p style={{ margin:"0 0 12px", fontSize:12, color:C.muted }}>{s.description}</p>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              <Btn sm variant="secondary" onClick={()=>onTrack(s)}>📊 متابعة</Btn>
-              {canShare(s) && <Btn sm variant="gold" onClick={()=>onShare(s)}>🔗 مشاركة</Btn>}
-              {canApprove(s) && <Btn sm variant="primary" onClick={()=>onApprove(s)}>✅ اعتماد ونشر</Btn>}
-              {isAdmin && <Btn sm variant="secondary" onClick={()=>onEdit(s)}>✏️ تعديل</Btn>}
-              {isAdmin && <Btn sm variant="secondary" onClick={()=>onSaveAsTemplate(s)}>📋 حفظ كقالب</Btn>}
-              {isAdmin && <Btn sm variant="danger" onClick={()=>onDelete(s)}>🗑️ حذف</Btn>}
-            </div>
-            {isAdmin && (
-              <div style={{ marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
-                <LifecycleActions
-                  survey={s}
-                  user={user}
-                  isAdmin={isAdmin}
-                  onRefresh={onLifecycleChange}
-                />
+              {s.description && (
+                <p style={{ margin:"0 0 12px", fontSize:12, color:PT.s500, lineHeight:1.5 }}>
+                  {s.description.length > 80 ? s.description.slice(0,80)+"..." : s.description}
+                </p>
+              )}
+
+              {/* Action buttons */}
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                <ActionBtn icon="📊" label="متابعة" onClick={()=>onTrack(s)} color={PT.e700} bg={PT.e50}/>
+                {canShare(s) && <ActionBtn icon="🔗" label="مشاركة" onClick={()=>onShare(s)} color={PT.gold} bg={PT.goldL}/>}
+                {canApprove(s) && <ActionBtn icon="✅" label="اعتماد" onClick={()=>onApprove(s)} color={PT.success} bg={PT.successBg}/>}
+                {isAdmin && <ActionBtn icon="✏️" label="تعديل" onClick={()=>onEdit(s)}/>}
+                {isAdmin && <ActionBtn icon="📋" label="قالب" onClick={()=>onSaveAsTemplate(s)}/>}
+                {isAdmin && <ActionBtn icon="🗑️" label="حذف" onClick={()=>onDelete(s)} color={PT.danger} bg={PT.dangerBg}/>}
               </div>
-            )}
-          </Card>
+
+              {/* Lifecycle actions */}
+              {isAdmin && (
+                <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${PT.s100}` }}>
+                  <LifecycleActions survey={s} user={user} isAdmin={isAdmin} onRefresh={onLifecycleChange}/>
+                </div>
+              )}
+            </div>
+          </div>
         );
       })}
     </div>
   );
 }
+
+function ActionBtn({ icon, label, onClick, color, bg }) {
+  return (
+    <button onClick={onClick} className="action-btn" style={{
+      background: bg || "#F1F5F9",
+      color: color || "#334155",
+      border: `1px solid ${color ? color+"25" : "#E2E8F0"}`,
+      borderRadius:9, padding:"7px 12px",
+      fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+      display:"inline-flex", alignItems:"center", gap:5,
+    }}>
+      <span style={{ fontSize:13 }}>{icon}</span>
+      {label}
+    </button>
+  );
+}
+
 
 function NewSurveyPage({ onSaved, onCancel, user, isAdmin, existingSurvey, initialQuestions, initialSurveyType }) {
   const isEdit = !!existingSurvey;
@@ -1263,5 +1437,4 @@ export { SurveysList, NewSurveyPage, ShareSheet, LoginPage, AnalyticsPage,
   SchoolForm, CsvUploadSheet, DeleteConfirm, SchoolsManagementPage,
   UsersManagementPage, RoleBadgeStatic, SupervisorsManagementPage,
   AppSettingsPage, AuditLogPage };
-
 
