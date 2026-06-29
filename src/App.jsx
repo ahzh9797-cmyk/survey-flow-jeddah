@@ -415,6 +415,8 @@ export default function App() {
         user={user} onSignOut={()=>supabase.auth.signOut()}/>
 
       <div style={{ paddingBottom:100 }} className="page-enter">
+        <PWAInstallBanner />
+<PWAUpdateBanner />
         {tab==="dashboard" && (
           <ExecutiveDashboard surveys={surveys} schoolCount={schoolCount} onNavigate={setTab} user={user}/>
         )}
