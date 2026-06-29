@@ -14,7 +14,8 @@ import ToastProvider from "./ToastProvider.jsx";
 import CommunicationCenter from "./CommunicationCenter.jsx";
 import ReportingCenter from "./ReportingCenter.jsx";
 import ExecutiveDashboard from "./ExecutiveDashboard.jsx";
-
+import PWAInstallBanner from "./PWAInstallBanner.jsx";
+import PWAUpdateBanner from "./PWAUpdateBanner.jsx";
 // ── Premium styles injection ──────────────────────────
 if (typeof document !== "undefined" && !document.getElementById("app-premium-styles")) {
   const s = document.createElement("style");
