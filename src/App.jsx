@@ -17,6 +17,7 @@ import ExecutiveDashboard from "./ExecutiveDashboard.jsx";
 import PWAInstallBanner from "./PWAInstallBanner.jsx";
 import PWAUpdateBanner from "./PWAUpdateBanner.jsx";
 import ContentLibrary from "./ContentLibrary.jsx";
+import ReviewCenter, { ReviewPreviewPage } from "./ReviewCenter.jsx";
 // ── Premium styles injection ──────────────────────────
 if (typeof document !== "undefined" && !document.getElementById("app-premium-styles")) {
   const s = document.createElement("style");
@@ -277,12 +278,17 @@ export default function App() {
 
   const params = new URLSearchParams(window.location.search);
   const publicSurveyId = params.get("survey");
+  const reviewToken = params.get("review");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setUser(data.session?.user || null); setAuthChecked(true); });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => setUser(session?.user || null));
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  if (reviewToken) {
+    return <ReviewPreviewPage token={reviewToken} surveys={surveys}/>;
+  }
 
   if (publicSurveyId) {
     const survey = surveys.find(s => s.id === publicSurveyId);
@@ -368,6 +374,7 @@ export default function App() {
     {id:"communication", i:"📨", l:"الاتصالات"},
     {id:"reports",       i:"📈", l:"التقارير"},
     {id:"library",       i:"📚", l:"المكتبة"},
+    {id:"review",        i:"🔍", l:"المراجعة"},
     ...(isAdmin ? [{id:"more", i:"⚙️", l:"المزيد"}] : []),
   ];
 
@@ -407,6 +414,7 @@ export default function App() {
         {tab==="communication" && <CommunicationCenter surveys={surveys} user={user} isAdmin={isAdmin}/>}
         {tab==="reports"       && <ReportingCenter surveys={surveys} user={user} schoolCount={schoolCount}/>}
         {tab==="library"       && <ContentLibrary user={user}/>}
+        {tab==="review"        && <ReviewCenter surveys={surveys} user={user}/>}
 
         {tab==="more" && isAdmin && (
           <div style={{ padding:16 }}>
