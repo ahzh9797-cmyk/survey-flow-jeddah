@@ -1189,7 +1189,9 @@ function AuditLogPage() {
   );
 }
 
-export { SurveysList, NewSurveyPage, ShareSheet, LoginPage, AnalyticsPage,
+// SurveyBuilderEngine replaces NewSurveyPage as the default builder
+export { default as NewSurveyPage } from "./SurveyBuilderEngine.jsx";
+export { SurveysList, ShareSheet, LoginPage, AnalyticsPage,
   SchoolForm, CsvUploadSheet, DeleteConfirm, SchoolsManagementPage,
   UsersManagementPage, RoleBadgeStatic, SupervisorsManagementPage,
   AppSettingsPage, AuditLogPage };
