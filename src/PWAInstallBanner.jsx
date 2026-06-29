@@ -1,88 +1,45 @@
 /**
- * PWAInstallBanner — Install prompt banner
- * Uses usePWAInstall hook — no business logic
- *
- * Drop into App.jsx anywhere inside the render tree:
- *   import PWAInstallBanner from "./PWAInstallBanner.jsx";
+ * PWAUpdateBanner — shows when a new app version is available
+ * Drop into App.jsx:
+ *   import PWAUpdateBanner from "./PWAUpdateBanner.jsx";
  *   // inside JSX:
- *   <PWAInstallBanner />
+ *   <PWAUpdateBanner />
  */
 
-import { useState } from "react";
-import { usePWAInstall } from "./usePWA.js";
+import { useSWUpdate } from "./usePWA.js";
 
-export default function PWAInstallBanner() {
-  const { canInstall, isInstalled, isIOS, promptInstall } = usePWAInstall();
-  const [dismissed, setDismissed] = useState(false);
-  const [installing, setInstalling] = useState(false);
+export default function PWAUpdateBanner() {
+  const { updateAvailable, applyUpdate } = useSWUpdate();
 
-  // Already installed or dismissed
-  if (isInstalled || dismissed) return null;
-
-  // iOS: show manual instruction
-  if (isIOS && !dismissed) {
-    return (
-      <div style={{
-        background: "linear-gradient(135deg, #064E3B, #065F46)",
-        borderRadius: 14,
-        padding: "12px 14px",
-        margin: "0 16px 14px",
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 10,
-        boxShadow: "0 4px 16px rgba(6,78,59,0.3)",
-        direction: "rtl",
-      }}>
-        <span style={{ fontSize: 22, flexShrink: 0 }}>📲</span>
-        <div style={{ flex: 1 }}>
-          <p style={{ margin: "0 0 2px", fontSize: 13, fontWeight: 700, color: "#fff" }}>
-            ثبّت التطبيق على آيفون
-          </p>
-          <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.65)", lineHeight: 1.6 }}>
-            اضغط زر المشاركة ⬆️ ثم «إضافة إلى الشاشة الرئيسية»
-          </p>
-        </div>
-        <button onClick={() => setDismissed(true)} style={{
-          background: "none", border: "none", color: "rgba(255,255,255,0.5)",
-          fontSize: 18, cursor: "pointer", padding: 0, flexShrink: 0,
-          lineHeight: 1,
-        }}>✕</button>
-      </div>
-    );
-  }
-
-  // Android / Desktop: native prompt available
-  if (!canInstall) return null;
+  if (!updateAvailable) return null;
 
   return (
     <div style={{
+      position: "fixed",
+      bottom: 100,
+      left: 16,
+      right: 16,
       background: "linear-gradient(135deg, #064E3B, #065F46)",
       borderRadius: 14,
-      padding: "12px 14px",
-      margin: "0 16px 14px",
+      padding: "12px 16px",
       display: "flex",
       alignItems: "center",
-      gap: 10,
-      boxShadow: "0 4px 16px rgba(6,78,59,0.3)",
+      gap: 12,
+      zIndex: 1000,
+      boxShadow: "0 8px 32px rgba(6,78,59,0.35)",
       direction: "rtl",
     }}>
-      <span style={{ fontSize: 24, flexShrink: 0 }}>📲</span>
+      <span style={{ fontSize: 22, flexShrink: 0 }}>🆕</span>
       <div style={{ flex: 1 }}>
-        <p style={{ margin: "0 0 2px", fontSize: 13, fontWeight: 700, color: "#fff" }}>
-          ثبّت التطبيق على جهازك
+        <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#fff" }}>
+          يتوفر تحديث جديد
         </p>
-        <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.65)" }}>
-          وصول أسرع · أيقونة على الشاشة الرئيسية · يعمل بدون إنترنت
+        <p style={{ margin: "2px 0 0", fontSize: 11, color: "rgba(255,255,255,0.65)" }}>
+          اضغط تحديث لتطبيق الإصدار الجديد
         </p>
       </div>
       <button
-        onClick={async () => {
-          setInstalling(true);
-          const accepted = await promptInstall();
-          setInstalling(false);
-          if (!accepted) setDismissed(true);
-        }}
-        disabled={installing}
+        onClick={applyUpdate}
         style={{
           background: "#C9A84C",
           color: "#fff",
@@ -91,18 +48,12 @@ export default function PWAInstallBanner() {
           padding: "8px 14px",
           fontSize: 12,
           fontWeight: 800,
-          cursor: installing ? "not-allowed" : "pointer",
+          cursor: "pointer",
           fontFamily: "inherit",
           flexShrink: 0,
-          opacity: installing ? 0.7 : 1,
         }}>
-        {installing ? "..." : "تثبيت"}
+        تحديث
       </button>
-      <button onClick={() => setDismissed(true)} style={{
-        background: "none", border: "none", color: "rgba(255,255,255,0.4)",
-        fontSize: 18, cursor: "pointer", padding: 0, flexShrink: 0,
-      }}>✕</button>
     </div>
   );
 }
-
