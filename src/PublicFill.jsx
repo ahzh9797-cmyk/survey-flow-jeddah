@@ -1,10 +1,22 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { supabase, C, Btn, Card, ErrorBanner, Stars } from "./lib.jsx";
 import {
   SURVEY_TYPES, checkSurveyAccess, verifyEntity,
   checkDuplicateResponse, buildResponsePayload,
   VerificationStep
 } from "./SurveyService.jsx";
+import { evaluateSurvey, getVisibleQuestions, validateAllAnswers } from "./ConditionEngine.js";
+import { flattenItems } from "./LogicUtils.js";
+import { adaptLegacySurvey, isLegacySurvey } from "./LegacyGateAdapter.js";
+
+// ══════════════════════════════════════════════════════
+// TEMPORARY DEBUG LOGGING — Conditional Logic audit
+// Remove this block once verified in production
+// ══════════════════════════════════════════════════════
+const CL_DEBUG = true;
+function clLog(...args) {
+  if (CL_DEBUG) console.log("%c[ConditionalLogic]", "color:#059669;font-weight:bold", ...args);
+}
 
 // ── Premium styles ──────────────────────────────────────
 if (typeof document !== "undefined" && !document.getElementById("publicfill-premium-styles")) {
@@ -105,38 +117,41 @@ function EntityCard({ surveyType, entity }) {
 
 // ── QUESTION INPUT COMPONENTS ───────────────────────────
 
-function QuestionText({ value, onChange, hasError }) {
+function QuestionText({ value, onChange, hasError, disabled }) {
   return (
-    <input value={value||""} onChange={e=>onChange(e.target.value)} className="pf-input"
+    <input value={value||""} onChange={e=>onChange(e.target.value)} className="pf-input" disabled={disabled}
       style={{ width:"100%", padding:"13px 14px",
         border:`1.5px solid ${hasError?F.danger:F.s200}`, borderRadius:12,
         fontSize:15, fontFamily:"inherit", direction:"rtl",
-        boxSizing:"border-box", background:F.white, color:F.s900, transition:"all 0.2s" }}/>
+        boxSizing:"border-box", background:disabled?F.s50:F.white, color:F.s900, transition:"all 0.2s",
+        opacity:disabled?0.6:1, cursor:disabled?"not-allowed":"text" }}/>
   );
 }
 
-function QuestionTextarea({ value, onChange }) {
+function QuestionTextarea({ value, onChange, disabled }) {
   return (
-    <textarea value={value||""} onChange={e=>onChange(e.target.value)} rows={3} className="pf-input"
+    <textarea value={value||""} onChange={e=>onChange(e.target.value)} rows={3} className="pf-input" disabled={disabled}
       style={{ width:"100%", padding:"13px 14px", border:`1.5px solid ${F.s200}`, borderRadius:12,
         fontSize:14, fontFamily:"inherit", direction:"rtl", resize:"vertical",
-        boxSizing:"border-box", outline:"none", background:F.white, color:F.s900, transition:"all 0.2s" }}/>
+        boxSizing:"border-box", outline:"none", background:disabled?F.s50:F.white, color:F.s900, transition:"all 0.2s",
+        opacity:disabled?0.6:1, cursor:disabled?"not-allowed":"text" }}/>
   );
 }
 
-function QuestionNumber({ value, onChange, hasError }) {
+function QuestionNumber({ value, onChange, hasError, disabled }) {
   return (
-    <input type="number" value={value||""} onChange={e=>onChange(e.target.value)} className="pf-input"
+    <input type="number" value={value||""} onChange={e=>onChange(e.target.value)} className="pf-input" disabled={disabled}
       style={{ width:"100%", padding:"13px 14px",
         border:`1.5px solid ${hasError?F.danger:F.s200}`, borderRadius:12,
         fontSize:18, fontFamily:"inherit", boxSizing:"border-box",
-        background:F.white, color:F.s900, fontWeight:700, transition:"all 0.2s" }}/>
+        background:disabled?F.s50:F.white, color:F.s900, fontWeight:700, transition:"all 0.2s",
+        opacity:disabled?0.6:1, cursor:disabled?"not-allowed":"text" }}/>
   );
 }
 
-function QuestionSelect({ options, value, onChange }) {
+function QuestionSelect({ options, value, onChange, disabled }) {
   return (
-    <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+    <div style={{ display:"flex", flexDirection:"column", gap:8, opacity:disabled?0.6:1, pointerEvents:disabled?"none":"auto" }}>
       {(options||[]).map(opt=>(
         <button key={opt} onClick={()=>onChange(opt)} className="pf-option" style={{
           width:"100%", padding:"14px 16px", borderRadius:14,
@@ -164,9 +179,9 @@ function QuestionSelect({ options, value, onChange }) {
   );
 }
 
-function QuestionFile({ questionId, value, onChange, allowedTypes, uploading, onUpload }) {
+function QuestionFile({ questionId, value, onChange, allowedTypes, uploading, onUpload, disabled }) {
   return (
-    <div>
+    <div style={{ opacity:disabled?0.6:1, pointerEvents:disabled?"none":"auto" }}>
       <label style={{
         display:"block", padding:"20px 16px",
         border:`2px dashed ${value?.url?F.e500:F.s200}`, borderRadius:14,
@@ -222,18 +237,79 @@ function PublicFill({ survey, onBack }) {
 
   const setA = (id,v) => { setAns(p=>({...p,[id]:v})); setErrs(p=>({...p,[id]:null})); };
 
+  // ══════════════════════════════════════════════════════
+  // CONDITIONAL LOGIC ENGINE — actually wired in now
+  // ══════════════════════════════════════════════════════
+
+  // 1. Build the flat question list, adapting legacy gate surveys
+  //    into the new per-question conditions model on the fly.
+  const flatQuestions = useMemo(() => {
+    const raw = survey.questions || [];
+    if (isLegacySurvey(survey)) {
+      clLog("Legacy survey detected — adapting gate_question_id →", survey.gate_question_id, "=", survey.gate_required_value);
+      return adaptLegacySurvey(survey, raw);
+    }
+    return raw;
+  }, [survey]);
+
+  // 2. Re-evaluate ALL conditions every time an answer changes.
+  //    This is the core fix: previously nothing called evaluateSurvey().
+  const evalState = useMemo(() => {
+    const state = evaluateSurvey(flatQuestions, ans);
+
+    if (CL_DEBUG) {
+      flatQuestions.forEach(q => {
+        (q.conditions || []).forEach(cond => {
+          const ruleResults = (cond.rules || []).map(r => ({
+            sourceId: r.sourceId,
+            operator: r.operator,
+            expected: r.value,
+            actual: ans[r.sourceId],
+          }));
+          const passed = cond.enabled && (cond.operator === "OR"
+            ? ruleResults.some(rr => true) // summarized below via evalState
+            : true);
+          clLog(
+            `Question "${q.label?.slice(0,30)}" condition`, cond.id,
+            "| rules:", ruleResults,
+            "| logic:", cond.operator,
+            "| enabled:", cond.enabled,
+            "| actions:", (cond.actions||[]).map(a=>`${a.type}${a.targetId?` → ${a.targetId}`:""}`),
+          );
+        });
+      });
+      clLog("Evaluation result — visible:", [...state.visible].length, "of", flatQuestions.length,
+        "| required:", [...state.required],
+        "| disabled:", [...state.disabled],
+        "| endAt:", state.endAt);
+    }
+
+    return state;
+  }, [flatQuestions, ans]);
+
+  // 3. Derive the actual visible question list (in order, respecting endAt)
+  const engineVisibleQuestions = useMemo(
+    () => getVisibleQuestions(flatQuestions, evalState),
+    [flatQuestions, evalState]
+  );
+
+  // Legacy fallback: if survey has NO per-question conditions at all
+  // (neither new nor adapted-from-legacy), just show everything as before.
+  const hasAnyConditions = flatQuestions.some(q => (q.conditions||[]).length > 0);
+
+  function visibleQuestions() {
+    if (!hasAnyConditions) return survey.questions; // unchanged behaviour, zero conditions
+    return engineVisibleQuestions;
+  }
+  // ══════════════════════════════════════════════════════
+  // END Conditional Logic Engine wiring
+  // ══════════════════════════════════════════════════════
+
   async function handleVerified(verifiedEntity) {
     const responseLimit = survey.response_limit || "one_per_entity";
     const { isDuplicate, existingResponse } = await checkDuplicateResponse(survey.id, survey.survey_type, verifiedEntity, responseLimit);
     if (isDuplicate && existingResponse?.answers) { setExistingResp(existingResponse); setAns(existingResponse.answers); }
     setEntity(verifiedEntity); setStep("fill");
-  }
-
-  function visibleQuestions() {
-    if (!survey.gate_question_id) return survey.questions;
-    const gateAnswer = ans[survey.gate_question_id];
-    if (gateAnswer === survey.gate_required_value) return survey.questions;
-    return survey.questions.filter(q => q.id === survey.gate_question_id);
   }
 
   async function uploadFile(questionId, file) {
@@ -249,30 +325,40 @@ function PublicFill({ survey, onBack }) {
   }
 
   async function submit() {
-    const qsToValidate=visibleQuestions();
-    const e={};
-    qsToValidate.forEach(q=>{if(q.required&&!ans[q.id])e[q.id]="هذا الحقل مطلوب";});
-    if(Object.keys(e).length){setErrs(e);return;}
-    const stoppedAtGate=survey.gate_question_id&&ans[survey.gate_question_id]!==undefined&&ans[survey.gate_question_id]!==survey.gate_required_value;
-    setSubmitting(true);setSubmitError("");
-    const answers=stoppedAtGate?{[survey.gate_question_id]:ans[survey.gate_question_id]}:ans;
-    const payload={survey_id:survey.id,submitted_at:new Date().toISOString(),...buildResponsePayload(survey.survey_type,entity,respondentLabel,answers,stoppedAtGate,survey.gate_question_id)};
-    const responseLimit=survey.response_limit||"one_per_entity";
+    const qsToValidate = visibleQuestions();
+
+    // Use the engine's required-set when conditions are present,
+    // otherwise fall back to each question's own `required` flag (unchanged).
+    const e = {};
+    qsToValidate.forEach(q => {
+      const isRequired = hasAnyConditions ? evalState.required.has(q.id) : q.required;
+      const isDisabled = hasAnyConditions && evalState.disabled.has(q.id);
+      if (isRequired && !isDisabled && !ans[q.id]) e[q.id] = "هذا الحقل مطلوب";
+    });
+    if (Object.keys(e).length) { setErrs(e); clLog("Validation failed:", e); return; }
+
+    // Legacy gate-stop detection — preserved exactly for old surveys
+    const stoppedAtGate = survey.gate_question_id && ans[survey.gate_question_id]!==undefined && ans[survey.gate_question_id]!==survey.gate_required_value;
+
+    setSubmitting(true); setSubmitError("");
+    const answers = stoppedAtGate ? { [survey.gate_question_id]: ans[survey.gate_question_id] } : ans;
+    const payload = { survey_id:survey.id, submitted_at:new Date().toISOString(), ...buildResponsePayload(survey.survey_type,entity,respondentLabel,answers,stoppedAtGate,survey.gate_question_id) };
+    const responseLimit = survey.response_limit || "one_per_entity";
     let submitErr;
-    if(survey.survey_type===SURVEY_TYPES.SCHOOL&&responseLimit==="one_per_entity"){
-      const{error:e}=await supabase.from("survey_responses").upsert(payload,{onConflict:"survey_id,school_id"});submitErr=e;
-    } else if((survey.survey_type===SURVEY_TYPES.SUPERVISOR||survey.survey_type===SURVEY_TYPES.ADMINISTRATOR)&&responseLimit==="one_per_entity"&&payload.respondent_national_id){
+    if (survey.survey_type===SURVEY_TYPES.SCHOOL && responseLimit==="one_per_entity") {
+      const{error:e}=await supabase.from("survey_responses").upsert(payload,{onConflict:"survey_id,school_id"}); submitErr=e;
+    } else if ((survey.survey_type===SURVEY_TYPES.SUPERVISOR||survey.survey_type===SURVEY_TYPES.ADMINISTRATOR) && responseLimit==="one_per_entity" && payload.respondent_national_id) {
       await supabase.from("survey_responses").delete().eq("survey_id",survey.id).eq("respondent_national_id",payload.respondent_national_id);
-      const{error:e}=await supabase.from("survey_responses").insert(payload);submitErr=e;
+      const{error:e}=await supabase.from("survey_responses").insert(payload); submitErr=e;
     } else {
-      const{error:e}=await supabase.from("survey_responses").insert(payload);submitErr=e;
+      const{error:e}=await supabase.from("survey_responses").insert(payload); submitErr=e;
     }
     setSubmitting(false);
-    if(submitErr){setSubmitError("خطأ: "+(submitErr.message||submitErr.code||JSON.stringify(submitErr)));return;}
-    if(stoppedAtGate)setGateStopped(true);
+    if (submitErr) { setSubmitError("خطأ: "+(submitErr.message||submitErr.code||JSON.stringify(submitErr))); return; }
+    if (stoppedAtGate || (hasAnyConditions && evalState.endAt)) setGateStopped(true);
     setStep("done");
   }
-  // ── End unchanged logic ──
+  // ── End unchanged business logic ──
 
   // ── Done Screen ──
   if (step==="done") return (
@@ -378,58 +464,85 @@ function PublicFill({ survey, onBack }) {
               )}
 
               {/* Questions */}
-              {qsToShow.map((q, i) => (
-                <div key={q.id} className="pf-card" style={{
-                  background:F.white, borderRadius:18, padding:"16px 16px 14px",
-                  marginBottom:12, border:`1px solid ${errs[q.id]?F.danger:F.s200}`,
-                  boxShadow:errs[q.id]?`0 0 0 2px ${F.danger}20`:"0 2px 6px rgba(0,0,0,0.04)",
-                  borderRight:`3px solid ${errs[q.id]?F.danger:F.e500}`,
-                  animationDelay:`${i*0.04}s`,
-                }}>
-                  {/* Question header */}
-                  <div style={{ display:"flex", alignItems:"flex-start", gap:10, marginBottom:14 }}>
-                    <span style={{ background:F.e50, color:F.e700, borderRadius:8,
-                      width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center",
-                      fontSize:12, fontWeight:800, flexShrink:0, marginTop:1 }}>{i+1}</span>
-                    <p style={{ margin:0, fontWeight:700, color:F.s900, fontSize:14, lineHeight:1.5, flex:1 }}>
-                      {q.label}
-                      {q.required && <span style={{ color:F.danger, marginRight:4 }}>*</span>}
-                    </p>
-                  </div>
+              {qsToShow.map((q, i) => {
+                const isRequired = hasAnyConditions ? evalState.required.has(q.id) : q.required;
+                const isDisabled = hasAnyConditions && evalState.disabled.has(q.id);
+                const message    = hasAnyConditions ? evalState.messages.get(q.id) : null;
 
-                  {/* Question inputs */}
-                  {q.type==="text"     && <QuestionText    value={ans[q.id]} onChange={v=>setA(q.id,v)} hasError={!!errs[q.id]}/>}
-                  {q.type==="textarea" && <QuestionTextarea value={ans[q.id]} onChange={v=>setA(q.id,v)}/>}
-                  {q.type==="number"   && <QuestionNumber   value={ans[q.id]} onChange={v=>setA(q.id,v)} hasError={!!errs[q.id]}/>}
-                  {q.type==="select"   && <QuestionSelect   options={q.options} value={ans[q.id]} onChange={v=>setA(q.id,v)}/>}
-                  {q.type==="rating"   && <Stars value={ans[q.id]||0} onChange={v=>setA(q.id,v)}/>}
-                  {q.type==="file"     && (
-                    <QuestionFile questionId={q.id} value={ans[q.id]}
-                      onChange={v=>setA(q.id,v)}
-                      allowedTypes={q.allowed_file_types||"pdf,xlsx"}
-                      uploading={!!uploadingFiles[q.id]}
-                      onUpload={uploadFile}/>
-                  )}
-
-                  {/* Error */}
-                  {errs[q.id] && (
-                    <p style={{ color:F.danger, fontSize:12, margin:"10px 0 0",
-                      display:"flex", alignItems:"center", gap:4 }}>
-                      <span>⚠️</span>{errs[q.id]}
-                    </p>
-                  )}
-
-                  {/* Gate hint */}
-                  {survey.gate_question_id===q.id && ans[q.id] && ans[q.id]!==survey.gate_required_value && (
-                    <div style={{ background:F.s50, borderRadius:10, padding:"10px 12px", marginTop:12,
-                      border:`1px solid ${F.s200}` }}>
-                      <p style={{ margin:0, fontSize:12, color:F.s500, lineHeight:1.6 }}>
-                        ℹ️ بناءً على إجابتك سينتهي الاستبيان هنا عند الإرسال.
+                return (
+                  <div key={q.id} className="pf-card" style={{
+                    background:F.white, borderRadius:18, padding:"16px 16px 14px",
+                    marginBottom:12, border:`1px solid ${errs[q.id]?F.danger:F.s200}`,
+                    boxShadow:errs[q.id]?`0 0 0 2px ${F.danger}20`:"0 2px 6px rgba(0,0,0,0.04)",
+                    borderRight:`3px solid ${errs[q.id]?F.danger:F.e500}`,
+                    animationDelay:`${i*0.04}s`,
+                    opacity:isDisabled?0.65:1,
+                  }}>
+                    {/* Question header */}
+                    <div style={{ display:"flex", alignItems:"flex-start", gap:10, marginBottom:14 }}>
+                      <span style={{ background:F.e50, color:F.e700, borderRadius:8,
+                        width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center",
+                        fontSize:12, fontWeight:800, flexShrink:0, marginTop:1 }}>{i+1}</span>
+                      <p style={{ margin:0, fontWeight:700, color:F.s900, fontSize:14, lineHeight:1.5, flex:1 }}>
+                        {q.label}
+                        {isRequired && <span style={{ color:F.danger, marginRight:4 }}>*</span>}
+                        {isDisabled && <span style={{ fontSize:10, color:F.s400, marginRight:6 }}>🔒 معطّل</span>}
                       </p>
                     </div>
-                  )}
+
+                    {/* Question inputs */}
+                    {q.type==="text"     && <QuestionText    value={ans[q.id]} onChange={v=>setA(q.id,v)} hasError={!!errs[q.id]} disabled={isDisabled}/>}
+                    {q.type==="textarea" && <QuestionTextarea value={ans[q.id]} onChange={v=>setA(q.id,v)} disabled={isDisabled}/>}
+                    {q.type==="number"   && <QuestionNumber   value={ans[q.id]} onChange={v=>setA(q.id,v)} hasError={!!errs[q.id]} disabled={isDisabled}/>}
+                    {q.type==="select"   && <QuestionSelect   options={q.options} value={ans[q.id]} onChange={v=>setA(q.id,v)} disabled={isDisabled}/>}
+                    {q.type==="rating"   && <Stars value={ans[q.id]||0} onChange={v=>!isDisabled && setA(q.id,v)}/>}
+                    {q.type==="file"     && (
+                      <QuestionFile questionId={q.id} value={ans[q.id]}
+                        onChange={v=>setA(q.id,v)}
+                        allowedTypes={q.allowed_file_types||"pdf,xlsx"}
+                        uploading={!!uploadingFiles[q.id]}
+                        onUpload={uploadFile}
+                        disabled={isDisabled}/>
+                    )}
+
+                    {/* Error */}
+                    {errs[q.id] && (
+                      <p style={{ color:F.danger, fontSize:12, margin:"10px 0 0",
+                        display:"flex", alignItems:"center", gap:4 }}>
+                        <span>⚠️</span>{errs[q.id]}
+                      </p>
+                    )}
+
+                    {/* New engine: conditional message action */}
+                    {message && (
+                      <div style={{ background:F.warnBg, borderRadius:10, padding:"10px 12px", marginTop:12,
+                        border:`1px solid ${F.warn}30` }}>
+                        <p style={{ margin:0, fontSize:12, color:F.warn, lineHeight:1.6 }}>💬 {message}</p>
+                      </div>
+                    )}
+
+                    {/* Legacy gate hint — preserved exactly */}
+                    {survey.gate_question_id===q.id && ans[q.id] && ans[q.id]!==survey.gate_required_value && (
+                      <div style={{ background:F.s50, borderRadius:10, padding:"10px 12px", marginTop:12,
+                        border:`1px solid ${F.s200}` }}>
+                        <p style={{ margin:0, fontSize:12, color:F.s500, lineHeight:1.6 }}>
+                          ℹ️ بناءً على إجابتك سينتهي الاستبيان هنا عند الإرسال.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* New engine: end-survey notice */}
+              {hasAnyConditions && evalState.endAt && (
+                <div style={{ background:F.dangerBg, border:"1px solid #FECACA", borderRadius:14,
+                  padding:"12px 16px", marginBottom:12, textAlign:"center" }}>
+                  <p style={{ margin:0, fontSize:12, color:F.danger, fontWeight:700 }}>
+                    🔚 بناءً على إجاباتك سينتهي الاستبيان هنا عند الإرسال
+                  </p>
                 </div>
-              ))}
+              )}
 
               {/* Submit error */}
               {submitError && (
