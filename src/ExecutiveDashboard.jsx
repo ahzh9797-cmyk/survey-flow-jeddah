@@ -1,12 +1,10 @@
 /**
  * ExecutiveDashboard — لوحة التحكم التنفيذية
- * Phase C — Module 1
+ * Phase 3 — Enterprise UI redesign (Microsoft 365 / Stripe language)
  *
- * يُعيد استخدام: useSurveys, useSchoolCount, useAppSettings من lib.jsx
- * يُعيد استخدام: resolveTargetedSchools من TargetingService.jsx
- * يُعيد استخدام: SURVEY_TYPE_LABELS من SurveyService.jsx
- * يُعيد استخدام: LIFECYCLE_STATE_CONFIG من SurveyLifecycleService.js
- * يُعيد استخدام: Card, Btn, Spinner, Tag, ExportMenu من lib.jsx
+ * Business logic, data fetching, derived stats: 100% unchanged.
+ * Only the presentation layer was rebuilt to match the new
+ * AppShell sidebar/topbar design system.
  */
 
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -14,79 +12,147 @@ import { supabase, C, Btn, Card, Tag, Spinner, ExportMenu, ensureXLSX, tsStamp }
 import { SURVEY_TYPE_LABELS } from "./SurveyService.jsx";
 import { resolveState, LIFECYCLE_STATE_CONFIG } from "./SurveyLifecycleService.js";
 
+// ── Design tokens — shared with AppShell/AppSidebar/AppTopBar ──
+const D = {
+  e900:"#064E3B",e800:"#065F46",e700:"#047857",e600:"#059669",e500:"#10B981",
+  e100:"#D1FAE5",e50:"#ECFDF5",
+  gold:"#C9A84C",goldL:"#FEF3C7",
+  purple:"#7B2D8B",purpleBg:"#F5EEFA",
+  s900:"#0F172A",s700:"#334155",s500:"#64748B",s400:"#94A3B8",
+  s300:"#CBD5E1",s200:"#E2E8F0",s100:"#F1F5F9",s50:"#F8FAFC",
+  white:"#FFFFFF",bg:"#F0F4F8",
+  danger:"#DC2626",dangerBg:"#FEF2F2",warn:"#D97706",warnBg:"#FFFBEB",
+  success:"#059669",successBg:"#ECFDF5",
+};
+
+if (typeof document !== "undefined" && !document.getElementById("dash-enterprise-styles")) {
+  const s = document.createElement("style");
+  s.id = "dash-enterprise-styles";
+  s.textContent = `
+    .dash-kpi { transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease; }
+    .dash-kpi:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08) !important; }
+    .dash-row { transition: background 0.12s ease; }
+    .dash-row:hover { background: ${D.s50}; }
+    .dash-tab { transition: all 0.15s ease; }
+    .dash-filter-select { transition: border-color 0.15s ease; }
+    .dash-filter-select:focus { border-color: ${D.e600} !important; }
+    @keyframes dashIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    .dash-in { animation: dashIn 0.25s ease both; }
+    @keyframes spin { to { transform: rotate(360deg) } }
+  `;
+  document.head.appendChild(s);
+}
+
 // ═══════════════════════════════════════════════════════
-// مكوّنات بصرية مشتركة
+// Shared visual primitives — enterprise style
 // ═══════════════════════════════════════════════════════
 
-function KPICard({ icon, label, value, sub, color = C.primary, onClick }) {
+function KPICard({ icon, label, value, sub, color = D.e600, bg, onClick, idx = 0 }) {
   return (
-    <div onClick={onClick}
-      className={onClick ? "card-hover" : undefined}
+    <div onClick={onClick} className={`dash-kpi dash-in${onClick ? "" : ""}`}
       style={{
-        background: C.white, borderRadius: 16, padding: 16,
-        border: `1px solid ${C.border}`, borderTop: `3px solid ${color}`,
-        boxShadow: "0 2px 8px rgba(0,0,0,0.06)", textAlign: "center",
-        cursor: onClick ? "pointer" : "default",
+        background: D.white, borderRadius: 16, padding: "18px 18px 16px",
+        border: `1px solid ${D.s200}`, boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+        cursor: onClick ? "pointer" : "default", animationDelay: `${idx * 0.04}s`,
+        position: "relative", overflow: "hidden",
       }}>
-      <div style={{ fontSize: 26, marginBottom: 6 }}>{icon}</div>
-      <div style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: 11, color: C.muted, marginTop: 4, fontWeight: 600 }}>{label}</div>
-      {sub && <div style={{ fontSize: 10, color, marginTop: 3 }}>{sub}</div>}
+      <div style={{
+        position: "absolute", top: 0, right: 0, left: 0, height: 3,
+        background: `linear-gradient(90deg, ${color}, ${color}80)`,
+      }} />
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{
+          width: 38, height: 38, borderRadius: 11, background: bg || `${color}12`,
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+        }}>{icon}</div>
+        {onClick && <span style={{ fontSize: 11, color: D.s400 }}>‹</span>}
+      </div>
+      <div style={{ fontSize: 26, fontWeight: 800, color: D.s900, lineHeight: 1.1, letterSpacing: "-0.02em" }}>
+        {value}
+      </div>
+      <div style={{ fontSize: 12, color: D.s500, marginTop: 4, fontWeight: 600 }}>{label}</div>
+      {sub && <div style={{ fontSize: 11, color, marginTop: 4, fontWeight: 600 }}>{sub}</div>}
     </div>
   );
 }
 
-function MiniBar({ label, value, max, color = C.primary }) {
+function MiniBar({ label, value, max, color = D.e600 }) {
   const pct = max ? Math.min(100, Math.round(value / max * 100)) : 0;
   return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-        <span style={{ fontSize: 12, color: C.dark, fontWeight: 600 }}>{label}</span>
-        <span style={{ fontSize: 11, color, fontWeight: 700 }}>{pct}%</span>
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+        <span style={{ fontSize: 12, color: D.s700, fontWeight: 600 }}>{label}</span>
+        <span style={{ fontSize: 12, color, fontWeight: 800 }}>{pct}%</span>
       </div>
-      <div style={{ height: 8, background: C.border, borderRadius: 6, overflow: "hidden" }}>
+      <div style={{ height: 7, background: D.s100, borderRadius: 6, overflow: "hidden" }}>
         <div style={{
           height: "100%", width: `${pct}%`,
-          background: `linear-gradient(90deg, ${color}, ${color}bb)`,
+          background: `linear-gradient(90deg, ${color}, ${color}cc)`,
           borderRadius: 6, transition: "width 0.5s",
         }} />
       </div>
-      <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>{value} من {max}</div>
+      <div style={{ fontSize: 10, color: D.s400, marginTop: 3 }}>{value} من {max}</div>
     </div>
   );
 }
 
-function SectionHeader({ title, sub }) {
+function SectionHeader({ title, sub, action }) {
   return (
-    <div style={{ marginBottom: 12 }}>
-      <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: C.dark }}>{title}</h3>
-      {sub && <p style={{ margin: "2px 0 0", fontSize: 11, color: C.muted }}>{sub}</p>}
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 14 }}>
+      <div>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: D.s900 }}>{title}</h3>
+        {sub && <p style={{ margin: "3px 0 0", fontSize: 11, color: D.s500 }}>{sub}</p>}
+      </div>
+      {action}
     </div>
   );
 }
 
 function EmptyState({ icon = "📭", message }) {
   return (
-    <Card style={{ textAlign: "center", padding: 24 }}>
-      <div style={{ fontSize: 32, marginBottom: 8 }}>{icon}</div>
-      <p style={{ margin: 0, color: C.muted, fontSize: 13 }}>{message}</p>
-    </Card>
+    <div style={{ textAlign: "center", padding: "40px 20px", background: D.white,
+      borderRadius: 16, border: `1px solid ${D.s200}` }}>
+      <div style={{ fontSize: 38, marginBottom: 10 }}>{icon}</div>
+      <p style={{ margin: 0, color: D.s500, fontSize: 13 }}>{message}</p>
+    </div>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div style={{ textAlign: "center", padding: "60px 20px" }}>
+      <div style={{ width: 40, height: 40, borderRadius: "50%", border: `3px solid ${D.e100}`,
+        borderTopColor: D.e600, animation: "spin 0.7s linear infinite", margin: "0 auto 12px" }} />
+      <p style={{ margin: 0, color: D.s500, fontSize: 13 }}>جاري تحميل البيانات...</p>
+    </div>
+  );
+}
+
+function StateBadge({ state, cfg }) {
+  return (
+    <span style={{
+      background: `${cfg.color || D.s400}12`, color: cfg.color || D.s400,
+      border: `1px solid ${cfg.color || D.s400}30`, borderRadius: 20,
+      padding: "3px 10px", fontSize: 11, fontWeight: 700, flexShrink: 0, whiteSpace: "nowrap",
+    }}>{cfg.label || state}</span>
   );
 }
 
 // ═══════════════════════════════════════════════════════
-// فلتر لوحة التحكم
+// فلتر لوحة التحكم — logic unchanged, enterprise styling
 // ═══════════════════════════════════════════════════════
 function DashboardFilters({ filters, onChange, stages, sectors, districts, surveys }) {
   function set(k, v) { onChange({ ...filters, [k]: v }); }
 
+  const selStyle = {
+    padding: "9px 12px", border: `1.5px solid ${D.s200}`, borderRadius: 10,
+    fontSize: 12, fontFamily: "inherit", background: D.white,
+    minWidth: 130, outline: "none", cursor: "pointer",
+  };
+
   const sel = (value, onCh, children) => (
-    <select value={value} onChange={e => onCh(e.target.value)} style={{
-      padding: "8px 10px", border: `1.5px solid ${C.border}`, borderRadius: 9,
-      fontSize: 12, fontFamily: "inherit", background: C.white,
-      color: value ? C.primary : C.muted, fontWeight: value ? 700 : 400,
-      minWidth: 100,
-    }}>
+    <select className="dash-filter-select" value={value} onChange={e => onCh(e.target.value)}
+      style={{ ...selStyle, color: value ? D.e700 : D.s500, fontWeight: value ? 700 : 400 }}>
       {children}
     </select>
   );
@@ -95,8 +161,12 @@ function DashboardFilters({ filters, onChange, stages, sectors, districts, surve
     filters.district || filters.dateFrom || filters.dateTo;
 
   return (
-    <Card style={{ marginBottom: 16, padding: 14 }}>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+    <div style={{
+      background: D.white, borderRadius: 16, border: `1px solid ${D.s200}`,
+      padding: 14, marginBottom: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+    }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: D.s400, marginLeft: 2 }}>تصفية:</span>
         {sel(filters.surveyId || "", v => set("surveyId", v), <>
           <option value="">كل الاستبيانات</option>
           {surveys.map(s => <option key={s.id} value={s.id}>{s.title.slice(0, 30)}</option>)}
@@ -110,32 +180,29 @@ function DashboardFilters({ filters, onChange, stages, sectors, districts, surve
           {sectors.map(s => <option key={s} value={s}>{s}</option>)}
         </>)}
         <input type="date" value={filters.dateFrom || ""} onChange={e => set("dateFrom", e.target.value)}
-          style={{ padding: "8px 10px", border: `1.5px solid ${C.border}`, borderRadius: 9,
-            fontSize: 12, fontFamily: "inherit", direction: "ltr" }}/>
+          style={{ ...selStyle, minWidth: 130, direction: "ltr" }}/>
         <input type="date" value={filters.dateTo || ""} onChange={e => set("dateTo", e.target.value)}
-          style={{ padding: "8px 10px", border: `1.5px solid ${C.border}`, borderRadius: 9,
-            fontSize: 12, fontFamily: "inherit", direction: "ltr" }}/>
+          style={{ ...selStyle, minWidth: 130, direction: "ltr" }}/>
         {hasFilters && (
           <button onClick={() => onChange({})} style={{
-            padding: "8px 14px", borderRadius: 9, border: `1px solid ${C.danger}`,
-            background: "transparent", color: C.danger, fontSize: 12,
+            padding: "9px 14px", borderRadius: 10, border: `1px solid ${D.danger}30`,
+            background: D.dangerBg, color: D.danger, fontSize: 12, fontWeight: 700,
             cursor: "pointer", fontFamily: "inherit",
-          }}>✕ مسح</button>
+          }}>✕ مسح الفلاتر</button>
         )}
       </div>
-    </Card>
+    </div>
   );
 }
 
 // ═══════════════════════════════════════════════════════
-// hook — جلب بيانات Dashboard
+// hook — جلب بيانات Dashboard — logic 100% unchanged
 // ═══════════════════════════════════════════════════════
 function useDashboardData(surveys, allSchools, filters) {
   const [responseStats,  setResponseStats]  = useState({});
   const [recentActivity, setRecentActivity] = useState([]);
   const [loading,        setLoading]        = useState(true);
 
-  // استبيانات مُفلترة
   const filteredSurveys = useMemo(() => {
     let list = surveys;
     if (filters.surveyId)  list = list.filter(s => s.id === filters.surveyId);
@@ -144,7 +211,6 @@ function useDashboardData(surveys, allSchools, filters) {
     return list;
   }, [surveys, filters]);
 
-  // مدارس مُفلترة
   const filteredSchools = useMemo(() => {
     let list = allSchools;
     if (filters.stage)    list = list.filter(s => s.stage    === filters.stage);
@@ -165,7 +231,6 @@ function useDashboardData(surveys, allSchools, filters) {
     }
     setResponseStats(stats);
 
-    // آخر 20 نشاط
     const { data: logs } = await supabase
       .from("audit_log")
       .select("*")
@@ -178,7 +243,6 @@ function useDashboardData(surveys, allSchools, filters) {
 
   useEffect(() => { load(); }, [load]);
 
-  // إحصاءات مشتقة
   const derived = useMemo(() => {
     const now = new Date();
     const published = filteredSurveys.filter(s => resolveState(s) === "published");
@@ -195,19 +259,16 @@ function useDashboardData(surveys, allSchools, filters) {
     const totalResponses = Object.values(responseStats).reduce((a, b) => a + b, 0);
     const schoolTotal    = filteredSchools.length || 1;
 
-    // نسبة الاستجابة العامة
     const activeCount = published.length;
     const avgRate = activeCount
       ? Math.round(published.reduce((sum, s) => sum + ((responseStats[s.id] || 0) / schoolTotal * 100), 0) / activeCount)
       : 0;
 
-    // أفضل الاستبيانات أداءً
     const topSurveys = [...filteredSurveys]
       .filter(s => responseStats[s.id] > 0)
       .sort((a, b) => (responseStats[b.id] || 0) - (responseStats[a.id] || 0))
       .slice(0, 5);
 
-    // إحصاءات حسب المرحلة
     const byStage = {};
     filteredSchools.forEach(s => {
       if (s.stage) byStage[s.stage] = (byStage[s.stage] || 0) + 1;
@@ -232,7 +293,6 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
   const [loadSch,    setLoadSch]    = useState(true);
   const [activeView, setActiveView] = useState("overview");
 
-  // جلب المدارس مرة واحدة
   useEffect(() => {
     async function load() {
       let all = [], from = 0;
@@ -264,7 +324,6 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
     const XLSX = await ensureXLSX();
     const wb   = XLSX.utils.book_new();
 
-    // KPIs
     const kpiRows = [
       ["البيان", "القيمة"],
       ["إجمالي الاستبيانات", filteredSurveys.length],
@@ -279,7 +338,6 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(kpiRows), "مؤشرات الأداء");
 
-    // أفضل الاستبيانات
     if (derived.topSurveys.length) {
       const topRows = derived.topSurveys.map(s => ({
         "الاستبيان": s.title,
@@ -293,23 +351,30 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
   }
 
   const VIEWS = [
-    { id: "overview",  label: "🏠 نظرة عامة" },
-    { id: "surveys",   label: "📋 الاستبيانات" },
-    { id: "audience",  label: "👥 الجمهور" },
-    { id: "activity",  label: "📜 النشاط" },
+    { id: "overview",  label: "نظرة عامة", icon: "🏠" },
+    { id: "surveys",   label: "الاستبيانات", icon: "📋" },
+    { id: "audience",  label: "الجمهور", icon: "👥" },
+    { id: "activity",  label: "النشاط", icon: "📜" },
   ];
 
   return (
-    <div style={{ padding: 16, direction: "rtl" }}>
+    <div style={{ direction: "rtl" }}>
       {/* الرأس */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 18, color: C.dark, fontWeight: 800 }}>لوحة التحكم التنفيذية</h2>
-          <p style={{ margin: "2px 0 0", fontSize: 12, color: C.muted }}>
+          <h1 style={{ margin: 0, fontSize: 22, color: D.s900, fontWeight: 800, letterSpacing: "-0.02em" }}>
+            لوحة التحكم التنفيذية
+          </h1>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: D.s500 }}>
             {new Date().toLocaleDateString("ar-SA", { weekday:"long", year:"numeric", month:"long", day:"numeric" })}
           </p>
         </div>
-        <ExportMenu options={[{ key: "xlsx", icon: "📊", label: "تصدير Excel", action: exportDashboard }]}/>
+        <button onClick={exportDashboard} style={{
+          background: `linear-gradient(135deg,${D.e600},${D.e800})`, color: "#fff",
+          border: "none", borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 700,
+          cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6,
+          boxShadow: `0 3px 10px ${D.e600}35`,
+        }}>📊 تصدير Excel</button>
       </div>
 
       {/* الفلاتر */}
@@ -319,87 +384,112 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
         surveys={surveys}
       />
 
-      {/* تبويبات العرض */}
-      <div style={{ display: "flex", borderBottom: `1px solid ${C.border}`, marginBottom: 16 }}>
-        {VIEWS.map(v => (
-          <button key={v.id} onClick={() => setActiveView(v.id)} style={{
-            flex: 1, padding: "9px 4px", border: "none", background: "none", cursor: "pointer",
-            fontSize: 11, fontFamily: "inherit", fontWeight: activeView === v.id ? 700 : 400,
-            color: activeView === v.id ? C.primary : C.muted,
-            borderBottom: `2px solid ${activeView === v.id ? C.primary : "transparent"}`,
-            marginBottom: -1,
-          }}>{v.label}</button>
-        ))}
+      {/* تبويبات العرض — pill style matching new design language */}
+      <div style={{
+        display: "inline-flex", background: D.white, borderRadius: 12,
+        padding: 4, marginBottom: 20, border: `1px solid ${D.s200}`, gap: 2,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+      }}>
+        {VIEWS.map(v => {
+          const isActive = activeView === v.id;
+          return (
+            <button key={v.id} onClick={() => setActiveView(v.id)} className="dash-tab" style={{
+              padding: "8px 16px", border: "none", borderRadius: 9,
+              background: isActive ? D.e50 : "transparent",
+              cursor: "pointer", fontSize: 12, fontFamily: "inherit",
+              fontWeight: isActive ? 700 : 500,
+              color: isActive ? D.e700 : D.s500,
+              display: "flex", alignItems: "center", gap: 6,
+            }}>
+              <span>{v.icon}</span>{v.label}
+            </button>
+          );
+        })}
       </div>
 
-      {isLoading ? (
-        <div style={{ textAlign: "center", padding: 60 }}><Spinner size={32}/></div>
-      ) : (
+      {isLoading ? <LoadingState/> : (
         <>
           {/* ── نظرة عامة ── */}
           {activeView === "overview" && (
             <>
               {/* KPI Cards */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 16 }}>
-                <KPICard icon="✅" label="منشورة" value={derived.published.length}
-                  color={C.success} onClick={() => onNavigate?.("surveys")}/>
-                <KPICard icon="📝" label="مسودة" value={derived.draft.length}
-                  color={C.muted} onClick={() => onNavigate?.("surveys")}/>
-                <KPICard icon="📝" label="إجمالي الردود" value={derived.totalResponses}
-                  color={C.accent}/>
-                <KPICard icon="📊" label="متوسط الاستجابة" value={`${derived.avgRate}%`}
-                  color="#7B2D8B"/>
-                <KPICard icon="🔒" label="مغلقة" value={derived.closed.length}
-                  color={C.danger}/>
-                <KPICard icon="📦" label="مؤرشفة" value={derived.archived.length}
-                  color={C.muted}/>
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                gap: 12, marginBottom: 20,
+              }}>
+                <KPICard idx={0} icon="✅" label="منشورة" value={derived.published.length}
+                  color={D.success} bg={D.successBg} onClick={() => onNavigate?.("surveys")}/>
+                <KPICard idx={1} icon="📝" label="مسودة" value={derived.draft.length}
+                  color={D.s500} bg={D.s100} onClick={() => onNavigate?.("surveys")}/>
+                <KPICard idx={2} icon="📊" label="إجمالي الردود" value={derived.totalResponses}
+                  color={D.e600} bg={D.e50}/>
+                <KPICard idx={3} icon="📈" label="متوسط الاستجابة" value={`${derived.avgRate}%`}
+                  color={D.purple} bg={D.purpleBg}/>
+                <KPICard idx={4} icon="🔒" label="مغلقة" value={derived.closed.length}
+                  color={D.danger} bg={D.dangerBg}/>
+                <KPICard idx={5} icon="📦" label="مؤرشفة" value={derived.archived.length}
+                  color={D.s500} bg={D.s100}/>
               </div>
 
               {/* تنبيه — ينتهي قريباً */}
               {derived.closingSoon.length > 0 && (
-                <Card style={{ marginBottom: 14, background: C.warnBg, border: `1px solid ${C.warn}40` }}>
-                  <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: C.warn }}>
+                <div style={{
+                  background: D.warnBg, border: `1px solid ${D.warn}30`, borderRadius: 16,
+                  padding: 16, marginBottom: 18,
+                }}>
+                  <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 800, color: D.warn,
+                    display: "flex", alignItems: "center", gap: 6 }}>
                     ⏰ {derived.closingSoon.length} استبيان ينتهي خلال 3 أيام
                   </p>
-                  {derived.closingSoon.map(s => {
+                  {derived.closingSoon.map((s, i) => {
                     const end = s.end_date || s.expires_at;
                     return (
                       <div key={s.id} style={{ display: "flex", justifyContent: "space-between",
-                        padding: "6px 0", borderBottom: `1px solid ${C.warn}20` }}>
-                        <span style={{ fontSize: 13, color: C.dark, fontWeight: 600 }}>{s.title}</span>
-                        <span style={{ fontSize: 11, color: C.warn }}>
+                        alignItems: "center", padding: "8px 0",
+                        borderTop: i > 0 ? `1px solid ${D.warn}20` : "none" }}>
+                        <span style={{ fontSize: 13, color: D.s900, fontWeight: 600 }}>{s.title}</span>
+                        <span style={{ fontSize: 11, color: D.warn, fontWeight: 700,
+                          background: D.white, borderRadius: 8, padding: "3px 8px" }}>
                           {new Date(end).toLocaleDateString("ar-SA")}
                         </span>
                       </div>
                     );
                   })}
-                </Card>
+                </div>
               )}
 
               {/* أفضل الاستبيانات */}
               <SectionHeader title="🏆 أعلى الاستبيانات استجابةً" sub="حسب عدد الردود"/>
               {derived.topSurveys.length === 0
                 ? <EmptyState icon="📭" message="لا توجد ردود بعد"/>
-                : derived.topSurveys.map(s => {
-                  const count = responseStats[s.id] || 0;
-                  const pct   = filteredSchools.length ? Math.round(count / filteredSchools.length * 100) : 0;
-                  return (
-                    <Card key={s.id} style={{ marginBottom: 10 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                        <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: C.dark, flex: 1 }}>{s.title}</p>
-                        <span style={{ fontSize: 14, fontWeight: 800, color: C.primary }}>{pct}%</span>
-                      </div>
-                      <div style={{ height: 8, background: C.border, borderRadius: 6, overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: `${pct}%`,
-                          background: `linear-gradient(90deg, ${C.primary}, ${C.primaryLight})`,
-                          borderRadius: 6, transition: "width 0.5s" }}/>
-                      </div>
-                      <p style={{ margin: "4px 0 0", fontSize: 11, color: C.muted }}>
-                        {count} رد · {SURVEY_TYPE_LABELS[s.survey_type] || "—"}
-                      </p>
-                    </Card>
-                  );
-                })
+                : (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {derived.topSurveys.map((s, idx) => {
+                      const count = responseStats[s.id] || 0;
+                      const pct   = filteredSchools.length ? Math.round(count / filteredSchools.length * 100) : 0;
+                      return (
+                        <div key={s.id} className="dash-in" style={{
+                          background: D.white, borderRadius: 14, border: `1px solid ${D.s200}`,
+                          padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", animationDelay: `${idx*0.04}s`,
+                        }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: D.s900, flex: 1 }}>{s.title}</p>
+                            <span style={{ fontSize: 15, fontWeight: 800, color: D.e700 }}>{pct}%</span>
+                          </div>
+                          <div style={{ height: 7, background: D.s100, borderRadius: 6, overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${pct}%`,
+                              background: `linear-gradient(90deg, ${D.e600}, ${D.e500})`,
+                              borderRadius: 6, transition: "width 0.5s" }}/>
+                          </div>
+                          <p style={{ margin: "6px 0 0", fontSize: 11, color: D.s500 }}>
+                            {count} رد · {SURVEY_TYPE_LABELS[s.survey_type] || "—"}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
               }
             </>
           )}
@@ -410,45 +500,49 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
               <SectionHeader title="📋 جميع الاستبيانات" sub={`${filteredSurveys.length} استبيان`}/>
               {filteredSurveys.length === 0
                 ? <EmptyState icon="📋" message="لا توجد استبيانات"/>
-                : filteredSurveys.map(s => {
-                  const state  = resolveState(s);
-                  const cfg    = LIFECYCLE_STATE_CONFIG[state] || {};
-                  const count  = responseStats[s.id] || 0;
-                  const total  = filteredSchools.length;
-                  const pct    = total ? Math.round(count / total * 100) : 0;
-                  const end    = s.end_date || s.expires_at;
-                  const expiring = end && (new Date(end) - new Date()) < 3*24*60*60*1000 && new Date(end) > new Date();
+                : (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {filteredSurveys.map((s, idx) => {
+                      const state  = resolveState(s);
+                      const cfg    = LIFECYCLE_STATE_CONFIG[state] || {};
+                      const count  = responseStats[s.id] || 0;
+                      const total  = filteredSchools.length;
+                      const pct    = total ? Math.round(count / total * 100) : 0;
+                      const end    = s.end_date || s.expires_at;
+                      const expiring = end && (new Date(end) - new Date()) < 3*24*60*60*1000 && new Date(end) > new Date();
 
-                  return (
-                    <Card key={s.id} style={{ marginBottom: 10 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.dark }}>{s.title}</p>
-                          <p style={{ margin: "2px 0 0", fontSize: 11, color: C.muted }}>
-                            {SURVEY_TYPE_LABELS[s.survey_type] || "—"} ·
-                            {s.created_at ? new Date(s.created_at).toLocaleDateString("ar-SA") : "—"}
-                          </p>
-                        </div>
-                        <span style={{ background: `${cfg.color || C.muted}15`, color: cfg.color || C.muted,
-                          border: `1px solid ${cfg.color || C.muted}40`, borderRadius: 20,
-                          padding: "3px 10px", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
-                          {cfg.label || state}
-                        </span>
-                      </div>
-                      {state === "published" && (
-                        <>
-                          <MiniBar value={count} max={total} color={C.primary}
-                            label={`${count} من ${total} استجابت`}/>
-                          {expiring && (
-                            <p style={{ margin: "4px 0 0", fontSize: 11, color: C.warn, fontWeight: 700 }}>
-                              ⚠️ ينتهي {new Date(end).toLocaleDateString("ar-SA")}
-                            </p>
+                      return (
+                        <div key={s.id} className="dash-in" style={{
+                          background: D.white, borderRadius: 14, border: `1px solid ${D.s200}`,
+                          padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", animationDelay: `${idx*0.03}s`,
+                        }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                            <div style={{ flex: 1 }}>
+                              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: D.s900 }}>{s.title}</p>
+                              <p style={{ margin: "3px 0 0", fontSize: 11, color: D.s500 }}>
+                                {SURVEY_TYPE_LABELS[s.survey_type] || "—"} ·{" "}
+                                {s.created_at ? new Date(s.created_at).toLocaleDateString("ar-SA") : "—"}
+                              </p>
+                            </div>
+                            <StateBadge state={state} cfg={cfg}/>
+                          </div>
+                          {state === "published" && (
+                            <>
+                              <MiniBar value={count} max={total} color={D.e600}
+                                label={`${count} من ${total} استجابت`}/>
+                              {expiring && (
+                                <p style={{ margin: "0", fontSize: 11, color: D.warn, fontWeight: 700,
+                                  display: "flex", alignItems: "center", gap: 4 }}>
+                                  ⚠️ ينتهي {new Date(end).toLocaleDateString("ar-SA")}
+                                </p>
+                              )}
+                            </>
                           )}
-                        </>
-                      )}
-                    </Card>
-                  );
-                })
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
               }
             </>
           )}
@@ -456,28 +550,34 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
           {/* ── الجمهور ── */}
           {activeView === "audience" && (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 16 }}>
-                <KPICard icon="🏫" label="إجمالي المدارس" value={filteredSchools.length} color={C.primary}/>
-                <KPICard icon="🎓" label="المراحل الدراسية" value={Object.keys(derived.byStage).length} color="#7B2D8B"/>
+              <div style={{
+                display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                gap: 12, marginBottom: 20,
+              }}>
+                <KPICard idx={0} icon="🏫" label="إجمالي المدارس" value={filteredSchools.length}
+                  color={D.e600} bg={D.e50}/>
+                <KPICard idx={1} icon="🎓" label="المراحل الدراسية" value={Object.keys(derived.byStage).length}
+                  color={D.purple} bg={D.purpleBg}/>
               </div>
 
               {Object.keys(derived.byStage).length > 0 && (
                 <>
                   <SectionHeader title="توزيع المدارس حسب المرحلة"/>
-                  <Card style={{ marginBottom: 14 }}>
+                  <div style={{ background: D.white, borderRadius: 16, border: `1px solid ${D.s200}`,
+                    padding: 18, marginBottom: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
                     {Object.entries(derived.byStage).map(([stage, count]) => (
                       <MiniBar key={stage} label={`${stage} (${count})`}
                         value={count} max={filteredSchools.length}/>
                     ))}
-                  </Card>
+                  </div>
                 </>
               )}
 
-              {/* أكثر القطاعات استجابةً */}
               {sectors.length > 0 && (
                 <>
                   <SectionHeader title="أكثر القطاعات استجابةً"/>
-                  <Card style={{ marginBottom: 14 }}>
+                  <div style={{ background: D.white, borderRadius: 16, border: `1px solid ${D.s200}`,
+                    padding: 18, marginBottom: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
                     {sectors.map(sec => {
                       const secSchools = filteredSchools.filter(s => s.sector === sec);
                       return (
@@ -485,23 +585,23 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
                           label={`${sec} (${secSchools.length})`}
                           value={secSchools.length}
                           max={filteredSchools.length}
-                          color="#7B2D8B"/>
+                          color={D.purple}/>
                       );
                     })}
-                  </Card>
+                  </div>
                 </>
               )}
 
-              {/* مدارس بدون جوال */}
               {(() => {
                 const noPhone = filteredSchools.filter(s => !s.phone).length;
                 if (!noPhone) return null;
                 return (
-                  <Card style={{ background: C.warnBg, border: `1px solid ${C.warn}40` }}>
-                    <p style={{ margin: 0, fontSize: 13, color: C.warn, fontWeight: 700 }}>
+                  <div style={{ background: D.warnBg, border: `1px solid ${D.warn}30`, borderRadius: 14, padding: 16 }}>
+                    <p style={{ margin: 0, fontSize: 13, color: D.warn, fontWeight: 700,
+                      display: "flex", alignItems: "center", gap: 6 }}>
                       ⚠️ {noPhone} مدرسة بدون رقم جوال — لا يمكن إرسال تذكيرات لها
                     </p>
-                  </Card>
+                  </div>
                 );
               })()}
             </>
@@ -514,14 +614,15 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
               {recentActivity.length === 0
                 ? <EmptyState icon="📜" message="لا يوجد نشاط بعد"/>
                 : (
-                  <Card style={{ padding: 0, overflow: "hidden" }}>
+                  <div style={{ background: D.white, borderRadius: 16, border: `1px solid ${D.s200}`,
+                    overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
                     {recentActivity.map((log, i) => (
-                      <div key={log.id} style={{ padding: "11px 14px",
-                        borderBottom: i < recentActivity.length-1 ? `1px solid ${C.border}` : undefined,
-                        display: "flex", alignItems: "flex-start", gap: 10 }}>
-                        <div style={{ width: 32, height: 32, borderRadius: 8,
-                          background: `${C.primary}15`, display: "flex", alignItems: "center",
-                          justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
+                      <div key={log.id} className="dash-row" style={{ padding: "13px 16px",
+                        borderBottom: i < recentActivity.length-1 ? `1px solid ${D.s100}` : "none",
+                        display: "flex", alignItems: "flex-start", gap: 12 }}>
+                        <div style={{ width: 34, height: 34, borderRadius: 10,
+                          background: D.e50, display: "flex", alignItems: "center",
+                          justifyContent: "center", fontSize: 15, flexShrink: 0 }}>
                           {log.action?.includes("create") ? "➕"
                             : log.action?.includes("delete") ? "🗑️"
                             : log.action?.includes("publish") ? "🚀"
@@ -529,18 +630,18 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
                             : log.action?.includes("export") ? "📊"
                             : "✏️"}
                         </div>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ margin: 0, fontSize: 12, color: C.dark, fontWeight: 600 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ margin: 0, fontSize: 13, color: D.s900, fontWeight: 600 }}>
                             {log.record_label || log.action || "—"}
                           </p>
-                          <p style={{ margin: "2px 0 0", fontSize: 11, color: C.muted }}>
-                            {log.user_email || "—"} ·
+                          <p style={{ margin: "3px 0 0", fontSize: 11, color: D.s400 }}>
+                            {log.user_email || "—"} ·{" "}
                             {new Date(log.created_at).toLocaleString("ar-SA")}
                           </p>
                         </div>
                       </div>
                     ))}
-                  </Card>
+                  </div>
                 )
               }
             </>
