@@ -69,6 +69,165 @@ const iSt = (extra={}) => ({
   transition:"border-color 0.2s", ...extra,
 });
 
+// ── Options Editor — professional per-option rows ─────
+// Replaces the old single textarea (one option per line) with
+// individual rows: drag handle, text input, delete button —
+// matching the UX pattern used in Google Forms / Typeform.
+function OptionsEditor({ options, onChange }) {
+  const opts = options?.length ? options : [""];
+  const dragIdx = useRef(null);
+  const [dragOver, setDragOver] = useState(null);
+
+  function updateAt(idx, value) {
+    const next = [...opts];
+    next[idx] = value;
+    onChange(next);
+  }
+
+  function removeAt(idx) {
+    const next = opts.filter((_, i) => i !== idx);
+    onChange(next.length ? next : [""]);
+  }
+
+  function addOption() {
+    onChange([...opts, ""]);
+  }
+
+  function moveOption(from, to) {
+    if (to < 0 || to >= opts.length) return;
+    const next = [...opts];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    onChange(next);
+  }
+
+  function onDragStart(idx) { dragIdx.current = idx; }
+  function onDragOver(e, idx) { e.preventDefault(); setDragOver(idx); }
+  function onDrop(idx) {
+    const from = dragIdx.current;
+    if (from === null || from === idx) { dragIdx.current = null; setDragOver(null); return; }
+    moveOption(from, idx);
+    dragIdx.current = null; setDragOver(null);
+  }
+  function onDragEnd() { dragIdx.current = null; setDragOver(null); }
+
+  // Keyboard: Enter on a row adds a new option right after it and focuses it
+  function handleKeyDown(e, idx) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const next = [...opts];
+      next.splice(idx + 1, 0, "");
+      onChange(next);
+      // Focus the new input on next tick
+      requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-opt-idx="${idx + 1}"]`);
+        el?.focus();
+      });
+    } else if (e.key === "Backspace" && opts[idx] === "" && opts.length > 1) {
+      e.preventDefault();
+      removeAt(idx);
+      requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-opt-idx="${Math.max(0, idx - 1)}"]`);
+        el?.focus();
+      });
+    }
+  }
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <label style={{ display:"block", fontSize:11, fontWeight:700, color:B.s500, marginBottom:6 }}>
+        الخيارات ({opts.length})
+      </label>
+
+      {opts.map((opt, i) => (
+        <div
+          key={i}
+          draggable
+          onDragStart={()=>onDragStart(i)}
+          onDragOver={e=>onDragOver(e,i)}
+          onDrop={()=>onDrop(i)}
+          onDragEnd={onDragEnd}
+          style={{
+            display:"flex", alignItems:"center", gap:6, marginBottom:6,
+            opacity: dragIdx.current===i ? 0.4 : 1,
+            boxShadow: dragOver===i && dragIdx.current!==i ? `0 0 0 2px ${B.e600}` : "none",
+            borderRadius: 10,
+            transition:"box-shadow 0.15s ease, opacity 0.15s ease",
+          }}
+        >
+          {/* Drag handle */}
+          <span
+            title="اسحب لإعادة الترتيب"
+            style={{ cursor:"grab", color:B.s400, fontSize:15, flexShrink:0, padding:"0 2px", touchAction:"none" }}
+          >⠿</span>
+
+          {/* Number badge */}
+          <span style={{
+            width:20, height:20, borderRadius:"50%", flexShrink:0,
+            background:B.s100, color:B.s500, fontSize:10, fontWeight:700,
+            display:"flex", alignItems:"center", justifyContent:"center",
+          }}>{i+1}</span>
+
+          {/* Text input */}
+          <input
+            data-opt-idx={i}
+            value={opt}
+            onChange={e=>updateAt(i, e.target.value)}
+            onKeyDown={e=>handleKeyDown(e, i)}
+            placeholder={`خيار ${i+1}`}
+            style={{ ...iSt({ flex:1, marginBottom:0, padding:"8px 10px", fontSize:13 }) }}
+          />
+
+          {/* Move up/down (touch-friendly alternative to drag) */}
+          <button
+            type="button"
+            title="تحريك لأعلى"
+            onClick={()=>moveOption(i, i-1)}
+            disabled={i===0}
+            style={{ background:"none", border:"none", cursor:i===0?"not-allowed":"pointer",
+              color:i===0?B.s200:B.s400, fontSize:13, padding:"2px", flexShrink:0, opacity:i===0?0.4:1 }}
+          >⬆️</button>
+          <button
+            type="button"
+            title="تحريك لأسفل"
+            onClick={()=>moveOption(i, i+1)}
+            disabled={i===opts.length-1}
+            style={{ background:"none", border:"none", cursor:i===opts.length-1?"not-allowed":"pointer",
+              color:i===opts.length-1?B.s200:B.s400, fontSize:13, padding:"2px", flexShrink:0, opacity:i===opts.length-1?0.4:1 }}
+          >⬇️</button>
+
+          {/* Delete */}
+          <button
+            type="button"
+            title="حذف الخيار"
+            onClick={()=>removeAt(i)}
+            disabled={opts.length===1}
+            style={{ background:opts.length===1?"none":B.dangerBg, border:"none", borderRadius:8,
+              width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center",
+              cursor:opts.length===1?"not-allowed":"pointer", color:opts.length===1?B.s200:B.danger,
+              fontSize:13, flexShrink:0 }}
+          >✕</button>
+        </div>
+      ))}
+
+      <button
+        type="button"
+        onClick={addOption}
+        style={{
+          display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+          width:"100%", padding:"8px", marginTop:4,
+          background:B.s100, border:`1.5px dashed ${B.s300}`, borderRadius:9,
+          color:B.s700, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+        }}
+      >＋ إضافة خيار</button>
+
+      <p style={{ margin:"6px 0 0", fontSize:10, color:B.s400 }}>
+        💡 اضغط Enter لإضافة خيار جديد بسرعة، أو اسحب ⠿ لإعادة الترتيب
+      </p>
+    </div>
+  );
+}
+
 // ── Question Card ─────────────────────────────────────
 function QuestionCard({
   item, idx, total, isGate, allFlat,
@@ -152,10 +311,10 @@ function QuestionCard({
 
           {/* Select options */}
           {q.type==="select" && (
-            <textarea value={(q.options||[]).join("\n")}
-              onChange={e=>upd("options",e.target.value.split("\n").filter(Boolean))}
-              rows={3} placeholder={"خيار 1\nخيار 2\nخيار 3"}
-              style={{ ...iSt({resize:"none",marginBottom:8,fontSize:13}) }}/>
+            <OptionsEditor
+              options={q.options||[]}
+              onChange={next=>upd("options", next)}
+            />
           )}
 
           {/* File types */}
@@ -401,7 +560,7 @@ export default function SurveyBuilderEngine({
       label: q.label,
       type: q.type,
       required: q.required,
-      options: q.options || [],
+      options: (q.options || []).filter(o => o && o.trim()),
       order_index: i,
       description: q.description || null,
       conditions: (q.conditions||[]).map(c=>({
