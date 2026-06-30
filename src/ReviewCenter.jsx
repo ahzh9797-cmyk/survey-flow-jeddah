@@ -1,7 +1,10 @@
 /**
  * ReviewCenter.jsx
- * Complete Review Center — Preview Links, Comments, Approvals
- * Independent component — zero modification to existing files
+ * Phase 3 — Enterprise UI redesign for the main ReviewCenter component.
+ * ReviewPreviewPage (the public ?review=TOKEN page) is left exactly
+ * as-is — it's a standalone full-screen page outside the AppShell,
+ * already premium, and not part of this redesign pass.
+ * Logic in both: 100% unchanged.
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -17,7 +20,6 @@ import {
   isPreviewExpired, computeReviewStats,
 } from "./ReviewService.js";
 
-// ── Design tokens ────────────────────────────────────
 const R = {
   e900:"#064E3B",e800:"#065F46",e700:"#047857",e600:"#059669",e500:"#10B981",
   e100:"#D1FAE5",e50:"#ECFDF5",
@@ -29,9 +31,9 @@ const R = {
   success:"#059669",successBg:"#ECFDF5",purple:"#7B2D8B",purpleBg:"#F5EEFA",
 };
 
-if (typeof document !== "undefined" && !document.getElementById("review-styles")) {
+if (typeof document !== "undefined" && !document.getElementById("review-enterprise-styles")) {
   const _s = document.createElement("style");
-  _s.id = "review-styles";
+  _s.id = "review-enterprise-styles";
   _s.textContent = `
     .rv-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
     .rv-card:hover { transform:translateY(-1px); box-shadow:0 8px 24px rgba(0,0,0,0.09)!important; }
@@ -40,11 +42,13 @@ if (typeof document !== "undefined" && !document.getElementById("review-styles")
     @keyframes rv-in { from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)} }
     .rv-in { animation: rv-in 0.2s ease both; }
     @keyframes spin { to{transform:rotate(360deg)} }
+    .rv-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+    @media (min-width: 1024px) { .rv-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; } }
+    @media (min-width: 1440px) { .rv-grid { grid-template-columns: repeat(3, 1fr); } }
   `;
   document.head.appendChild(_s);
 }
 
-// ── Shared UI ────────────────────────────────────────
 const iSt = (extra={}) => ({
   width:"100%", padding:"10px 12px", border:`1.5px solid ${R.s200}`,
   borderRadius:10, fontSize:13, fontFamily:"inherit", direction:"rtl",
@@ -77,7 +81,7 @@ function Modal({ title, onClose, children }) {
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:300,display:"flex",alignItems:"flex-end",direction:"rtl"}}
       onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-      <div style={{width:"100%",background:R.bg,borderRadius:"24px 24px 0 0",maxHeight:"92vh",overflowY:"auto",paddingBottom:24}}>
+      <div style={{width:"100%",maxWidth:560,margin:"0 auto",background:R.bg,borderRadius:"24px 24px 0 0",maxHeight:"92vh",overflowY:"auto",paddingBottom:24}}>
         <div style={{display:"flex",justifyContent:"center",padding:"14px 0 4px"}}>
           <div style={{width:44,height:4,background:R.s200,borderRadius:4}}/>
         </div>
@@ -115,16 +119,13 @@ function StatusBadge({ status }) {
     reopened:           {label:"🔄 معاد فتحه",       color:R.warn,    bg:R.warnBg},
   }[status] || {label:status, color:R.s500, bg:R.s100};
   return (
-    <span style={{background:cfg.bg,color:cfg.color,border:`1px solid ${cfg.color}30`,borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700}}>{cfg.label}</span>
+    <span style={{background:cfg.bg,color:cfg.color,border:`1px solid ${cfg.color}30`,borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{cfg.label}</span>
   );
 }
 
-// ══════════════════════════════════════════════════════
-// CREATE PREVIEW MODAL
-// ══════════════════════════════════════════════════════
 function CreatePreviewModal({ survey, user, onCreated, onClose }) {
   const [permission,      setPermission]      = useState("simulation_comment");
-  const [expiryIdx,       setExpiryIdx]       = useState(2); // 7 days default
+  const [expiryIdx,       setExpiryIdx]       = useState(2);
   const [allowAnonymous,  setAllowAnonymous]  = useState(true);
   const [notes,           setNotes]           = useState("");
   const [saving,          setSaving]          = useState(false);
@@ -157,7 +158,7 @@ function CreatePreviewModal({ survey, user, onCreated, onClose }) {
       <div style={{marginBottom:12}}>
         <label style={{display:"block",fontSize:12,fontWeight:700,color:R.s700,marginBottom:6}}>صلاحيات المراجع</label>
         {Object.entries(PERMISSIONS).map(([k,v])=>(
-          <label key={k} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:10,cursor:"pointer",marginBottom:4,background:permission===k?R.e50:"transparent",border:`1px solid ${permission===k?R.e200:R.s200}`}}>
+          <label key={k} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:10,cursor:"pointer",marginBottom:4,background:permission===k?R.e50:"transparent",border:`1px solid ${permission===k?R.e100:R.s200}`}}>
             <input type="radio" checked={permission===k} onChange={()=>setPermission(k)} style={{width:15,height:15}}/>
             <span style={{fontSize:16}}>{v.icon}</span>
             <span style={{fontSize:13,color:permission===k?R.e700:R.s700,fontWeight:permission===k?700:400}}>{v.label}</span>
@@ -195,9 +196,6 @@ function CreatePreviewModal({ survey, user, onCreated, onClose }) {
   );
 }
 
-// ══════════════════════════════════════════════════════
-// SHARE PREVIEW MODAL
-// ══════════════════════════════════════════════════════
 function SharePreviewModal({ preview, survey, onClose }) {
   const [tab,     setTab]     = useState("link");
   const [copied,  setCopied]  = useState(false);
@@ -272,9 +270,6 @@ function SharePreviewModal({ preview, survey, onClose }) {
   );
 }
 
-// ══════════════════════════════════════════════════════
-// REVIEW DETAIL MODAL — Comments + Approvals + Audit
-// ══════════════════════════════════════════════════════
 function ReviewDetailModal({ preview, survey, user, onClose }) {
   const [tab,        setTab]        = useState("comments");
   const [comments,   setComments]   = useState([]);
@@ -325,13 +320,11 @@ function ReviewDetailModal({ preview, survey, user, onClose }) {
 
   const TABS = [["comments","💬 التعليقات"],["approvals","✅ الاعتمادات"],["reviewers","👥 المراجعون"],["audit","📜 السجل"]];
 
-  // group comments by thread
   const rootComments = comments.filter(c=>!c.parent_id);
   const getReplies   = (id) => comments.filter(c=>c.parent_id===id);
 
   return (
     <Modal title={`مراجعة: ${survey?.title||preview.title}`} onClose={onClose}>
-      {/* Stats row */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:14}}>
         <StatCard icon="💬" label="تعليقات" value={stats.total} color={R.e700}/>
         <StatCard icon="✅" label="محلولة" value={stats.resolved} color={R.success}/>
@@ -339,7 +332,6 @@ function ReviewDetailModal({ preview, survey, user, onClose }) {
         <StatCard icon="👍" label="اعتماد" value={stats.approved} color={R.purple}/>
       </div>
 
-      {/* Tabs */}
       <div style={{display:"flex",background:R.s100,borderRadius:12,padding:4,marginBottom:14,gap:2}}>
         {TABS.map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{flex:1,padding:"7px 4px",border:"none",background:tab===k?R.white:"transparent",cursor:"pointer",fontFamily:"inherit",fontSize:10,fontWeight:tab===k?700:500,color:tab===k?R.e700:R.s500,borderRadius:9,boxShadow:tab===k?"0 1px 4px rgba(0,0,0,0.08)":"none",transition:"all 0.15s",whiteSpace:"nowrap"}}>{l}</button>
@@ -376,7 +368,6 @@ function ReviewDetailModal({ preview, survey, user, onClose }) {
               </div>
               <p style={{margin:"0 0 6px",fontSize:13,color:R.s900,lineHeight:1.6}}>{c.content}</p>
               {c.question_id && <p style={{margin:"0 0 6px",fontSize:10,color:R.s400}}>📍 السؤال: {c.question_id}</p>}
-              {/* Replies */}
               {getReplies(c.id).map(r=>(
                 <div key={r.id} style={{background:R.s50,borderRadius:10,padding:"8px 10px",marginBottom:6,marginRight:20,border:`1px solid ${R.s100}`}}>
                   <p style={{margin:"0 0 2px",fontSize:11,fontWeight:700,color:R.s700}}>{r.reviewer_name} ↩️</p>
@@ -386,7 +377,6 @@ function ReviewDetailModal({ preview, survey, user, onClose }) {
             </div>
           ))}
 
-          {/* New comment */}
           <div style={{background:R.white,borderRadius:14,border:`1px solid ${R.s200}`,padding:12,marginTop:8}}>
             <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:R.s700}}>➕ إضافة تعليق</p>
             <textarea value={newComment} onChange={e=>setNewComment(e.target.value)} rows={3}
@@ -413,7 +403,6 @@ function ReviewDetailModal({ preview, survey, user, onClose }) {
             </div>
           ))}
 
-          {/* Submit approval */}
           <div style={{background:R.white,borderRadius:14,border:`1px solid ${R.s200}`,padding:14,marginTop:8}}>
             <p style={{margin:"0 0 10px",fontSize:13,fontWeight:800,color:R.s900}}>قرار الاعتماد</p>
             <div style={{display:"flex",gap:8,marginBottom:10}}>
@@ -476,9 +465,6 @@ function ReviewDetailModal({ preview, survey, user, onClose }) {
   );
 }
 
-// ══════════════════════════════════════════════════════
-// REVIEW CENTER — Main component
-// ══════════════════════════════════════════════════════
 export default function ReviewCenter({ surveys, user }) {
   const [selectedSurvey, setSelectedSurvey]   = useState(null);
   const [previews,       setPreviews]          = useState([]);
@@ -509,15 +495,13 @@ export default function ReviewCenter({ surveys, user }) {
   }
 
   return (
-    <div style={{padding:16,direction:"rtl"}}>
-      {/* Header */}
-      <div style={{marginBottom:16}}>
-        <h2 style={{margin:0,fontSize:18,color:R.s900,fontWeight:800}}>مركز المراجعة</h2>
-        <p style={{margin:"2px 0 0",fontSize:12,color:R.s500}}>روابط المراجعة الآمنة · التعليقات · الاعتمادات</p>
+    <div style={{direction:"rtl"}}>
+      <div style={{marginBottom:18}}>
+        <h1 style={{margin:0,fontSize:22,color:R.s900,fontWeight:800,letterSpacing:"-0.02em"}}>مركز المراجعة</h1>
+        <p style={{margin:"4px 0 0",fontSize:13,color:R.s500}}>روابط المراجعة الآمنة · التعليقات · الاعتمادات</p>
       </div>
 
-      {/* Survey selector */}
-      <div style={{background:R.white,borderRadius:16,border:`1px solid ${R.s200}`,padding:14,marginBottom:14}}>
+      <div style={{background:R.white,borderRadius:16,border:`1px solid ${R.s200}`,padding:14,marginBottom:18,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
         <label style={{display:"block",fontSize:12,fontWeight:700,color:R.s700,marginBottom:8}}>اختر الاستبيان للمراجعة</label>
         <select value={selectedSurvey?.id||""} onChange={e=>{
           const s=surveys.find(sv=>sv.id===e.target.value)||null;
@@ -528,23 +512,21 @@ export default function ReviewCenter({ surveys, user }) {
         </select>
       </div>
 
-      {/* Actions */}
       {selectedSurvey && (
-        <div style={{display:"flex",gap:8,marginBottom:14}}>
-          <RBtn onClick={()=>setCreateOpen(true)} style={{flex:1}}>
+        <div style={{display:"flex",gap:8,marginBottom:18}}>
+          <RBtn onClick={()=>setCreateOpen(true)}>
             🔗 إنشاء رابط مراجعة
           </RBtn>
         </div>
       )}
 
-      {/* Preview links list */}
       {selectedSurvey && (
         <>
           {previews.length>0 && (
-            <div style={{position:"relative",marginBottom:10}}>
+            <div style={{position:"relative",marginBottom:14}}>
               <span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",fontSize:14,pointerEvents:"none"}}>🔍</span>
               <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="ابحث في روابط المراجعة..."
-                style={{...iSt({padding:"10px 36px 10px 12px"}),marginBottom:0}}/>
+                style={{...iSt({padding:"10px 36px 10px 12px",background:R.s50}),marginBottom:0}}/>
             </div>
           )}
 
@@ -553,66 +535,68 @@ export default function ReviewCenter({ surveys, user }) {
               <div style={{width:32,height:32,borderRadius:"50%",border:`3px solid ${R.e100}`,borderTopColor:R.e600,animation:"spin 0.7s linear infinite",margin:"0 auto"}}/>
             </div>
           ) : filtered.length===0 ? (
-            <div style={{textAlign:"center",padding:"32px 20px",background:R.white,borderRadius:18,border:`1px solid ${R.s200}`}}>
+            <div style={{textAlign:"center",padding:"40px 20px",background:R.white,borderRadius:18,border:`1px solid ${R.s200}`}}>
               <div style={{fontSize:44,marginBottom:10}}>🔗</div>
               <p style={{margin:"0 0 4px",fontSize:14,fontWeight:700,color:R.s900}}>لا توجد روابط مراجعة</p>
               <p style={{margin:"0 0 16px",fontSize:12,color:R.s500}}>أنشئ رابطاً آمناً لمشاركة الاستبيان للمراجعة</p>
               <RBtn sm onClick={()=>setCreateOpen(true)}>🔗 إنشاء أول رابط</RBtn>
             </div>
-          ) : filtered.map((preview,idx)=>{
-            const expired = isPreviewExpired(preview);
-            return (
-              <div key={preview.id} className="rv-card rv-in"
-                style={{background:R.white,borderRadius:16,border:`1px solid ${expired?R.s200:R.s200}`,marginBottom:10,boxShadow:"0 2px 6px rgba(0,0,0,0.05)",borderRight:`3px solid ${!preview.is_active?"#ccc":expired?R.danger:R.e500}`,opacity:!preview.is_active||expired?0.7:1,animationDelay:`${idx*0.04}s`}}>
-                <div style={{padding:"12px 14px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-                    <div style={{flex:1}}>
-                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,flexWrap:"wrap"}}>
-                        <span style={{fontSize:12,fontWeight:700,color:R.s900}}>
-                          {PERMISSIONS[preview.permission]?.icon} {PERMISSIONS[preview.permission]?.label}
-                        </span>
-                        {!preview.is_active && <span style={{fontSize:10,background:R.s100,color:R.s400,borderRadius:20,padding:"2px 8px",fontWeight:700}}>معطّل</span>}
-                        {expired && <span style={{fontSize:10,background:R.dangerBg,color:R.danger,borderRadius:20,padding:"2px 8px",fontWeight:700}}>منتهي</span>}
-                        {!expired && preview.is_active && <span style={{fontSize:10,background:R.successBg,color:R.success,borderRadius:20,padding:"2px 8px",fontWeight:700}}>✅ نشط</span>}
+          ) : (
+            <div className="rv-grid">
+              {filtered.map((preview,idx)=>{
+                const expired = isPreviewExpired(preview);
+                return (
+                  <div key={preview.id} className="rv-card rv-in"
+                    style={{background:R.white,borderRadius:16,border:`1px solid ${R.s200}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)",borderRight:`3px solid ${!preview.is_active?"#ccc":expired?R.danger:R.e500}`,opacity:!preview.is_active||expired?0.7:1,animationDelay:`${idx*0.04}s`,display:"flex",flexDirection:"column"}}>
+                    <div style={{padding:"12px 14px",flex:1,display:"flex",flexDirection:"column"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                        <div style={{flex:1}}>
+                          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,flexWrap:"wrap"}}>
+                            <span style={{fontSize:12,fontWeight:700,color:R.s900}}>
+                              {PERMISSIONS[preview.permission]?.icon} {PERMISSIONS[preview.permission]?.label}
+                            </span>
+                            {!preview.is_active && <span style={{fontSize:10,background:R.s100,color:R.s400,borderRadius:20,padding:"2px 8px",fontWeight:700}}>معطّل</span>}
+                            {expired && <span style={{fontSize:10,background:R.dangerBg,color:R.danger,borderRadius:20,padding:"2px 8px",fontWeight:700}}>منتهي</span>}
+                            {!expired && preview.is_active && <span style={{fontSize:10,background:R.successBg,color:R.success,borderRadius:20,padding:"2px 8px",fontWeight:700}}>✅ نشط</span>}
+                          </div>
+                          <p style={{margin:0,fontSize:11,color:R.s400}}>
+                            👁️ {preview.view_count||0} مشاهدة
+                            {preview.expires_at && ` · ينتهي ${new Date(preview.expires_at).toLocaleDateString("ar-SA")}`}
+                            {!preview.expires_at && " · لا ينتهي"}
+                          </p>
+                          {preview.notes && <p style={{margin:"4px 0 0",fontSize:11,color:R.s500,fontStyle:"italic"}}>{preview.notes}</p>}
+                        </div>
                       </div>
-                      <p style={{margin:0,fontSize:11,color:R.s400}}>
-                        👁️ {preview.view_count||0} مشاهدة
-                        {preview.expires_at && ` · ينتهي ${new Date(preview.expires_at).toLocaleDateString("ar-SA")}`}
-                        {!preview.expires_at && " · لا ينتهي"}
-                      </p>
-                      {preview.notes && <p style={{margin:"4px 0 0",fontSize:11,color:R.s500,fontStyle:"italic"}}>{preview.notes}</p>}
+
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",borderTop:`1px solid ${R.s100}`,paddingTop:8,marginTop:"auto"}}>
+                        <RBtn sm onClick={()=>setShareTarget(preview)} disabled={!preview.is_active||expired}>🔗 مشاركة</RBtn>
+                        <RBtn sm variant="secondary" onClick={()=>setDetailTarget(preview)}>📊 التفاصيل</RBtn>
+                        {preview.is_active && <RBtn sm variant="danger" onClick={()=>handleDeactivate(preview.id)}>🚫 إلغاء</RBtn>}
+                      </div>
                     </div>
                   </div>
-
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap",borderTop:`1px solid ${R.s100}`,paddingTop:8}}>
-                    <RBtn sm onClick={()=>setShareTarget(preview)} disabled={!preview.is_active||expired}>🔗 مشاركة</RBtn>
-                    <RBtn sm variant="secondary" onClick={()=>setDetailTarget(preview)}>📊 التفاصيل</RBtn>
-                    {preview.is_active && <RBtn sm variant="danger" onClick={()=>handleDeactivate(preview.id)}>🚫 إلغاء</RBtn>}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 
       {!selectedSurvey && (
-        <div style={{textAlign:"center",padding:"40px 20px",background:R.white,borderRadius:18,border:`1px solid ${R.s200}`}}>
+        <div style={{textAlign:"center",padding:"48px 20px",background:R.white,borderRadius:18,border:`1px solid ${R.s200}`}}>
           <div style={{fontSize:48,marginBottom:12}}>🔍</div>
           <p style={{margin:"0 0 6px",fontSize:15,fontWeight:700,color:R.s900}}>مركز المراجعة</p>
           <p style={{margin:0,fontSize:13,color:R.s500}}>اختر استبياناً لإنشاء روابط مراجعة آمنة</p>
         </div>
       )}
 
-      {/* Safe preview notice */}
-      <div style={{background:R.e50,border:`1px solid ${R.e100}`,borderRadius:14,padding:14,marginTop:14}}>
+      <div style={{background:R.e50,border:`1px solid ${R.e100}`,borderRadius:14,padding:16,marginTop:18}}>
         <p style={{margin:"0 0 4px",fontSize:12,fontWeight:700,color:R.e700}}>🛡️ وضع المراجعة الآمن</p>
         <p style={{margin:0,fontSize:11,color:R.s500,lineHeight:1.7}}>
           روابط المراجعة لا تُخزّن أي إجابات · لا تُحدّث الإحصائيات · لا تظهر في التقارير · معزولة تماماً عن البيانات الإنتاجية
         </p>
       </div>
 
-      {/* Modals */}
       {createOpen && (
         <CreatePreviewModal survey={selectedSurvey} user={user}
           onCreated={()=>{ setCreateOpen(false); load(); }}
@@ -630,10 +614,6 @@ export default function ReviewCenter({ surveys, user }) {
   );
 }
 
-// ══════════════════════════════════════════════════════
-// SAFE PREVIEW PAGE — rendered when ?review=TOKEN
-// Zero production impact
-// ══════════════════════════════════════════════════════
 export function ReviewPreviewPage({ token, surveys }) {
   const [preview,  setPreview]  = useState(null);
   const [loading,  setLoading]  = useState(true);
@@ -652,10 +632,8 @@ export function ReviewPreviewPage({ token, surveys }) {
       if (!data.is_active) { setError("هذا الرابط غير مفعّل"); setLoading(false); return; }
       if (data.expires_at && new Date(data.expires_at) < new Date()) { setError("انتهت صلاحية هذا الرابط"); setLoading(false); return; }
       setPreview(data);
-      // Increment views
       import("./ReviewService.js").then(m=>m.incrementViewCount(data.id));
       import("./ReviewService.js").then(m=>m.logReviewAction({previewId:data.id,action:"preview_opened",details:{token}}));
-      // Load comments
       const c = await import("./ReviewService.js").then(m=>m.fetchComments(data.id));
       setComments(c.data||[]);
       setLoading(false);
@@ -714,7 +692,6 @@ export function ReviewPreviewPage({ token, surveys }) {
 
   return (
     <div style={{minHeight:"100vh",background:R.bg,direction:"rtl"}}>
-      {/* Preview header */}
       <div style={{background:`linear-gradient(135deg,${R.e900},${R.e800})`,padding:"14px 16px"}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
           <span style={{background:"rgba(255,255,255,0.15)",borderRadius:8,padding:"3px 10px",fontSize:10,color:"#fff",fontWeight:700}}>🔍 وضع المراجعة الآمن</span>
@@ -724,7 +701,6 @@ export function ReviewPreviewPage({ token, surveys }) {
         {preview.notes && <p style={{margin:"4px 0 0",fontSize:11,color:"rgba(255,255,255,0.65)"}}>{preview.notes}</p>}
       </div>
 
-      {/* Tabs */}
       <div style={{display:"flex",background:R.white,borderBottom:`1px solid ${R.s200}`}}>
         {[["survey","📋 الاستبيان"],canComment&&["comments","💬 تعليقات"],canApprove&&["approve","✅ اعتماد"]].filter(Boolean).map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{flex:1,padding:"11px 4px",border:"none",background:"none",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:tab===k?700:500,color:tab===k?R.e700:R.s500,borderBottom:`2px solid ${tab===k?R.e600:"transparent"}`,marginBottom:-1}}>{l}</button>
