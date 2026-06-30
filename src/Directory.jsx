@@ -3,13 +3,13 @@ import { createPortal } from "react-dom";
 import { supabase, C, Btn, Card, Tag, Spinner, ErrorBanner,
   ensureXLSX, tsStamp, logAction } from "./lib.jsx";
 
-// ── Premium styles ──────────────────────────────────────
-if (typeof document !== "undefined" && !document.getElementById("directory-premium-styles")) {
+// ── Enterprise styles — Phase 3, matches Dashboard/SurveysList ──
+if (typeof document !== "undefined" && !document.getElementById("directory-enterprise-styles")) {
   const _s = document.createElement("style");
-  _s.id = "directory-premium-styles";
+  _s.id = "directory-enterprise-styles";
   _s.textContent = `
     .dir-row { transition: background 0.12s ease; }
-    .dir-row:hover { background: #F0FDF4 !important; }
+    .dir-row:hover { background: #F8FAFC !important; }
     .dir-tab { transition: all 0.15s ease; }
     .dir-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
     .dir-card:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,0,0,0.10) !important; }
@@ -19,6 +19,14 @@ if (typeof document !== "undefined" && !document.getElementById("directory-premi
     @keyframes dir-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
     .dir-in { animation: dir-in 0.2s ease both; }
     @keyframes spin { to { transform: rotate(360deg) } }
+
+    /* Desktop table view — shown ≥1024px, hidden below */
+    .dir-table-view { display: none; }
+    .dir-list-view { display: block; }
+    @media (min-width: 1024px) {
+      .dir-table-view { display: block; }
+      .dir-list-view { display: none; }
+    }
   `;
   document.head.appendChild(_s);
 }
@@ -60,7 +68,7 @@ function StatusBadge({ status }) {
       background: active ? D.successBg : D.s100,
       color: active ? D.success : D.s400,
       border: `1px solid ${active ? D.success+"40" : D.s200}`,
-      borderRadius:20, padding:"3px 10px", fontSize:10, fontWeight:700,
+      borderRadius:20, padding:"3px 10px", fontSize:10, fontWeight:700, whiteSpace:"nowrap",
     }}>
       {active ? "● نشط" : "○ معطل"}
     </span>
@@ -73,17 +81,17 @@ function StageBadge({ stage }) {
   return stage ? (
     <span style={{ background:bgs[stage]||D.s100, color:colors[stage]||D.s500,
       border:`1px solid ${colors[stage]||D.s200}30`,
-      borderRadius:20, padding:"3px 10px", fontSize:10, fontWeight:700 }}>{stage}</span>
+      borderRadius:20, padding:"3px 10px", fontSize:10, fontWeight:700, whiteSpace:"nowrap" }}>{stage}</span>
   ) : null;
 }
 
 function IconBtn({ icon, label, onClick, color = D.e700, bg = D.e50, danger }) {
   return (
-    <button onClick={onClick} className="dir-btn" style={{
+    <button onClick={onClick} className="dir-btn" title={!label ? icon : undefined} style={{
       background: danger ? D.dangerBg : bg,
       color: danger ? D.danger : color,
       border: `1px solid ${danger ? "#FECACA" : color+"25"}`,
-      borderRadius:9, padding:"6px 12px", fontSize:11,
+      borderRadius:9, padding: label ? "6px 12px" : "6px 9px", fontSize:11,
       fontWeight:700, cursor:"pointer", fontFamily:"inherit",
       display:"inline-flex", alignItems:"center", gap:4,
     }}>
@@ -210,7 +218,7 @@ function PaginationBar({ page, total, perPage, onChange }) {
 }
 
 // ═══════════════════════════════════════════════════════
-// IMPORT ENGINE — logic unchanged, UI premium
+// IMPORT ENGINE — logic unchanged, UI unchanged (already premium)
 // ═══════════════════════════════════════════════════════
 function ImportEngine({ config, onDone, onCancel, user }) {
   // ── All state & logic unchanged ──
@@ -467,7 +475,7 @@ function ImportEngine({ config, onDone, onCancel, user }) {
 }
 
 // ═══════════════════════════════════════════════════════
-// ENTITY FORM — logic unchanged, premium UI
+// ENTITY FORM — logic + portal fix unchanged
 // ═══════════════════════════════════════════════════════
 function EntityForm({ initial, config, user, onSaved, onCancel }) {
   // ── All logic unchanged ──
@@ -493,20 +501,10 @@ function EntityForm({ initial, config, user, onSaved, onCancel }) {
   }
   // ── End unchanged ──
 
-  // CRITICAL FIX: rendered via React Portal directly into document.body.
-  // The previous version rendered this fixed-position modal as a normal
-  // child of the page tree, nested inside the <div className="page-enter">
-  // wrapper in App.jsx. That wrapper has an active CSS `animation`
-  // (fadeSlideUp), and any element with an active animation/transform
-  // creates its own stacking context in the browser. That trapped this
-  // modal's z-index comparisons locally — no matter how high we set
-  // zIndex, it could never paint above the sticky header, because they
-  // were no longer compared in the same global stacking order.
-  // createPortal escapes that entirely by attaching this DOM subtree
-  // directly under <body>, sibling to everything else in the app.
+  // Portal fix preserved exactly — see prior fix notes.
   return createPortal(
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:9999, display:"flex", alignItems:"flex-end" }}>
-      <div style={{ background:D.bg, width:"100%", maxHeight:"92vh", overflowY:"auto",
+      <div style={{ background:D.bg, width:"100%", maxWidth:560, margin:"0 auto", maxHeight:"92vh", overflowY:"auto",
         borderRadius:"24px 24px 0 0", paddingBottom:24 }}>
         <div style={{ display:"flex", justifyContent:"center", padding:"14px 0 4px" }}>
           <div style={{ width:44, height:4, background:D.s200, borderRadius:4 }}/>
@@ -541,7 +539,7 @@ function EntityForm({ initial, config, user, onSaved, onCancel }) {
                   onChange={v=>set(field.key,v)} dir="ltr" placeholder="https://maps.google.com/..."/>
                 {form[field.key] && (
                   <a href={form[field.key]} target="_blank" rel="noopener noreferrer"
-                    style={{ fontSize:12, color:D.e700, display:"block", marginTop:-6, marginBottom:10,
+                    style={{ fontSize:12, color:D.e700, marginTop:-6, marginBottom:10,
                       display:"flex", alignItems:"center", gap:4 }}>
                     🗺️ فتح الخريطة ↗
                   </a>
@@ -578,7 +576,11 @@ function EntityForm({ initial, config, user, onSaved, onCancel }) {
 }
 
 // ═══════════════════════════════════════════════════════
-// ENTITY TABLE — logic unchanged, premium UI
+// ENTITY TABLE — Phase 3 enterprise redesign
+// Logic: filtering, status toggle, bulk actions, export — 100%
+// unchanged. Adds a real <table> for desktop (≥1024px) alongside
+// the existing list view (kept for mobile/tablet), toggled purely
+// via CSS media query — zero extra JS state or branching.
 // ═══════════════════════════════════════════════════════
 function EntityTable({ config, user, isAdmin }) {
   // ── All state & logic unchanged ──
@@ -657,12 +659,12 @@ function EntityTable({ config, user, isAdmin }) {
   if (formTarget!==null) return <config.FormComponent initial={formTarget.id||formTarget[config.primaryKey]?formTarget:null} config={config} user={user} onSaved={()=>{setFormTarget(null);load();}} onCancel={()=>setFormTarget(null)}/>;
 
   return (
-    <div style={{ padding:16, direction:"rtl" }}>
+    <div style={{ direction:"rtl" }}>
       {/* Header */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
         <div>
-          <h3 style={{ margin:0, fontSize:17, color:D.s900, fontWeight:800 }}>{config.title}</h3>
-          <p style={{ margin:"2px 0 0", fontSize:12, color:D.s500 }}>{filtered.length} من {records.length} سجل</p>
+          <h2 style={{ margin:0, fontSize:18, color:D.s900, fontWeight:800 }}>{config.title}</h2>
+          <p style={{ margin:"3px 0 0", fontSize:12, color:D.s500 }}>{filtered.length} من {records.length} سجل</p>
         </div>
         <div style={{ display:"flex", gap:6 }}>
           {isAdmin && (
@@ -682,24 +684,27 @@ function EntityTable({ config, user, isAdmin }) {
       {error && <InfoBanner message={error} type="error"/>}
       {info  && <InfoBanner message={info}  type="success"/>}
 
-      {/* Search */}
-      <SearchInput value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}
-        placeholder={config.searchPlaceholder||"بحث..."}/>
-
-      {/* Filters */}
-      <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap" }}>
-        {["الكل", STATUS_ACTIVE, STATUS_DISABLED, ...(config.filterOptions||[])].map(f=>(
-          <FilterChip key={f} label={f} active={statusFilter===f}
-            color={f===STATUS_ACTIVE?D.success:f===STATUS_DISABLED?D.danger:D.e600}
-            bg={f===STATUS_ACTIVE?D.successBg:f===STATUS_DISABLED?D.dangerBg:D.e50}
-            onClick={()=>{setStatusFilter(f);setPage(1);}}/>
-        ))}
+      {/* Search + filters bar */}
+      <div style={{
+        background:D.white, borderRadius:16, border:`1px solid ${D.s200}`,
+        padding:14, marginBottom:18, boxShadow:"0 1px 3px rgba(0,0,0,0.04)",
+      }}>
+        <SearchInput value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}
+          placeholder={config.searchPlaceholder||"بحث..."}/>
+        <div style={{ display:"flex", gap:6, marginTop:12, flexWrap:"wrap" }}>
+          {["الكل", STATUS_ACTIVE, STATUS_DISABLED, ...(config.filterOptions||[])].map(f=>(
+            <FilterChip key={f} label={f} active={statusFilter===f}
+              color={f===STATUS_ACTIVE?D.success:f===STATUS_DISABLED?D.danger:D.e600}
+              bg={f===STATUS_ACTIVE?D.successBg:f===STATUS_DISABLED?D.dangerBg:D.e50}
+              onClick={()=>{setStatusFilter(f);setPage(1);}}/>
+          ))}
+        </div>
       </div>
 
       {/* Bulk bar */}
       {selected.size>0 && (
         <div style={{ background:D.e50, border:`1px solid ${D.e100}`, borderRadius:12,
-          padding:"10px 14px", marginBottom:12, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+          padding:"10px 14px", marginBottom:14, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
           <span style={{ fontSize:13, color:D.e700, fontWeight:700 }}>{selected.size} محدد</span>
           <button onClick={()=>bulkToggle(STATUS_ACTIVE)} disabled={bulkLoading}
             style={{ background:D.successBg, color:D.success, border:`1px solid ${D.success}30`,
@@ -716,59 +721,122 @@ function EntityTable({ config, user, isAdmin }) {
         </div>
       )}
 
-      {/* Table */}
       {loading ? <LoadingState/>
       : paged.length===0 ? <EmptyState icon="📋" title="لا توجد نتائج" sub="جرب تغيير البحث أو الفلاتر"/>
       : (
-        <div style={{ borderRadius:18, border:`1px solid ${D.s200}`, overflow:"hidden",
-          boxShadow:"0 2px 8px rgba(0,0,0,0.05)", background:D.white }}>
-
-          {/* Select all row */}
-          <div style={{ background:D.s50, padding:"9px 16px", borderBottom:`1px solid ${D.s100}`,
-            display:"flex", alignItems:"center", gap:10 }}>
-            <input type="checkbox"
-              checked={paged.length>0 && paged.every(r=>selected.has(r[config.primaryKey]))}
-              onChange={toggleSelectAll} style={{width:15,height:15}}/>
-            <span style={{ fontSize:11, color:D.s400, fontWeight:500 }}>تحديد الصفحة الحالية</span>
-            <span style={{ fontSize:11, color:D.s400 }}>· {paged.length} سجل</span>
+        <>
+          {/* ── Desktop table view (≥1024px) ── */}
+          <div className="dir-table-view" style={{
+            background:D.white, borderRadius:16, border:`1px solid ${D.s200}`,
+            overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,0.04)",
+          }}>
+            <table style={{ width:"100%", borderCollapse:"collapse" }}>
+              <thead>
+                <tr style={{ background:D.s50, borderBottom:`1px solid ${D.s200}` }}>
+                  <th style={{ padding:"10px 14px", width:36 }}>
+                    <input type="checkbox"
+                      checked={paged.length>0 && paged.every(r=>selected.has(r[config.primaryKey]))}
+                      onChange={toggleSelectAll} style={{width:15,height:15}}/>
+                  </th>
+                  <th style={{ padding:"12px 14px", textAlign:"right", fontSize:11, fontWeight:700, color:D.s500 }}>الاسم</th>
+                  <th style={{ padding:"12px 14px", textAlign:"right", fontSize:11, fontWeight:700, color:D.s500 }}>التفاصيل</th>
+                  <th style={{ padding:"12px 14px", textAlign:"right", fontSize:11, fontWeight:700, color:D.s500 }}>الحالة</th>
+                  <th style={{ padding:"12px 14px", textAlign:"left", fontSize:11, fontWeight:700, color:D.s500 }}>إجراءات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paged.map((record, i) => (
+                  <tr key={record[config.primaryKey]} className="dir-row" style={{
+                    borderBottom: i < paged.length-1 ? `1px solid ${D.s100}` : "none",
+                  }}>
+                    <td style={{ padding:"12px 14px" }}>
+                      <input type="checkbox"
+                        checked={selected.has(record[config.primaryKey])}
+                        onChange={()=>{const next=new Set(selected);next.has(record[config.primaryKey])?next.delete(record[config.primaryKey]):next.add(record[config.primaryKey]);setSelected(next);}}
+                        style={{width:15,height:15}}/>
+                    </td>
+                    <td style={{ padding:"12px 14px" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                        <p style={{ margin:0, fontSize:13, fontWeight:700, color:D.s900 }}>{record[config.nameField]}</p>
+                        {config.extraBadge && config.extraBadge(record)}
+                      </div>
+                    </td>
+                    <td style={{ padding:"12px 14px" }}>
+                      <p style={{ margin:0, fontSize:12, color:D.s500 }}>
+                        {config.subtitleFields.map(f=>record[f]?`${config.fieldLabels?.[f]||f}: ${record[f]}`:null).filter(Boolean).join(" · ")}
+                      </p>
+                    </td>
+                    <td style={{ padding:"12px 14px" }}>
+                      <StatusBadge status={record.status}/>
+                    </td>
+                    <td style={{ padding:"12px 14px" }}>
+                      {isAdmin && (
+                        <div style={{ display:"flex", gap:6, justifyContent:"flex-end" }}>
+                          <IconBtn icon="✏️" onClick={()=>setFormTarget(record)}/>
+                          <IconBtn icon={record.status===STATUS_ACTIVE?"⏸️":"▶️"}
+                            onClick={()=>toggleStatus(record)}
+                            danger={record.status===STATUS_ACTIVE}
+                            color={record.status===STATUS_ACTIVE?D.danger:D.success}
+                            bg={record.status===STATUS_ACTIVE?D.dangerBg:D.successBg}/>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
-          {paged.map((record,i)=>(
-            <div key={record[config.primaryKey]} className="dir-row dir-in"
-              style={{ padding:"12px 16px", background:D.white,
-                borderBottom:i<paged.length-1?`1px solid ${D.s100}`:"none",
-                display:"flex", alignItems:"center", gap:12,
-                animationDelay:`${i*0.03}s` }}>
+          {/* ── Mobile/tablet list view (<1024px) — original layout ── */}
+          <div className="dir-list-view" style={{ borderRadius:18, border:`1px solid ${D.s200}`, overflow:"hidden",
+            boxShadow:"0 2px 8px rgba(0,0,0,0.05)", background:D.white }}>
 
+            <div style={{ background:D.s50, padding:"9px 16px", borderBottom:`1px solid ${D.s100}`,
+              display:"flex", alignItems:"center", gap:10 }}>
               <input type="checkbox"
-                checked={selected.has(record[config.primaryKey])}
-                onChange={()=>{const next=new Set(selected);next.has(record[config.primaryKey])?next.delete(record[config.primaryKey]):next.add(record[config.primaryKey]);setSelected(next);}}
-                style={{width:15,height:15,flexShrink:0}}/>
-
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4, flexWrap:"wrap" }}>
-                  <p style={{ margin:0, fontSize:13, fontWeight:700, color:D.s900 }}>{record[config.nameField]}</p>
-                  <StatusBadge status={record.status}/>
-                  {config.extraBadge && config.extraBadge(record)}
-                </div>
-                <p style={{ margin:0, fontSize:11, color:D.s400, lineHeight:1.5 }}>
-                  {config.subtitleFields.map(f=>record[f]?`${config.fieldLabels?.[f]||f}: ${record[f]}`:null).filter(Boolean).join(" · ")}
-                </p>
-              </div>
-
-              {isAdmin && (
-                <div style={{ display:"flex", gap:6, flexShrink:0 }}>
-                  <IconBtn icon="✏️" onClick={()=>setFormTarget(record)}/>
-                  <IconBtn icon={record.status===STATUS_ACTIVE?"⏸️":"▶️"}
-                    onClick={()=>toggleStatus(record)}
-                    danger={record.status===STATUS_ACTIVE}
-                    color={record.status===STATUS_ACTIVE?D.danger:D.success}
-                    bg={record.status===STATUS_ACTIVE?D.dangerBg:D.successBg}/>
-                </div>
-              )}
+                checked={paged.length>0 && paged.every(r=>selected.has(r[config.primaryKey]))}
+                onChange={toggleSelectAll} style={{width:15,height:15}}/>
+              <span style={{ fontSize:11, color:D.s400, fontWeight:500 }}>تحديد الصفحة الحالية</span>
+              <span style={{ fontSize:11, color:D.s400 }}>· {paged.length} سجل</span>
             </div>
-          ))}
-        </div>
+
+            {paged.map((record,i)=>(
+              <div key={record[config.primaryKey]} className="dir-row dir-in"
+                style={{ padding:"12px 16px", background:D.white,
+                  borderBottom:i<paged.length-1?`1px solid ${D.s100}`:"none",
+                  display:"flex", alignItems:"center", gap:12,
+                  animationDelay:`${i*0.03}s` }}>
+
+                <input type="checkbox"
+                  checked={selected.has(record[config.primaryKey])}
+                  onChange={()=>{const next=new Set(selected);next.has(record[config.primaryKey])?next.delete(record[config.primaryKey]):next.add(record[config.primaryKey]);setSelected(next);}}
+                  style={{width:15,height:15,flexShrink:0}}/>
+
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4, flexWrap:"wrap" }}>
+                    <p style={{ margin:0, fontSize:13, fontWeight:700, color:D.s900 }}>{record[config.nameField]}</p>
+                    <StatusBadge status={record.status}/>
+                    {config.extraBadge && config.extraBadge(record)}
+                  </div>
+                  <p style={{ margin:0, fontSize:11, color:D.s400, lineHeight:1.5 }}>
+                    {config.subtitleFields.map(f=>record[f]?`${config.fieldLabels?.[f]||f}: ${record[f]}`:null).filter(Boolean).join(" · ")}
+                  </p>
+                </div>
+
+                {isAdmin && (
+                  <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                    <IconBtn icon="✏️" onClick={()=>setFormTarget(record)}/>
+                    <IconBtn icon={record.status===STATUS_ACTIVE?"⏸️":"▶️"}
+                      onClick={()=>toggleStatus(record)}
+                      danger={record.status===STATUS_ACTIVE}
+                      color={record.status===STATUS_ACTIVE?D.danger:D.success}
+                      bg={record.status===STATUS_ACTIVE?D.dangerBg:D.successBg}/>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       <PaginationBar page={page} total={filtered.length} perPage={PER_PAGE}
@@ -889,49 +957,52 @@ const ADMINISTRATORS_CONFIG = {
 };
 
 // ═══════════════════════════════════════════════════════
-// DIRECTORY PAGE — premium tab bar, logic unchanged
+// DIRECTORY PAGE — Phase 3 enterprise tab bar, logic unchanged
 // ═══════════════════════════════════════════════════════
 export default function DirectoryPage({ user, isAdmin }) {
   const [activeTab, setActiveTab] = useState("schools");
 
   const TABS = [
-    { id:"schools",        label:"🏫 المدارس",   config:SCHOOLS_CONFIG,        color:D.e700,   bg:D.e50 },
-    { id:"supervisors",    label:"👤 المشرفون",  config:SUPERVISORS_CONFIG,    color:D.purple, bg:D.purpleBg },
-    { id:"administrators", label:"🎓 الإداريون",  config:ADMINISTRATORS_CONFIG, color:D.amber,  bg:D.amberBg },
+    { id:"schools",        label:"المدارس",   icon:"🏫", config:SCHOOLS_CONFIG,        color:D.e700,   bg:D.e50 },
+    { id:"supervisors",    label:"المشرفون",  icon:"👤", config:SUPERVISORS_CONFIG,    color:D.purple, bg:D.purpleBg },
+    { id:"administrators", label:"الإداريون", icon:"🎓", config:ADMINISTRATORS_CONFIG, color:D.amber,  bg:D.amberBg },
   ];
 
   const current = TABS.find(t=>t.id===activeTab);
 
   return (
     <div style={{ direction:"rtl" }}>
-      {/* Premium tab bar */}
+      {/* Header */}
+      <div style={{ marginBottom:18 }}>
+        <h1 style={{ margin:0, fontSize:22, color:D.s900, fontWeight:800, letterSpacing:"-0.02em" }}>الدليل</h1>
+        <p style={{ margin:"4px 0 0", fontSize:13, color:D.s500 }}>إدارة المدارس والمشرفين والإداريين</p>
+      </div>
+
+      {/* Pill tab bar — matches Dashboard/SurveysList design language */}
       <div style={{
-        background:D.white, position:"sticky", top:0, zIndex:5,
-        boxShadow:"0 1px 8px rgba(0,0,0,0.06)",
-        borderBottom:`1px solid ${D.s100}`,
+        display: "inline-flex", background: D.white, borderRadius: 12,
+        padding: 4, marginBottom: 20, border: `1px solid ${D.s200}`, gap: 2,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
       }}>
-        <div style={{ display:"flex" }}>
-          {TABS.map(t=>{
-            const isActive = activeTab===t.id;
-            return (
-              <button key={t.id} onClick={()=>setActiveTab(t.id)} className="dir-tab" style={{
-                flex:1, padding:"13px 4px", border:"none",
-                background:isActive?`${t.color}08`:D.white,
-                cursor:"pointer", fontFamily:"inherit", fontSize:12,
-                fontWeight:isActive?800:500,
-                color:isActive?t.color:D.s500,
-                borderBottom:`3px solid ${isActive?t.color:"transparent"}`,
-                marginBottom:-1, transition:"all 0.15s",
-                display:"flex", flexDirection:"column", alignItems:"center", gap:1,
-              }}>
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
+        {TABS.map(t=>{
+          const isActive = activeTab===t.id;
+          return (
+            <button key={t.id} onClick={()=>setActiveTab(t.id)} className="dir-tab" style={{
+              padding: "8px 16px", border: "none", borderRadius: 9,
+              background: isActive ? t.bg : "transparent",
+              cursor: "pointer", fontSize: 12, fontFamily: "inherit",
+              fontWeight: isActive ? 700 : 500,
+              color: isActive ? t.color : D.s500,
+              display: "flex", alignItems: "center", gap: 6,
+            }}>
+              <span>{t.icon}</span>{t.label}
+            </button>
+          );
+        })}
       </div>
 
       <EntityTable key={activeTab} config={current.config} user={user} isAdmin={isAdmin}/>
     </div>
   );
 }
+
