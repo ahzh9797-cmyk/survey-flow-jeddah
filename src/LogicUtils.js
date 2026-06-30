@@ -5,8 +5,21 @@
  */
 
 // ── ID Generation ────────────────────────────────────
+// Must return a real UUID v4 — survey_questions.id is a uuid column.
+// The old implementation returned a short random string which is NOT
+// a valid UUID; inserting it into a uuid column either errors out or
+// (depending on Postgres settings) gets silently coerced/rejected,
+// which breaks question persistence and any condition referencing it.
 export function uid() {
-  return Math.random().toString(36).slice(2, 11) + Date.now().toString(36);
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback UUID v4 generator (no crypto.randomUUID available)
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    const v = c === "x" ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }
 
 // ── Operators ────────────────────────────────────────
