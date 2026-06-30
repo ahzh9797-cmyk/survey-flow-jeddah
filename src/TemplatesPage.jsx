@@ -3,10 +3,10 @@ import { supabase, C, Btn, Card, Tag, Spinner, ErrorBanner, logAction } from "./
 import { SURVEY_TYPE_LABELS } from "./SurveyService.jsx";
 import { genId, deepClone } from "./utils.js";
 
-// ── Premium styles ──────────────────────────────────────
-if (typeof document !== "undefined" && !document.getElementById("templates-premium-styles")) {
+// ── Enterprise styles — Phase 3, matches Dashboard/SurveysList/Directory ──
+if (typeof document !== "undefined" && !document.getElementById("templates-enterprise-styles")) {
   const _s = document.createElement("style");
-  _s.id = "templates-premium-styles";
+  _s.id = "templates-enterprise-styles";
   _s.textContent = `
     .tmpl-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
     .tmpl-card:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(0,0,0,0.10) !important; }
@@ -16,6 +16,20 @@ if (typeof document !== "undefined" && !document.getElementById("templates-premi
     .tmpl-search:focus { border-color: #059669 !important; box-shadow: 0 0 0 3px rgba(5,150,105,0.12) !important; outline: none; }
     @keyframes tmpl-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
     .tmpl-in { animation: tmpl-in 0.22s ease both; }
+    @keyframes spin { to { transform: rotate(360deg) } }
+
+    /* Desktop grid — shown ≥1024px, single column below */
+    .tmpl-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    @media (min-width: 1024px) {
+      .tmpl-grid { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    }
+    @media (min-width: 1440px) {
+      .tmpl-grid { grid-template-columns: repeat(3, 1fr); }
+    }
   `;
   document.head.appendChild(_s);
 }
@@ -88,7 +102,7 @@ const TYPE_COLORS = {
 };
 
 // ═══════════════════════════════════════════════════════
-// PREVIEW SHEET — logic unchanged, UI premium
+// PREVIEW SHEET — logic unchanged
 // ═══════════════════════════════════════════════════════
 function TemplatePreviewSheet({ template, onUse, onClose }) {
   const qs = template.questions || [];
@@ -106,15 +120,13 @@ function TemplatePreviewSheet({ template, onUse, onClose }) {
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200,
       display:"flex", alignItems:"flex-end", direction:"rtl" }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ width:"100%", background:TT.white, borderRadius:"24px 24px 0 0",
+      <div style={{ width:"100%", maxWidth:560, margin:"0 auto", background:TT.white, borderRadius:"24px 24px 0 0",
         maxHeight:"90vh", overflowY:"auto", paddingBottom:32 }}>
 
-        {/* Handle */}
         <div style={{ display:"flex", justifyContent:"center", padding:"14px 0 4px" }}>
           <div style={{ width:44, height:4, background:TT.s200, borderRadius:4 }}/>
         </div>
 
-        {/* Header */}
         <div style={{ padding:"12px 18px 0" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
             <div style={{ flex:1 }}>
@@ -138,7 +150,6 @@ function TemplatePreviewSheet({ template, onUse, onClose }) {
               fontSize:18, cursor:"pointer", color:TT.s500, flexShrink:0, marginRight:6 }}>✕</button>
           </div>
 
-          {/* Stats */}
           <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:16 }}>
             {[
               { i:"❓", l:"الأسئلة",  v:`${qs.length}` },
@@ -153,7 +164,6 @@ function TemplatePreviewSheet({ template, onUse, onClose }) {
             ))}
           </div>
 
-          {/* Question types */}
           {Object.keys(typeCounts).length > 0 && (
             <div style={{ marginBottom:14 }}>
               <p style={{ margin:"0 0 8px", fontSize:12, fontWeight:700, color:TT.s700 }}>أنواع الأسئلة</p>
@@ -167,7 +177,6 @@ function TemplatePreviewSheet({ template, onUse, onClose }) {
             </div>
           )}
 
-          {/* Questions list */}
           {qs.length > 0 && (
             <div style={{ marginBottom:16 }}>
               <p style={{ margin:"0 0 8px", fontSize:12, fontWeight:700, color:TT.s700 }}>الأسئلة</p>
@@ -206,7 +215,7 @@ function TemplatePreviewSheet({ template, onUse, onClose }) {
 }
 
 // ═══════════════════════════════════════════════════════
-// SAVE AS TEMPLATE SHEET — logic unchanged, UI premium
+// SAVE AS TEMPLATE SHEET — logic unchanged
 // ═══════════════════════════════════════════════════════
 export function SaveAsTemplateSheet({ survey, user, isAdmin, onSaved, onClose }) {
   const { categories } = useCategories();
@@ -259,7 +268,7 @@ export function SaveAsTemplateSheet({ survey, user, isAdmin, onSaved, onClose })
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200,
       display:"flex", alignItems:"flex-end", direction:"rtl" }}
       onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
-      <div style={{ width:"100%", background:TT.white, borderRadius:"24px 24px 0 0",
+      <div style={{ width:"100%", maxWidth:560, margin:"0 auto", background:TT.white, borderRadius:"24px 24px 0 0",
         maxHeight:"85vh", overflowY:"auto", paddingBottom:32 }}>
         <div style={{ display:"flex", justifyContent:"center", padding:"14px 0 4px" }}>
           <div style={{ width:44, height:4, background:TT.s200, borderRadius:4 }}/>
@@ -324,7 +333,7 @@ export function SaveAsTemplateSheet({ survey, user, isAdmin, onSaved, onClose })
 }
 
 // ═══════════════════════════════════════════════════════
-// TEMPLATE CARD — premium redesign, logic unchanged
+// TEMPLATE CARD — logic unchanged
 // ═══════════════════════════════════════════════════════
 function TemplateCard({ template, currentUserId, isAdmin, onPreview, onUse, onEdit, onDuplicate, onToggleStatus }) {
   const qs      = template.questions || [];
@@ -338,12 +347,12 @@ function TemplateCard({ template, currentUserId, isAdmin, onPreview, onUse, onEd
   return (
     <div className="tmpl-card tmpl-in" style={{
       background:TT.white, borderRadius:18, border:`1px solid ${TT.s200}`,
-      marginBottom:12, overflow:"hidden", opacity:isActive?1:0.65,
+      overflow:"hidden", opacity:isActive?1:0.65,
       boxShadow:"0 2px 8px rgba(0,0,0,0.05)",
       borderRight:`4px solid ${tc.color}`,
+      display:"flex", flexDirection:"column", height:"100%",
     }}>
-      <div style={{ padding:"14px 16px" }}>
-        {/* Badges */}
+      <div style={{ padding:"14px 16px", flex:1, display:"flex", flexDirection:"column" }}>
         <div style={{ display:"flex", gap:6, marginBottom:8, flexWrap:"wrap" }}>
           <span style={{ background:tc.bg, color:tc.color, border:`1px solid ${tc.color}30`,
             borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>
@@ -357,15 +366,13 @@ function TemplateCard({ template, currentUserId, isAdmin, onPreview, onUse, onEd
             borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>🚫 معطّل</span>}
         </div>
 
-        {/* Title + desc */}
         <h3 style={{ margin:"0 0 4px", fontSize:15, color:TT.s900, fontWeight:700, lineHeight:1.4 }}>{template.title}</h3>
         {template.description && (
-          <p style={{ margin:"0 0 10px", fontSize:12, color:TT.s500, lineHeight:1.5 }}>
+          <p style={{ margin:"0 0 10px", fontSize:12, color:TT.s500, lineHeight:1.5, flex:1 }}>
             {template.description.length>80 ? template.description.slice(0,80)+"..." : template.description}
           </p>
         )}
 
-        {/* Meta row */}
         <div style={{ display:"flex", gap:12, marginBottom:12, flexWrap:"wrap" }}>
           <span style={{ fontSize:11, color:TT.s400, display:"flex", alignItems:"center", gap:3 }}>❓ {qs.length} سؤال</span>
           <span style={{ fontSize:11, color:TT.s400, display:"flex", alignItems:"center", gap:3 }}>⏱️ {minutes} د</span>
@@ -374,8 +381,7 @@ function TemplateCard({ template, currentUserId, isAdmin, onPreview, onUse, onEd
           )}
         </div>
 
-        {/* Actions */}
-        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:"auto" }}>
           <TBtn icon="👁️" label="معاينة" onClick={()=>onPreview(template)} color={TT.e700} bg={TT.e50}/>
           {isActive && <TBtn icon="✓" label="استخدام" onClick={()=>onUse(template)} color="#fff" bg={TT.e600} gradient/>}
           {canEdit && <TBtn icon="✏️" label="تعديل" onClick={()=>onEdit(template)}/>}
@@ -405,7 +411,7 @@ function TBtn({ icon, label, onClick, color, bg, gradient }) {
 }
 
 // ═══════════════════════════════════════════════════════
-// TEMPLATE FORM — logic unchanged, premium inputs
+// TEMPLATE FORM — logic unchanged
 // ═══════════════════════════════════════════════════════
 function TemplateFormPage({ existing, user, isAdmin, onSaved, onCancel }) {
   const { categories } = useCategories();
@@ -445,11 +451,11 @@ function TemplateFormPage({ existing, user, isAdmin, onSaved, onCancel }) {
   const inputStyle={width:"100%",padding:"11px 13px",border:`1.5px solid ${TT.s200}`,borderRadius:12,fontSize:14,fontFamily:"inherit",direction:"rtl",boxSizing:"border-box",outline:"none",background:TT.s50,color:TT.s900};
 
   return (
-    <div style={{ padding:16, direction:"rtl", paddingBottom:80 }}>
+    <div style={{ direction:"rtl", maxWidth:760, margin:"0 auto" }}>
       <button onClick={onCancel} style={{ background:"none", border:"none", color:TT.e700, fontSize:14, cursor:"pointer", padding:"0 0 14px", fontFamily:"inherit", display:"flex", alignItems:"center", gap:4 }}>← إلغاء</button>
-      <h2 style={{ margin:"0 0 16px", fontSize:18, color:TT.s900, fontWeight:800 }}>{isEdit?"تعديل القالب":"قالب جديد"}</h2>
+      <h1 style={{ margin:"0 0 18px", fontSize:20, color:TT.s900, fontWeight:800, letterSpacing:"-0.02em" }}>{isEdit?"تعديل القالب":"قالب جديد"}</h1>
 
-      <div style={{ background:TT.white, borderRadius:18, border:`1px solid ${TT.s200}`, padding:18, marginBottom:14, boxShadow:"0 2px 8px rgba(0,0,0,0.05)" }}>
+      <div style={{ background:TT.white, borderRadius:18, border:`1px solid ${TT.s200}`, padding:18, marginBottom:14, boxShadow:"0 1px 3px rgba(0,0,0,0.04)" }}>
         <p style={{ margin:"0 0 14px", fontSize:13, fontWeight:700, color:TT.s700 }}>معلومات القالب</p>
         <div style={{ marginBottom:12 }}>
           <label style={{ display:"block", fontSize:12, fontWeight:700, color:TT.s700, marginBottom:6 }}>اسم القالب <span style={{ color:TT.danger }}>*</span></label>
@@ -537,7 +543,10 @@ function TemplateFormPage({ existing, user, isAdmin, onSaved, onCancel }) {
 }
 
 // ═══════════════════════════════════════════════════════
-// MAIN TEMPLATES PAGE — logic unchanged, premium UI
+// MAIN TEMPLATES PAGE — Phase 3 enterprise redesign
+// Logic: filtering, status toggle, duplicate — 100% unchanged.
+// Adds a responsive grid (1 col mobile → 2 cols ≥1024px → 3 cols
+// ≥1440px) via CSS only, replacing the single-column stack.
 // ═══════════════════════════════════════════════════════
 export default function TemplatesPage({ user, isAdmin, onUseTemplate }) {
   const { templates, loading, refetch } = useTemplates();
@@ -577,51 +586,55 @@ export default function TemplatesPage({ user, isAdmin, onUseTemplate }) {
   const hasFilters = search||filterCategory||filterType||filterScope;
 
   return (
-    <div style={{ padding:16, direction:"rtl" }}>
+    <div style={{ direction:"rtl" }}>
       {/* Header */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18, flexWrap:"wrap", gap:12 }}>
         <div>
-          <h2 style={{ margin:0, fontSize:18, color:TT.s900, fontWeight:800 }}>مكتبة القوالب</h2>
-          <p style={{ margin:"2px 0 0", fontSize:12, color:TT.s500 }}>{templates.length} قالب</p>
+          <h1 style={{ margin:0, fontSize:22, color:TT.s900, fontWeight:800, letterSpacing:"-0.02em" }}>مكتبة القوالب</h1>
+          <p style={{ margin:"4px 0 0", fontSize:13, color:TT.s500 }}>{templates.length} قالب</p>
         </div>
         <button onClick={()=>setFormTarget(null)} style={{
           background:`linear-gradient(135deg,${TT.e600},${TT.e800})`,
-          color:"#fff", border:"none", borderRadius:12, padding:"10px 18px",
-          fontSize:13, fontWeight:800, cursor:"pointer", fontFamily:"inherit",
-          boxShadow:`0 4px 14px ${TT.e600}40`, display:"flex", alignItems:"center", gap:6,
+          color:"#fff", border:"none", borderRadius:10, padding:"10px 18px",
+          fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+          boxShadow:`0 3px 10px ${TT.e600}35`, display:"flex", alignItems:"center", gap:6,
         }}><span style={{ fontSize:16 }}>＋</span> قالب جديد</button>
       </div>
 
-      {/* Search */}
-      <div style={{ position:"relative", marginBottom:10 }}>
-        <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:16, pointerEvents:"none" }}>🔍</span>
-        <input className="tmpl-search" value={search} onChange={e=>setSearch(e.target.value)}
-          placeholder="ابحث باسم القالب أو الوصف..."
-          style={{ width:"100%", padding:"11px 42px 11px 14px", border:`1.5px solid ${TT.s200}`, borderRadius:12, fontSize:13, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", background:TT.white, color:TT.s900, transition:"all 0.2s" }}/>
-        {search && <button onClick={()=>setSearch("")} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:TT.s400, cursor:"pointer", fontSize:16 }}>✕</button>}
-      </div>
+      {/* Search + filters bar */}
+      <div style={{
+        background:TT.white, borderRadius:16, border:`1px solid ${TT.s200}`,
+        padding:14, marginBottom:18, boxShadow:"0 1px 3px rgba(0,0,0,0.04)",
+      }}>
+        <div style={{ position:"relative", marginBottom:12 }}>
+          <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:15, pointerEvents:"none" }}>🔍</span>
+          <input className="tmpl-search" value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder="ابحث باسم القالب أو الوصف..."
+            style={{ width:"100%", padding:"10px 40px 10px 14px", border:`1.5px solid ${TT.s200}`, borderRadius:10, fontSize:13, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", background:TT.s50, color:TT.s900, transition:"all 0.2s" }}/>
+          {search && <button onClick={()=>setSearch("")} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:TT.s400, cursor:"pointer", fontSize:16 }}>✕</button>}
+        </div>
 
-      {/* Filters */}
-      <div style={{ display:"flex", gap:6, marginBottom:16, overflowX:"auto", paddingBottom:4 }}>
-        <select value={filterCategory} onChange={e=>setFilterCategory(e.target.value)} style={{ padding:"7px 10px", borderRadius:20, fontSize:12, fontFamily:"inherit", border:`1.5px solid ${filterCategory?TT.e600:TT.s200}`, background:TT.white, color:filterCategory?TT.e700:TT.s500, cursor:"pointer" }}>
-          <option value="">كل الفئات</option>
-          {categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-        <select value={filterType} onChange={e=>setFilterType(e.target.value)} style={{ padding:"7px 10px", borderRadius:20, fontSize:12, fontFamily:"inherit", border:`1.5px solid ${filterType?TT.e600:TT.s200}`, background:TT.white, color:filterType?TT.e700:TT.s500, cursor:"pointer" }}>
-          <option value="">كل الأنواع</option>
-          {Object.entries(SURVEY_TYPE_LABELS).map(([v,l])=><option key={v} value={v}>{l}</option>)}
-        </select>
-        <select value={filterScope} onChange={e=>setFilterScope(e.target.value)} style={{ padding:"7px 10px", borderRadius:20, fontSize:12, fontFamily:"inherit", border:`1.5px solid ${filterScope?TT.e600:TT.s200}`, background:TT.white, color:filterScope?TT.e700:TT.s500, cursor:"pointer" }}>
-          <option value="">الكل</option>
-          <option value="system">🌐 عام</option>
-          <option value="personal">🔒 شخصي</option>
-        </select>
-        {hasFilters && (
-          <button onClick={()=>{setSearch("");setFilterCategory("");setFilterType("");setFilterScope("");}}
-            style={{ padding:"7px 14px", borderRadius:20, fontSize:12, fontFamily:"inherit", border:`1.5px solid ${TT.danger}`, background:TT.dangerBg, color:TT.danger, cursor:"pointer", whiteSpace:"nowrap" }}>
-            ✕ مسح
-          </button>
-        )}
+        <div style={{ display:"flex", gap:6, overflowX:"auto", paddingBottom:2 }}>
+          <select value={filterCategory} onChange={e=>setFilterCategory(e.target.value)} style={{ padding:"7px 10px", borderRadius:20, fontSize:12, fontFamily:"inherit", border:`1.5px solid ${filterCategory?TT.e600:TT.s200}`, background:TT.white, color:filterCategory?TT.e700:TT.s500, cursor:"pointer" }}>
+            <option value="">كل الفئات</option>
+            {categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <select value={filterType} onChange={e=>setFilterType(e.target.value)} style={{ padding:"7px 10px", borderRadius:20, fontSize:12, fontFamily:"inherit", border:`1.5px solid ${filterType?TT.e600:TT.s200}`, background:TT.white, color:filterType?TT.e700:TT.s500, cursor:"pointer" }}>
+            <option value="">كل الأنواع</option>
+            {Object.entries(SURVEY_TYPE_LABELS).map(([v,l])=><option key={v} value={v}>{l}</option>)}
+          </select>
+          <select value={filterScope} onChange={e=>setFilterScope(e.target.value)} style={{ padding:"7px 10px", borderRadius:20, fontSize:12, fontFamily:"inherit", border:`1.5px solid ${filterScope?TT.e600:TT.s200}`, background:TT.white, color:filterScope?TT.e700:TT.s500, cursor:"pointer" }}>
+            <option value="">الكل</option>
+            <option value="system">🌐 عام</option>
+            <option value="personal">🔒 شخصي</option>
+          </select>
+          {hasFilters && (
+            <button onClick={()=>{setSearch("");setFilterCategory("");setFilterType("");setFilterScope("");}}
+              style={{ padding:"7px 14px", borderRadius:20, fontSize:12, fontFamily:"inherit", border:`1.5px solid ${TT.danger}30`, background:TT.dangerBg, color:TT.danger, cursor:"pointer", whiteSpace:"nowrap" }}>
+              ✕ مسح
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Content */}
@@ -631,7 +644,7 @@ export default function TemplatesPage({ user, isAdmin, onUseTemplate }) {
           <p style={{ color:TT.s500, fontSize:13, margin:0 }}>جاري التحميل...</p>
         </div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign:"center", padding:"40px 20px", background:TT.white, borderRadius:20, border:`1px solid ${TT.s200}` }}>
+        <div style={{ textAlign:"center", padding:"48px 20px", background:TT.white, borderRadius:20, border:`1px solid ${TT.s200}` }}>
           <div style={{ fontSize:48, marginBottom:12 }}>🗂️</div>
           <p style={{ margin:"0 0 6px", fontSize:15, fontWeight:700, color:TT.s900 }}>
             {templates.length===0 ? "لا توجد قوالب بعد" : "لا توجد نتائج مطابقة"}
@@ -640,14 +653,18 @@ export default function TemplatesPage({ user, isAdmin, onUseTemplate }) {
             {templates.length===0 ? "اضغط ＋ قالب جديد لإنشاء أول قالب" : "جرب تغيير الفلاتر"}
           </p>
         </div>
-      ) : filtered.map((t,idx) => (
-        <div key={t.id} style={{ animationDelay:`${idx*0.04}s` }}>
-          <TemplateCard
-            template={t} currentUserId={user?.id} isAdmin={isAdmin}
-            onPreview={setPreview} onUse={onUseTemplate}
-            onEdit={t=>setFormTarget(t)} onDuplicate={duplicate} onToggleStatus={toggleStatus}/>
+      ) : (
+        <div className="tmpl-grid">
+          {filtered.map((t,idx) => (
+            <div key={t.id} style={{ animationDelay:`${idx*0.04}s` }}>
+              <TemplateCard
+                template={t} currentUserId={user?.id} isAdmin={isAdmin}
+                onPreview={setPreview} onUse={onUseTemplate}
+                onEdit={t=>setFormTarget(t)} onDuplicate={duplicate} onToggleStatus={toggleStatus}/>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
 
       {preview && (
         <TemplatePreviewSheet template={preview}
@@ -657,4 +674,3 @@ export default function TemplatesPage({ user, isAdmin, onUseTemplate }) {
     </div>
   );
 }
-
