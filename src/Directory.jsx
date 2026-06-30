@@ -493,7 +493,7 @@ function EntityForm({ initial, config, user, onSaved, onCancel }) {
   // ── End unchanged ──
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:60, display:"flex", alignItems:"flex-end" }}>
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
       <div style={{ background:D.bg, width:"100%", maxHeight:"92vh", overflowY:"auto",
         borderRadius:"24px 24px 0 0", paddingBottom:24 }}>
         <div style={{ display:"flex", justifyContent:"center", padding:"14px 0 4px" }}>
