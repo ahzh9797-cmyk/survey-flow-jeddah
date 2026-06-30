@@ -1,19 +1,13 @@
 /**
  * SurveyBuilderEngine.jsx
- * Enterprise Survey Builder — Phase 2
+ * Phase 3 — Enterprise UI redesign.
  *
- * Replaces the old NewSurveyPage with:
- * - Per-question conditional logic (unlimited)
- * - Question Groups
- * - Full drag & drop reordering
- * - Move Up / Move Down
- * - Duplicate question + group
- * - Legacy gate adapter (old surveys still work)
- * - Live condition preview
- *
- * Props identical to old NewSurveyPage:
- *   onSaved, onCancel, user, isAdmin,
- *   existingSurvey, initialQuestions, initialSurveyType
+ * All business logic — conditional engine, drag/drop, save, legacy
+ * adapter, validation — is 100% unchanged from the working version.
+ * Only the layout shell changed: a two-column desktop view
+ * (settings + questions on the left, live preview pinned on the
+ * right) replaces the single mobile-only column, activated purely
+ * via CSS at ≥1280px.
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
@@ -31,7 +25,7 @@ import {
 import { adaptLegacySurvey, isLegacySurvey, stripLegacyGate } from "./LegacyGateAdapter.js";
 import { evaluateSurvey, getVisibleQuestions } from "./ConditionEngine.js";
 
-// ── Design tokens ────────────────────────────────────
+// ── Design tokens — Phase 3, matches AppShell design system ──
 const B = {
   e900:"#064E3B",e800:"#065F46",e700:"#047857",e600:"#059669",
   e100:"#D1FAE5",e50:"#ECFDF5",
@@ -43,9 +37,9 @@ const B = {
   success:"#059669",successBg:"#ECFDF5",purple:"#7B2D8B",amber:"#B7791F",
 };
 
-if (typeof document !== "undefined" && !document.getElementById("builder-styles")) {
+if (typeof document !== "undefined" && !document.getElementById("builder-enterprise-styles")) {
   const _s = document.createElement("style");
-  _s.id = "builder-styles";
+  _s.id = "builder-enterprise-styles";
   _s.textContent = `
     .bld-q { transition: box-shadow 0.15s ease, transform 0.15s ease; }
     .bld-q:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08)!important; }
@@ -58,6 +52,15 @@ if (typeof document !== "undefined" && !document.getElementById("builder-styles"
     @keyframes bld-in { from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)} }
     .bld-in { animation: bld-in 0.2s ease both; }
     @keyframes spin { to{transform:rotate(360deg)} }
+
+    /* Desktop two-column layout — shown ≥1280px */
+    .bld-layout { display: block; }
+    .bld-preview-sidebar { display: none; }
+    @media (min-width: 1280px) {
+      .bld-layout { display: grid; grid-template-columns: 1fr 420px; gap: 20px; align-items: start; }
+      .bld-preview-sidebar { display: block; }
+      .bld-preview-inline { display: none !important; }
+    }
   `;
   document.head.appendChild(_s);
 }
@@ -69,10 +72,7 @@ const iSt = (extra={}) => ({
   transition:"border-color 0.2s", ...extra,
 });
 
-// ── Options Editor — professional per-option rows ─────
-// Replaces the old single textarea (one option per line) with
-// individual rows: drag handle, text input, delete button —
-// matching the UX pattern used in Google Forms / Typeform.
+// ── Options Editor — unchanged ─────────────────────────
 function OptionsEditor({ options, onChange }) {
   const opts = options?.length ? options : [""];
   const dragIdx = useRef(null);
@@ -111,14 +111,12 @@ function OptionsEditor({ options, onChange }) {
   }
   function onDragEnd() { dragIdx.current = null; setDragOver(null); }
 
-  // Keyboard: Enter on a row adds a new option right after it and focuses it
   function handleKeyDown(e, idx) {
     if (e.key === "Enter") {
       e.preventDefault();
       const next = [...opts];
       next.splice(idx + 1, 0, "");
       onChange(next);
-      // Focus the new input on next tick
       requestAnimationFrame(() => {
         const el = document.querySelector(`[data-opt-idx="${idx + 1}"]`);
         el?.focus();
@@ -155,20 +153,17 @@ function OptionsEditor({ options, onChange }) {
             transition:"box-shadow 0.15s ease, opacity 0.15s ease",
           }}
         >
-          {/* Drag handle */}
           <span
             title="اسحب لإعادة الترتيب"
             style={{ cursor:"grab", color:B.s400, fontSize:15, flexShrink:0, padding:"0 2px", touchAction:"none" }}
           >⠿</span>
 
-          {/* Number badge */}
           <span style={{
             width:20, height:20, borderRadius:"50%", flexShrink:0,
             background:B.s100, color:B.s500, fontSize:10, fontWeight:700,
             display:"flex", alignItems:"center", justifyContent:"center",
           }}>{i+1}</span>
 
-          {/* Text input */}
           <input
             data-opt-idx={i}
             value={opt}
@@ -178,7 +173,6 @@ function OptionsEditor({ options, onChange }) {
             style={{ ...iSt({ flex:1, marginBottom:0, padding:"8px 10px", fontSize:13 }) }}
           />
 
-          {/* Move up/down (touch-friendly alternative to drag) */}
           <button
             type="button"
             title="تحريك لأعلى"
@@ -196,7 +190,6 @@ function OptionsEditor({ options, onChange }) {
               color:i===opts.length-1?B.s200:B.s400, fontSize:13, padding:"2px", flexShrink:0, opacity:i===opts.length-1?0.4:1 }}
           >⬇️</button>
 
-          {/* Delete */}
           <button
             type="button"
             title="حذف الخيار"
@@ -228,7 +221,7 @@ function OptionsEditor({ options, onChange }) {
   );
 }
 
-// ── Question Card ─────────────────────────────────────
+// ── Question Card — unchanged ──────────────────────────
 function QuestionCard({
   item, idx, total, isGate, allFlat,
   onUpdate, onRemove, onMoveUp, onMoveDown, onDuplicate,
@@ -250,7 +243,6 @@ function QuestionCard({
         marginBottom:10, overflow:"hidden", boxShadow:"0 2px 8px rgba(0,0,0,0.05)",
         borderRight:`4px solid ${tc}` }}>
 
-      {/* Header */}
       <div style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 14px",
         background:collapsed?B.s50:B.white, borderBottom:collapsed?"none":`1px solid ${B.s100}` }}>
         <span style={{ background:B.e50, color:B.e700, borderRadius:8, width:26, height:26,
@@ -271,7 +263,6 @@ function QuestionCard({
           )}
         </div>
 
-        {/* Toolbar */}
         <div style={{ display:"flex", alignItems:"center", gap:2, flexShrink:0 }}>
           <button className="bld-btn" title="سحب" style={{ cursor:"grab" }} {...dragHandleProps}>⠿</button>
           <button className="bld-btn" title="لأعلى" onClick={onMoveUp} disabled={idx===0} style={{ opacity:idx===0?0.3:1 }}>⬆️</button>
@@ -284,7 +275,6 @@ function QuestionCard({
         </div>
       </div>
 
-      {/* Body */}
       {!collapsed && (
         <div style={{ padding:"12px 14px" }}>
           <input value={q.label||""} onChange={e=>upd("label",e.target.value)}
@@ -293,12 +283,10 @@ function QuestionCard({
             onFocus={e=>e.target.style.borderColor=B.e500}
             onBlur={e=>e.target.style.borderColor=B.s200}/>
 
-          {/* Description */}
           <input value={q.description||""} onChange={e=>upd("description",e.target.value)}
             placeholder="وصف السؤال (اختياري)"
             style={{ ...iSt({fontSize:12, marginBottom:8, background:B.s50}) }}/>
 
-          {/* Type + Required */}
           <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:8, flexWrap:"wrap" }}>
             <select value={q.type} onChange={e=>upd("type",e.target.value)}
               style={{ ...iSt({flex:1,minWidth:140,marginBottom:0}) }}>
@@ -309,7 +297,6 @@ function QuestionCard({
             </label>
           </div>
 
-          {/* Select options */}
           {q.type==="select" && (
             <OptionsEditor
               options={q.options||[]}
@@ -317,7 +304,6 @@ function QuestionCard({
             />
           )}
 
-          {/* File types */}
           {q.type==="file" && (
             <div style={{ display:"flex",gap:10,marginBottom:8 }}>
               {[["pdf","PDF"],["xlsx","Excel"]].map(([v,l])=>(
@@ -335,7 +321,6 @@ function QuestionCard({
             </div>
           )}
 
-          {/* Condition Builder */}
           <ConditionBuilder
             conditions={q.conditions||[]}
             onChange={updConds}
@@ -348,7 +333,7 @@ function QuestionCard({
   );
 }
 
-// ── Live Preview Panel ────────────────────────────────
+// ── Live Preview Panel — unchanged logic, used both inline (mobile) and in sidebar (desktop) ──
 function LivePreview({ items, answers, setAnswers }) {
   const flatQ = flattenItems(items);
   const evalState = useMemo(()=>evaluateSurvey(flatQ, answers),[flatQ, answers]);
@@ -393,7 +378,8 @@ function LivePreview({ items, answers, setAnswers }) {
 }
 
 // ══════════════════════════════════════════════════════
-// MAIN: SurveyBuilderEngine (= new NewSurveyPage)
+// MAIN: SurveyBuilderEngine — Phase 3 enterprise layout
+// All state, hooks, save logic, drag/drop — 100% unchanged.
 // ══════════════════════════════════════════════════════
 export default function SurveyBuilderEngine({
   onSaved, onCancel, user, isAdmin,
@@ -401,7 +387,6 @@ export default function SurveyBuilderEngine({
 }) {
   const isEdit = !!existingSurvey;
 
-  // ── Form state ────────────────────────────────────
   const [title,          setTitle]          = useState(existingSurvey?.title || "");
   const [desc,           setDesc]           = useState(existingSurvey?.description || "");
   const [surveyType,     setSurveyType]     = useState(existingSurvey?.survey_type || initialSurveyType || "school");
@@ -415,8 +400,6 @@ export default function SurveyBuilderEngine({
     survey_status: existingSurvey?.survey_status || "published",
   });
 
-  // ── Items: flat questions + groups ────────────────
-  // Each item is either a question (type != "group") or a group (type == "group")
   const [items, setItems] = useState(() => {
     let rawQs = [];
     if (existingSurvey?.questions?.length) {
@@ -429,7 +412,6 @@ export default function SurveyBuilderEngine({
           allowedFileTypes: q.allowed_file_types || "pdf,xlsx",
           description: q.description || "",
         }));
-      // Adapt legacy gate if needed
       if (isLegacySurvey(existingSurvey)) {
         rawQs = adaptLegacySurvey(existingSurvey, rawQs);
       }
@@ -448,11 +430,9 @@ export default function SurveyBuilderEngine({
   const [showPreview, setShowPreview] = useState(false);
   const [previewAns,  setPreviewAns]  = useState({});
 
-  // Drag state
   const dragIdx = useRef(null);
   const [dragOver, setDragOver] = useState(null);
 
-  // Load targeting
   useEffect(()=>{
     if (existingSurvey?.id) {
       loadTargeting(existingSurvey.id).then(t=>{
@@ -464,10 +444,8 @@ export default function SurveyBuilderEngine({
     }
   },[existingSurvey?.id]);
 
-  // ── Flat questions (for condition builders) ────────
   const allFlat = useMemo(()=>flattenItems(items),[items]);
 
-  // ── Item operations ───────────────────────────────
   function setItemAt(idx, updFn) {
     setItems(p=>{ const next=[...p]; next[idx]=updFn(p[idx]); return next; });
   }
@@ -495,7 +473,6 @@ export default function SurveyBuilderEngine({
     setItems(p=>[...p, emptyGroup("مجموعة جديدة")]);
   }
 
-  // Drag handlers
   function onDragStart(idx) { dragIdx.current=idx; }
   function onDragOver(e,idx) { e.preventDefault(); setDragOver(idx); }
   function onDrop(idx) {
@@ -506,11 +483,9 @@ export default function SurveyBuilderEngine({
   }
   function onDragEnd() { dragIdx.current=null; setDragOver(null); }
 
-  // ── Save (business logic identical to original) ───
   async function save() {
     if (!title.trim()) return;
 
-    // Validate circular refs
     const circErr = detectCircular(items);
     if (circErr.length) { setError("خطأ في الشروط: " + circErr.join(" · ")); return; }
 
@@ -546,16 +521,9 @@ export default function SurveyBuilderEngine({
       surveyId = survey.id;
     }
 
-    // Save questions (flatten groups, strip _legacy fields)
-    // CRITICAL: must preserve each question's own id, because
-    // condition.rules[].sourceId and condition.actions[].targetId
-    // reference these ids. If we let Supabase auto-generate new
-    // ids on every save, every condition silently breaks (its
-    // sourceId/targetId becomes orphaned) the next time the
-    // survey is reopened or filled in.
     const flat = flattenItems(items);
     const questionsPayload = flat.map((q,i)=>({
-      id: q.id, // ← preserve stable id across saves
+      id: q.id,
       survey_id: surveyId,
       label: q.label,
       type: q.type,
@@ -565,7 +533,7 @@ export default function SurveyBuilderEngine({
       description: q.description || null,
       conditions: (q.conditions||[]).map(c=>({
         ...c,
-        _legacyConverted: undefined, // strip internal flag
+        _legacyConverted: undefined,
       })),
       allowed_file_types: q.type==="file" ? (q.allowedFileTypes||"pdf,xlsx") : null,
     }));
@@ -583,7 +551,6 @@ export default function SurveyBuilderEngine({
     onSaved();
   }
 
-  // ── Type info banners (unchanged) ─────────────────
   const TYPE_INFO = {
     school:        { bg:"#e8f5ee", border:`1px solid ${B.success}40`, color:B.success,  text:"✅ سؤال الرقم الوزاري تلقائي — يُعرض أولاً للتحقق" },
     supervisor:    { bg:"#f5eefa", border:"1px solid #7B2D8B40",      color:"#7B2D8B",  text:"👤 سؤال رقم الهوية تلقائي — يُعرض أولاً للتحقق" },
@@ -592,83 +559,9 @@ export default function SurveyBuilderEngine({
   };
   const ti = TYPE_INFO[surveyType];
 
-  return (
-    <div style={{ padding:16, direction:"rtl" }}>
-      {/* Back */}
-      <button onClick={onCancel} style={{ background:"none",border:"none",color:C.primary,fontSize:14,cursor:"pointer",padding:"0 0 14px",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4 }}>← إلغاء</button>
-
-      <h2 style={{ margin:"0 0 16px", fontSize:18, color:B.s900, fontWeight:800 }}>
-        {isEdit?"تعديل الاستبيان":"استبيان جديد"}
-      </h2>
-
-      {!isAdmin && (
-        <div style={{ background:C.warnBg,border:`1px solid ${C.warn}40`,borderRadius:10,padding:"10px 14px",fontSize:12,color:"#9a5a10",marginBottom:14 }}>
-          ℹ️ سيُحفظ كـ<strong> مسودة بانتظار اعتماد المسؤول</strong>.
-        </div>
-      )}
-
-      {initialQuestions?.length > 0 && (
-        <div style={{ background:C.primaryBg,border:`1px solid ${C.primary}30`,borderRadius:10,padding:"10px 14px",fontSize:12,color:C.primary,marginBottom:14 }}>
-          🗂️ تم تحميل <strong>{initialQuestions.length} سؤال</strong> من القالب.
-        </div>
-      )}
-
-      {isLegacySurvey(existingSurvey) && (
-        <div style={{ background:B.goldL,border:`1px solid ${B.gold}40`,borderRadius:10,padding:"10px 14px",fontSize:12,color:B.gold,marginBottom:14 }}>
-          ⚡ تم تحويل الشرط القديم (gate_question) تلقائياً إلى النظام الجديد. سيُحذف الشرط القديم عند الحفظ.
-        </div>
-      )}
-
-      <Card style={{ marginBottom:14 }}><SurveyTypeSelector value={surveyType} onChange={setSurveyType}/></Card>
-
-      <Card style={{ marginBottom:14 }}>
-        <div style={{ marginBottom:12 }}>
-          <label style={{ display:"block",fontSize:13,fontWeight:700,color:C.text,marginBottom:5 }}>عنوان الاستبيان <span style={{color:C.danger}}>*</span></label>
-          <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="مثال: استبيان البيانات التعريفية"
-            style={iSt()}/>
-        </div>
-        <div>
-          <label style={{ display:"block",fontSize:13,fontWeight:700,color:C.text,marginBottom:5 }}>الوصف</label>
-          <textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={2} style={{ ...iSt(),resize:"vertical" }}/>
-        </div>
-      </Card>
-
-      <Card style={{ marginBottom:14 }}><SurveySettingsPanel settings={surveySettings} onChange={setSurveySettings}/></Card>
-
-      {surveyType==="school" && targetingLoaded && (
-        <Card style={{ marginBottom:14 }}>
-          <p style={{ margin:"0 0 14px",fontSize:13,fontWeight:700,color:C.dark }}>🎯 المدارس المستهدفة</p>
-          <AudienceSelector entityType="school" value={targeting} onChange={setTargeting}/>
-        </Card>
-      )}
-
-      {ti && (
-        <div style={{ background:ti.bg,border:ti.border,borderRadius:10,padding:"10px 14px",marginBottom:12 }}>
-          <p style={{ margin:0,fontSize:13,color:ti.color,fontWeight:700 }}>{ti.text}</p>
-        </div>
-      )}
-
-      {/* Questions header */}
-      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10 }}>
-        <p style={{ margin:0,fontSize:13,fontWeight:700,color:B.s700 }}>
-          الأسئلة <span style={{ color:B.s400,fontWeight:400 }}>({allFlat.length})</span>
-        </p>
-        <div style={{ display:"flex",gap:6 }}>
-          <button onClick={()=>setShowPreview(p=>!p)} style={{ background:showPreview?B.e50:B.s100,border:`1px solid ${showPreview?B.e100:B.s200}`,borderRadius:9,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer",color:showPreview?B.e700:B.s500,fontFamily:"inherit" }}>
-            {showPreview?"🔽 إخفاء المعاينة":"🔍 معاينة مباشرة"}
-          </button>
-          <span style={{ fontSize:10,color:B.s400,alignSelf:"center" }}>اسحب ⠿</span>
-        </div>
-      </div>
-
-      {/* Live preview */}
-      {showPreview && (
-        <div style={{ marginBottom:14 }}>
-          <LivePreview items={items} answers={previewAns} setAnswers={setPreviewAns}/>
-        </div>
-      )}
-
-      {/* Question / Group items */}
+  // Question/group items list — used in both layouts
+  const questionItems = (
+    <>
       {items.map((item,i)=>{
         if (item.type==="group") {
           return (
@@ -684,7 +577,6 @@ export default function SurveyBuilderEngine({
                 isDragging={dragIdx.current===i}
                 isDragOver={dragOver===i&&dragIdx.current!==i}
                 dragHandleProps={{ onMouseDown:e=>e.currentTarget.closest("[draggable]")?.setAttribute("draggable","true") }}>
-                {/* Questions inside group */}
                 {(item.questions||[]).map((q,qi)=>(
                   <div key={q.id} draggable
                     onDragStart={()=>{ /* nested drag not implemented */ }}
@@ -710,7 +602,6 @@ export default function SurveyBuilderEngine({
           );
         }
 
-        // Flat question
         return (
           <div key={item.id} draggable
             onDragStart={()=>onDragStart(i)}
@@ -732,23 +623,112 @@ export default function SurveyBuilderEngine({
           </div>
         );
       })}
+    </>
+  );
 
-      {/* Error */}
-      <ErrorBanner message={error}/>
+  return (
+    <div style={{ direction:"rtl" }}>
+      <button onClick={onCancel} style={{ background:"none",border:"none",color:C.primary,fontSize:14,cursor:"pointer",padding:"0 0 14px",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4 }}>← إلغاء</button>
 
-      {/* Bottom actions */}
-      <div style={{ display:"flex",gap:8,marginBottom:8 }}>
-        <button onClick={addQuestion} style={{ flex:1,padding:"11px",background:B.s100,color:B.s700,border:`1.5px dashed ${B.s300}`,borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6 }}>
-          ＋ سؤال
-        </button>
-        <button onClick={addGroup} style={{ flex:1,padding:"11px",background:B.e50,color:B.e700,border:`1.5px dashed ${B.e100}`,borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6 }}>
-          📂 مجموعة
-        </button>
-        <button onClick={save} disabled={!title.trim()||saving}
-          style={{ flex:2,padding:"11px",background:(!title.trim()||saving)?`${B.e600}50`:`linear-gradient(135deg,${B.e600},${B.e800})`,color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:(!title.trim()||saving)?"not-allowed":"pointer",fontFamily:"inherit",boxShadow:(!title.trim()||saving)?"none":`0 4px 14px ${B.e600}40` }}>
-          {saving?"جاري الحفظ...":"✓ حفظ"}
-        </button>
+      <h1 style={{ margin:"0 0 18px", fontSize:20, color:B.s900, fontWeight:800, letterSpacing:"-0.02em" }}>
+        {isEdit?"تعديل الاستبيان":"استبيان جديد"}
+      </h1>
+
+      <div className="bld-layout">
+        {/* ── Main column ── */}
+        <div>
+          {!isAdmin && (
+            <div style={{ background:C.warnBg,border:`1px solid ${C.warn}40`,borderRadius:10,padding:"10px 14px",fontSize:12,color:"#9a5a10",marginBottom:14 }}>
+              ℹ️ سيُحفظ كـ<strong> مسودة بانتظار اعتماد المسؤول</strong>.
+            </div>
+          )}
+
+          {initialQuestions?.length > 0 && (
+            <div style={{ background:C.primaryBg,border:`1px solid ${C.primary}30`,borderRadius:10,padding:"10px 14px",fontSize:12,color:C.primary,marginBottom:14 }}>
+              🗂️ تم تحميل <strong>{initialQuestions.length} سؤال</strong> من القالب.
+            </div>
+          )}
+
+          {isLegacySurvey(existingSurvey) && (
+            <div style={{ background:B.goldL,border:`1px solid ${B.gold}40`,borderRadius:10,padding:"10px 14px",fontSize:12,color:B.gold,marginBottom:14 }}>
+              ⚡ تم تحويل الشرط القديم (gate_question) تلقائياً إلى النظام الجديد. سيُحذف الشرط القديم عند الحفظ.
+            </div>
+          )}
+
+          <Card style={{ marginBottom:14 }}><SurveyTypeSelector value={surveyType} onChange={setSurveyType}/></Card>
+
+          <Card style={{ marginBottom:14 }}>
+            <div style={{ marginBottom:12 }}>
+              <label style={{ display:"block",fontSize:13,fontWeight:700,color:C.text,marginBottom:5 }}>عنوان الاستبيان <span style={{color:C.danger}}>*</span></label>
+              <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="مثال: استبيان البيانات التعريفية"
+                style={iSt()}/>
+            </div>
+            <div>
+              <label style={{ display:"block",fontSize:13,fontWeight:700,color:C.text,marginBottom:5 }}>الوصف</label>
+              <textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={2} style={{ ...iSt(),resize:"vertical" }}/>
+            </div>
+          </Card>
+
+          <Card style={{ marginBottom:14 }}><SurveySettingsPanel settings={surveySettings} onChange={setSurveySettings}/></Card>
+
+          {surveyType==="school" && targetingLoaded && (
+            <Card style={{ marginBottom:14 }}>
+              <p style={{ margin:"0 0 14px",fontSize:13,fontWeight:700,color:C.dark }}>🎯 المدارس المستهدفة</p>
+              <AudienceSelector entityType="school" value={targeting} onChange={setTargeting}/>
+            </Card>
+          )}
+
+          {ti && (
+            <div style={{ background:ti.bg,border:ti.border,borderRadius:10,padding:"10px 14px",marginBottom:12 }}>
+              <p style={{ margin:0,fontSize:13,color:ti.color,fontWeight:700 }}>{ti.text}</p>
+            </div>
+          )}
+
+          <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10 }}>
+            <p style={{ margin:0,fontSize:13,fontWeight:700,color:B.s700 }}>
+              الأسئلة <span style={{ color:B.s400,fontWeight:400 }}>({allFlat.length})</span>
+            </p>
+            <div style={{ display:"flex",gap:6 }} className="bld-preview-inline">
+              <button onClick={()=>setShowPreview(p=>!p)} style={{ background:showPreview?B.e50:B.s100,border:`1px solid ${showPreview?B.e100:B.s200}`,borderRadius:9,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer",color:showPreview?B.e700:B.s500,fontFamily:"inherit" }}>
+                {showPreview?"🔽 إخفاء المعاينة":"🔍 معاينة مباشرة"}
+              </button>
+              <span style={{ fontSize:10,color:B.s400,alignSelf:"center" }}>اسحب ⠿</span>
+            </div>
+          </div>
+
+          {/* Inline preview — mobile/tablet only (hidden on desktop where sidebar shows it) */}
+          {showPreview && (
+            <div className="bld-preview-inline" style={{ marginBottom:14 }}>
+              <LivePreview items={items} answers={previewAns} setAnswers={setPreviewAns}/>
+            </div>
+          )}
+
+          {questionItems}
+
+          <ErrorBanner message={error}/>
+
+          <div style={{ display:"flex",gap:8,marginBottom:8 }}>
+            <button onClick={addQuestion} style={{ flex:1,padding:"11px",background:B.s100,color:B.s700,border:`1.5px dashed ${B.s300}`,borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6 }}>
+              ＋ سؤال
+            </button>
+            <button onClick={addGroup} style={{ flex:1,padding:"11px",background:B.e50,color:B.e700,border:`1.5px dashed ${B.e100}`,borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6 }}>
+              📂 مجموعة
+            </button>
+            <button onClick={save} disabled={!title.trim()||saving}
+              style={{ flex:2,padding:"11px",background:(!title.trim()||saving)?`${B.e600}50`:`linear-gradient(135deg,${B.e600},${B.e800})`,color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:800,cursor:(!title.trim()||saving)?"not-allowed":"pointer",fontFamily:"inherit",boxShadow:(!title.trim()||saving)?"none":`0 4px 14px ${B.e600}40` }}>
+              {saving?"جاري الحفظ...":"✓ حفظ"}
+            </button>
+          </div>
+        </div>
+
+        {/* ── Right sidebar — desktop only (≥1280px): live preview always visible, pinned ── */}
+        <div className="bld-preview-sidebar">
+          <div style={{ position:"sticky", top:80 }}>
+            <LivePreview items={items} answers={previewAns} setAnswers={setPreviewAns}/>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
+
