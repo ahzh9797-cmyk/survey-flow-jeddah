@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { supabase, C, Btn, Card, Tag, Spinner, ErrorBanner,
   ensureXLSX, tsStamp, logAction } from "./lib.jsx";
 
@@ -492,8 +493,19 @@ function EntityForm({ initial, config, user, onSaved, onCancel }) {
   }
   // ── End unchanged ──
 
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
+  // CRITICAL FIX: rendered via React Portal directly into document.body.
+  // The previous version rendered this fixed-position modal as a normal
+  // child of the page tree, nested inside the <div className="page-enter">
+  // wrapper in App.jsx. That wrapper has an active CSS `animation`
+  // (fadeSlideUp), and any element with an active animation/transform
+  // creates its own stacking context in the browser. That trapped this
+  // modal's z-index comparisons locally — no matter how high we set
+  // zIndex, it could never paint above the sticky header, because they
+  // were no longer compared in the same global stacking order.
+  // createPortal escapes that entirely by attaching this DOM subtree
+  // directly under <body>, sibling to everything else in the app.
+  return createPortal(
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:9999, display:"flex", alignItems:"flex-end" }}>
       <div style={{ background:D.bg, width:"100%", maxHeight:"92vh", overflowY:"auto",
         borderRadius:"24px 24px 0 0", paddingBottom:24 }}>
         <div style={{ display:"flex", justifyContent:"center", padding:"14px 0 4px" }}>
@@ -560,7 +572,8 @@ function EntityForm({ initial, config, user, onSaved, onCancel }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -922,4 +935,3 @@ export default function DirectoryPage({ user, isAdmin }) {
     </div>
   );
 }
-
