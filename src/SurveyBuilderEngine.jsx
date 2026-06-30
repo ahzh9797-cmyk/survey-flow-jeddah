@@ -388,8 +388,15 @@ export default function SurveyBuilderEngine({
     }
 
     // Save questions (flatten groups, strip _legacy fields)
+    // CRITICAL: must preserve each question's own id, because
+    // condition.rules[].sourceId and condition.actions[].targetId
+    // reference these ids. If we let Supabase auto-generate new
+    // ids on every save, every condition silently breaks (its
+    // sourceId/targetId becomes orphaned) the next time the
+    // survey is reopened or filled in.
     const flat = flattenItems(items);
     const questionsPayload = flat.map((q,i)=>({
+      id: q.id, // ← preserve stable id across saves
       survey_id: surveyId,
       label: q.label,
       type: q.type,
@@ -586,4 +593,3 @@ export default function SurveyBuilderEngine({
     </div>
   );
 }
-
