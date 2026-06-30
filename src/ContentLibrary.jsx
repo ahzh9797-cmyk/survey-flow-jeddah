@@ -1,7 +1,6 @@
 /**
  * ContentLibrary.jsx
- * Full content library UI — Questions, Sections, Conditions, Variables
- * Independent component — no modification to existing files
+ * Phase 3 — Enterprise UI redesign. Logic 100% unchanged.
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -19,7 +18,6 @@ import {
   exportLibraryToJSON, importLibraryFromJSON, exportLibraryToExcel,
 } from "./ContentLibraryService.js";
 
-// ── Design tokens (match app) ────────────────────────
 const L = {
   e900:"#064E3B",e800:"#065F46",e700:"#047857",e600:"#059669",e500:"#10B981",
   e100:"#D1FAE5",e50:"#ECFDF5",
@@ -31,9 +29,9 @@ const L = {
   success:"#059669",successBg:"#ECFDF5",purple:"#7B2D8B",purpleBg:"#F5EEFA",
 };
 
-if (typeof document !== "undefined" && !document.getElementById("lib-premium-styles")) {
+if (typeof document !== "undefined" && !document.getElementById("lib-enterprise-styles")) {
   const _s = document.createElement("style");
-  _s.id = "lib-premium-styles";
+  _s.id = "lib-enterprise-styles";
   _s.textContent = `
     .lib-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
     .lib-card:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,0,0,0.09) !important; }
@@ -43,11 +41,13 @@ if (typeof document !== "undefined" && !document.getElementById("lib-premium-sty
     @keyframes lib-in { from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)} }
     .lib-in { animation: lib-in 0.2s ease both; }
     @keyframes spin { to{transform:rotate(360deg)} }
+    .lib-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+    @media (min-width: 1024px) { .lib-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; } }
+    @media (min-width: 1440px) { .lib-grid { grid-template-columns: repeat(3, 1fr); } }
   `;
   document.head.appendChild(_s);
 }
 
-// ── Shared UI ────────────────────────────────────────
 const iSt = (extra={}) => ({
   width:"100%", padding:"10px 12px", border:`1.5px solid ${L.s200}`,
   borderRadius:10, fontSize:13, fontFamily:"inherit", direction:"rtl",
@@ -113,7 +113,7 @@ function Modal({ title, onClose, children, wide }) {
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end", direction:"rtl" }}
       onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
-      <div style={{ width:"100%", background:L.bg, borderRadius:"24px 24px 0 0",
+      <div style={{ width:"100%", maxWidth: wide ? 720 : 560, margin:"0 auto", background:L.bg, borderRadius:"24px 24px 0 0",
         maxHeight:"92vh", overflowY:"auto", paddingBottom:24 }}>
         <div style={{ display:"flex", justifyContent:"center", padding:"14px 0 4px" }}>
           <div style={{ width:44, height:4, background:L.s200, borderRadius:4 }}/>
@@ -130,16 +130,12 @@ function Modal({ title, onClose, children, wide }) {
   );
 }
 
-// ── Question type options ─────────────────────────────
 const Q_TYPES = [
   {v:"text",l:"نص قصير",icon:"✏️"},{v:"textarea",l:"نص طويل",icon:"📝"},
   {v:"number",l:"رقم",icon:"🔢"},{v:"select",l:"اختيار",icon:"☑️"},
   {v:"rating",l:"تقييم",icon:"⭐"},{v:"file",l:"رفع ملف",icon:"📎"},
 ];
 
-// ══════════════════════════════════════════════════════
-// QUESTION FORM MODAL
-// ══════════════════════════════════════════════════════
 function QuestionFormModal({ initial, categories, user, onSaved, onClose }) {
   const isEdit = !!initial?.id;
   const [name,         setName]         = useState(initial?.name || "");
@@ -201,7 +197,6 @@ function QuestionFormModal({ initial, categories, user, onSaved, onClose }) {
             onChange={e=>setQData(p=>({...p,options:e.target.value.split("\n").filter(Boolean)}))}
             placeholder="خيار 1\nخيار 2" style={{ ...iSt(), resize:"none" }}/>
         )}
-        {/* Smart variables detected */}
         {detected.length > 0 && (
           <div style={{ background:L.e50, border:`1px solid ${L.e100}`, borderRadius:8, padding:"8px 10px", marginTop:8 }}>
             <p style={{ margin:"0 0 4px", fontSize:11, fontWeight:700, color:L.e700 }}>متغيرات ذكية مكتشفة:</p>
@@ -212,7 +207,6 @@ function QuestionFormModal({ initial, categories, user, onSaved, onClose }) {
         )}
       </div>
 
-      {/* Smart Variables helper */}
       <div style={{ background:L.s50, border:`1px solid ${L.s200}`, borderRadius:12, padding:12, marginBottom:10 }}>
         <p style={{ margin:"0 0 8px", fontSize:11, fontWeight:700, color:L.s500 }}>➕ أدرج متغيراً ذكياً:</p>
         <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
@@ -253,9 +247,6 @@ function QuestionFormModal({ initial, categories, user, onSaved, onClose }) {
   );
 }
 
-// ══════════════════════════════════════════════════════
-// VERSION HISTORY MODAL
-// ══════════════════════════════════════════════════════
 function VersionHistoryModal({ type, itemId, onRestore, onClose }) {
   const [versions, setVersions] = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -291,9 +282,6 @@ function VersionHistoryModal({ type, itemId, onRestore, onClose }) {
   );
 }
 
-// ══════════════════════════════════════════════════════
-// QUESTION LIBRARY TAB
-// ══════════════════════════════════════════════════════
 function QuestionLibraryTab({ categories, user, onInsert }) {
   const [items,      setItems]      = useState([]);
   const [loading,    setLoading]    = useState(true);
@@ -340,17 +328,17 @@ function QuestionLibraryTab({ categories, user, onInsert }) {
 
   return (
     <div>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, flexWrap:"wrap", gap:10 }}>
         <div>
           <p style={{ margin:0, fontSize:14, fontWeight:800, color:L.s900 }}>مكتبة الأسئلة</p>
-          <p style={{ margin:"2px 0 0", fontSize:11, color:L.s500 }}>{items.length} سؤال محفوظ</p>
+          <p style={{ margin:"2px 0 0", fontSize:12, color:L.s500 }}>{items.length} سؤال محفوظ</p>
         </div>
         <LBtn sm onClick={()=>setFormTarget({})}>＋ سؤال جديد</LBtn>
       </div>
 
       <SearchInput value={search} onChange={e=>{setSearch(e.target.value);}} placeholder="ابحث في الأسئلة..."/>
 
-      <div style={{ display:"flex", gap:5, marginBottom:10, overflowX:"auto", paddingBottom:4 }}>
+      <div style={{ display:"flex", gap:5, marginBottom:14, overflowX:"auto", paddingBottom:4 }}>
         <button onClick={()=>setCatFilter("")} style={{ padding:"5px 12px", borderRadius:20, fontSize:11, fontFamily:"inherit", cursor:"pointer", whiteSpace:"nowrap", border:`1.5px solid ${!catFilter?L.e600:L.s200}`, background:!catFilter?L.e50:L.white, color:!catFilter?L.e700:L.s500, fontWeight:!catFilter?700:400 }}>الكل</button>
         <button onClick={()=>setFavOnly(p=>!p)} style={{ padding:"5px 12px", borderRadius:20, fontSize:11, fontFamily:"inherit", cursor:"pointer", whiteSpace:"nowrap", border:`1.5px solid ${favOnly?L.gold:L.s200}`, background:favOnly?L.goldL:L.white, color:favOnly?L.gold:L.s500, fontWeight:favOnly?700:400 }}>⭐ المفضلة</button>
         {categories.map(c=>(
@@ -362,39 +350,44 @@ function QuestionLibraryTab({ categories, user, onInsert }) {
 
       {loading ? <div style={{textAlign:"center",padding:30}}><div style={{width:32,height:32,borderRadius:"50%",border:`3px solid ${L.e100}`,borderTopColor:L.e600,animation:"spin 0.7s linear infinite",margin:"0 auto"}}/></div>
       : items.length===0 ? <EmptyState icon="❓" title="لا توجد أسئلة في المكتبة" sub="اضغط ＋ لإضافة أول سؤال" action="＋ إضافة سؤال" onAction={()=>setFormTarget({})}/>
-      : items.map((item,idx)=>(
-        <div key={item.id} className="lib-card lib-in"
-          style={{ background:L.white, borderRadius:16, border:`1px solid ${L.s200}`,
-            marginBottom:10, boxShadow:"0 2px 6px rgba(0,0,0,0.05)",
-            borderRight:`3px solid ${item.library_categories?.color||L.e500}`,
-            animationDelay:`${idx*0.03}s` }}>
-          <div style={{ padding:"12px 14px" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
-              <div style={{ flex:1, minWidth:0 }}>
-                <p style={{ margin:0, fontSize:13, fontWeight:700, color:L.s900 }}>{item.name}</p>
-                <p style={{ margin:"2px 0 4px", fontSize:11, color:L.s500, lineHeight:1.5 }}>
-                  {item.question_data?.label?.slice(0,60)}{(item.question_data?.label||"").length>60?"...":""}
-                </p>
-                <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-                  {item.library_categories && <Tag color={item.library_categories.color} bg={`${item.library_categories.color}15`}>{item.library_categories.icon} {item.library_categories.name}</Tag>}
-                  <Tag bg={L.s100} color={L.s500}>{Q_TYPES.find(t=>t.v===item.question_data?.type)?.icon} {Q_TYPES.find(t=>t.v===item.question_data?.type)?.l||item.question_data?.type}</Tag>
-                  {(item.tags||[]).map(t=><Tag key={t} bg={L.s50} color={L.s400}>{t}</Tag>)}
-                  {(item.variables||[]).length>0 && <Tag bg={L.e50} color={L.e700}>✨ {item.variables.length} متغير</Tag>}
-                  <Tag bg={L.s50} color={L.s300}>v{item.version}</Tag>
+      : (
+        <div className="lib-grid">
+          {items.map((item,idx)=>(
+            <div key={item.id} className="lib-card lib-in"
+              style={{ background:L.white, borderRadius:16, border:`1px solid ${L.s200}`,
+                boxShadow:"0 1px 3px rgba(0,0,0,0.04)",
+                borderRight:`3px solid ${item.library_categories?.color||L.e500}`,
+                animationDelay:`${idx*0.03}s`,
+                display:"flex", flexDirection:"column" }}>
+              <div style={{ padding:"12px 14px", flex:1, display:"flex", flexDirection:"column" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <p style={{ margin:0, fontSize:13, fontWeight:700, color:L.s900 }}>{item.name}</p>
+                    <p style={{ margin:"2px 0 4px", fontSize:11, color:L.s500, lineHeight:1.5 }}>
+                      {item.question_data?.label?.slice(0,60)}{(item.question_data?.label||"").length>60?"...":""}
+                    </p>
+                    <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+                      {item.library_categories && <Tag color={item.library_categories.color} bg={`${item.library_categories.color}15`}>{item.library_categories.icon} {item.library_categories.name}</Tag>}
+                      <Tag bg={L.s100} color={L.s500}>{Q_TYPES.find(t=>t.v===item.question_data?.type)?.icon} {Q_TYPES.find(t=>t.v===item.question_data?.type)?.l||item.question_data?.type}</Tag>
+                      {(item.tags||[]).map(t=><Tag key={t} bg={L.s50} color={L.s400}>{t}</Tag>)}
+                      {(item.variables||[]).length>0 && <Tag bg={L.e50} color={L.e700}>✨ {item.variables.length} متغير</Tag>}
+                      <Tag bg={L.s50} color={L.s300}>v{item.version}</Tag>
+                    </div>
+                  </div>
+                  <button onClick={()=>handleFav(item)} style={{ background:"none", border:"none", fontSize:18, cursor:"pointer", flexShrink:0, color:item.is_favorite?L.gold:L.s200 }}>⭐</button>
+                </div>
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap", borderTop:`1px solid ${L.s100}`, paddingTop:8, marginTop:"auto" }}>
+                  {onInsert && <LBtn sm onClick={()=>onInsert("question", item)}>📥 إدراج</LBtn>}
+                  <LBtn sm variant="secondary" onClick={()=>setFormTarget(item)}>✏️ تعديل</LBtn>
+                  <LBtn sm variant="secondary" onClick={()=>handleDuplicate(item)}>📄 نسخ</LBtn>
+                  <LBtn sm variant="secondary" onClick={()=>setVersionFor(item)}>🕐 الإصدارات</LBtn>
+                  <LBtn sm variant="danger" onClick={()=>handleDelete(item.id)}>🗑️</LBtn>
                 </div>
               </div>
-              <button onClick={()=>handleFav(item)} style={{ background:"none", border:"none", fontSize:18, cursor:"pointer", flexShrink:0, color:item.is_favorite?L.gold:L.s200 }}>⭐</button>
             </div>
-            <div style={{ display:"flex", gap:6, flexWrap:"wrap", borderTop:`1px solid ${L.s100}`, paddingTop:8, marginTop:4 }}>
-              {onInsert && <LBtn sm onClick={()=>onInsert("question", item)}>📥 إدراج</LBtn>}
-              <LBtn sm variant="secondary" onClick={()=>setFormTarget(item)}>✏️ تعديل</LBtn>
-              <LBtn sm variant="secondary" onClick={()=>handleDuplicate(item)}>📄 نسخ</LBtn>
-              <LBtn sm variant="secondary" onClick={()=>setVersionFor(item)}>🕐 الإصدارات</LBtn>
-              <LBtn sm variant="danger" onClick={()=>handleDelete(item.id)}>🗑️</LBtn>
-            </div>
-          </div>
+          ))}
         </div>
-      ))}
+      )}
 
       {formTarget !== null && (
         <QuestionFormModal
@@ -418,9 +411,6 @@ function QuestionLibraryTab({ categories, user, onInsert }) {
   );
 }
 
-// ══════════════════════════════════════════════════════
-// SECTION FORM MODAL
-// ══════════════════════════════════════════════════════
 function SectionFormModal({ initial, categories, user, onSaved, onClose }) {
   const isEdit = !!initial?.id;
   const [name,        setName]        = useState(initial?.name || "");
@@ -450,7 +440,7 @@ function SectionFormModal({ initial, categories, user, onSaved, onClose }) {
   }
 
   return (
-    <Modal title={isEdit ? "تعديل القسم" : "حفظ قسم في المكتبة"} onClose={onClose}>
+    <Modal title={isEdit ? "تعديل القسم" : "حفظ قسم في المكتبة"} onClose={onClose} wide>
       {error && <div style={{ background:L.dangerBg, border:"1px solid #FECACA", borderRadius:10, padding:"10px 14px", fontSize:12, color:L.danger, marginBottom:12 }}>{error}</div>}
 
       <div style={{ marginBottom:10 }}>
@@ -476,7 +466,6 @@ function SectionFormModal({ initial, categories, user, onSaved, onClose }) {
         <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="مثال: مدارس، قيادة" style={iSt()}/>
       </div>
 
-      {/* Questions in section */}
       <div style={{ background:L.white, borderRadius:14, border:`1px solid ${L.s200}`, padding:14, marginBottom:12 }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
           <p style={{ margin:0, fontSize:12, fontWeight:700, color:L.s700 }}>الأسئلة ({questions.length})</p>
@@ -525,9 +514,6 @@ function SectionFormModal({ initial, categories, user, onSaved, onClose }) {
   );
 }
 
-// ══════════════════════════════════════════════════════
-// SECTION LIBRARY TAB
-// ══════════════════════════════════════════════════════
 function SectionLibraryTab({ categories, user, onInsert }) {
   const [items,      setItems]      = useState([]);
   const [loading,    setLoading]    = useState(true);
@@ -554,17 +540,17 @@ function SectionLibraryTab({ categories, user, onInsert }) {
 
   return (
     <div>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, flexWrap:"wrap", gap:10 }}>
         <div>
           <p style={{ margin:0, fontSize:14, fontWeight:800, color:L.s900 }}>مكتبة الأقسام</p>
-          <p style={{ margin:"2px 0 0", fontSize:11, color:L.s500 }}>{items.length} قسم محفوظ</p>
+          <p style={{ margin:"2px 0 0", fontSize:12, color:L.s500 }}>{items.length} قسم محفوظ</p>
         </div>
         <LBtn sm onClick={()=>setFormTarget({})}>＋ قسم جديد</LBtn>
       </div>
 
       <SearchInput value={search} onChange={e=>setSearch(e.target.value)} placeholder="ابحث في الأقسام..."/>
 
-      <div style={{ display:"flex", gap:5, marginBottom:10, overflowX:"auto", paddingBottom:4 }}>
+      <div style={{ display:"flex", gap:5, marginBottom:14, overflowX:"auto", paddingBottom:4 }}>
         <button onClick={()=>setCatFilter("")} style={{ padding:"5px 12px", borderRadius:20, fontSize:11, fontFamily:"inherit", cursor:"pointer", whiteSpace:"nowrap", border:`1.5px solid ${!catFilter?L.e600:L.s200}`, background:!catFilter?L.e50:L.white, color:!catFilter?L.e700:L.s500 }}>الكل</button>
         <button onClick={()=>setFavOnly(p=>!p)} style={{ padding:"5px 12px", borderRadius:20, fontSize:11, fontFamily:"inherit", cursor:"pointer", whiteSpace:"nowrap", border:`1.5px solid ${favOnly?L.gold:L.s200}`, background:favOnly?L.goldL:L.white, color:favOnly?L.gold:L.s500 }}>⭐ المفضلة</button>
         {categories.map(c=>(
@@ -576,36 +562,41 @@ function SectionLibraryTab({ categories, user, onInsert }) {
 
       {loading ? <div style={{textAlign:"center",padding:30}}><div style={{width:32,height:32,borderRadius:"50%",border:`3px solid ${L.e100}`,borderTopColor:L.e600,animation:"spin 0.7s linear infinite",margin:"0 auto"}}/></div>
       : items.length===0 ? <EmptyState icon="📂" title="لا توجد أقسام في المكتبة" sub="احفظ مجموعة أسئلة كقسم قابل للإعادة" action="＋ إضافة قسم" onAction={()=>setFormTarget({})}/>
-      : items.map((item,idx)=>(
-        <div key={item.id} className="lib-card lib-in"
-          style={{ background:L.white, borderRadius:16, border:`1px solid ${L.s200}`,
-            marginBottom:10, boxShadow:"0 2px 6px rgba(0,0,0,0.05)",
-            borderRight:`3px solid ${item.library_categories?.color||L.purple}`,
-            animationDelay:`${idx*0.03}s` }}>
-          <div style={{ padding:"12px 14px" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
-              <div style={{ flex:1, minWidth:0 }}>
-                <p style={{ margin:0, fontSize:13, fontWeight:700, color:L.s900 }}>{item.name}</p>
-                <p style={{ margin:"2px 0 4px", fontSize:11, color:L.s500 }}>{(item.questions||[]).length} سؤال</p>
-                <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-                  {item.library_categories && <Tag color={item.library_categories.color} bg={`${item.library_categories.color}15`}>{item.library_categories.icon} {item.library_categories.name}</Tag>}
-                  {(item.tags||[]).map(t=><Tag key={t} bg={L.s50} color={L.s400}>{t}</Tag>)}
-                  {(item.variables||[]).length>0 && <Tag bg={L.e50} color={L.e700}>✨ {item.variables.length} متغير</Tag>}
-                  <Tag bg={L.s50} color={L.s300}>v{item.version}</Tag>
+      : (
+        <div className="lib-grid">
+          {items.map((item,idx)=>(
+            <div key={item.id} className="lib-card lib-in"
+              style={{ background:L.white, borderRadius:16, border:`1px solid ${L.s200}`,
+                boxShadow:"0 1px 3px rgba(0,0,0,0.04)",
+                borderRight:`3px solid ${item.library_categories?.color||L.purple}`,
+                animationDelay:`${idx*0.03}s`,
+                display:"flex", flexDirection:"column" }}>
+              <div style={{ padding:"12px 14px", flex:1, display:"flex", flexDirection:"column" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <p style={{ margin:0, fontSize:13, fontWeight:700, color:L.s900 }}>{item.name}</p>
+                    <p style={{ margin:"2px 0 4px", fontSize:11, color:L.s500 }}>{(item.questions||[]).length} سؤال</p>
+                    <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+                      {item.library_categories && <Tag color={item.library_categories.color} bg={`${item.library_categories.color}15`}>{item.library_categories.icon} {item.library_categories.name}</Tag>}
+                      {(item.tags||[]).map(t=><Tag key={t} bg={L.s50} color={L.s400}>{t}</Tag>)}
+                      {(item.variables||[]).length>0 && <Tag bg={L.e50} color={L.e700}>✨ {item.variables.length} متغير</Tag>}
+                      <Tag bg={L.s50} color={L.s300}>v{item.version}</Tag>
+                    </div>
+                  </div>
+                  <button onClick={()=>handleFav(item)} style={{ background:"none", border:"none", fontSize:18, cursor:"pointer", flexShrink:0, color:item.is_favorite?L.gold:L.s200 }}>⭐</button>
+                </div>
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap", borderTop:`1px solid ${L.s100}`, paddingTop:8, marginTop:"auto" }}>
+                  {onInsert && <LBtn sm onClick={()=>onInsert("section", item)}>📥 إدراج الكل</LBtn>}
+                  <LBtn sm variant="secondary" onClick={()=>setFormTarget(item)}>✏️ تعديل</LBtn>
+                  <LBtn sm variant="secondary" onClick={()=>handleDuplicate(item)}>📄 نسخ</LBtn>
+                  <LBtn sm variant="secondary" onClick={()=>setVersionFor(item)}>🕐 الإصدارات</LBtn>
+                  <LBtn sm variant="danger" onClick={()=>handleDelete(item.id)}>🗑️</LBtn>
                 </div>
               </div>
-              <button onClick={()=>handleFav(item)} style={{ background:"none", border:"none", fontSize:18, cursor:"pointer", flexShrink:0, color:item.is_favorite?L.gold:L.s200 }}>⭐</button>
             </div>
-            <div style={{ display:"flex", gap:6, flexWrap:"wrap", borderTop:`1px solid ${L.s100}`, paddingTop:8 }}>
-              {onInsert && <LBtn sm onClick={()=>onInsert("section", item)}>📥 إدراج الكل</LBtn>}
-              <LBtn sm variant="secondary" onClick={()=>setFormTarget(item)}>✏️ تعديل</LBtn>
-              <LBtn sm variant="secondary" onClick={()=>handleDuplicate(item)}>📄 نسخ</LBtn>
-              <LBtn sm variant="secondary" onClick={()=>setVersionFor(item)}>🕐 الإصدارات</LBtn>
-              <LBtn sm variant="danger" onClick={()=>handleDelete(item.id)}>🗑️</LBtn>
-            </div>
-          </div>
+          ))}
         </div>
-      ))}
+      )}
 
       {formTarget!==null && <SectionFormModal initial={formTarget.id?formTarget:null} categories={categories} user={user} onSaved={()=>{setFormTarget(null);load();}} onClose={()=>setFormTarget(null)}/>}
       {versionFor && <VersionHistoryModal type="section" itemId={versionFor.id} onRestore={()=>{setVersionFor(null);load();}} onClose={()=>setVersionFor(null)}/>}
@@ -613,9 +604,6 @@ function SectionLibraryTab({ categories, user, onInsert }) {
   );
 }
 
-// ══════════════════════════════════════════════════════
-// CONDITIONS TAB
-// ══════════════════════════════════════════════════════
 function ConditionsTab({ categories, user }) {
   const [items,      setItems]      = useState([]);
   const [loading,    setLoading]    = useState(true);
@@ -661,37 +649,41 @@ function ConditionsTab({ categories, user }) {
 
   return (
     <div>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-        <div><p style={{ margin:0, fontSize:14, fontWeight:800, color:L.s900 }}>قوالب الشروط</p><p style={{ margin:"2px 0 0", fontSize:11, color:L.s500 }}>{items.length} قالب</p></div>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, flexWrap:"wrap", gap:10 }}>
+        <div><p style={{ margin:0, fontSize:14, fontWeight:800, color:L.s900 }}>قوالب الشروط</p><p style={{ margin:"2px 0 0", fontSize:12, color:L.s500 }}>{items.length} قالب</p></div>
         <LBtn sm onClick={()=>openForm()}>＋ شرط جديد</LBtn>
       </div>
       <SearchInput value={search} onChange={e=>setSearch(e.target.value)} placeholder="ابحث في الشروط..."/>
       {loading ? <div style={{textAlign:"center",padding:30}}><div style={{width:32,height:32,borderRadius:"50%",border:`3px solid ${L.e100}`,borderTopColor:L.e600,animation:"spin 0.7s linear infinite",margin:"0 auto"}}/></div>
       : items.length===0 ? <EmptyState icon="🔀" title="لا توجد قوالب شروط" sub="احفظ منطق التفريع لإعادة استخدامه" action="＋ إضافة شرط" onAction={()=>openForm()}/>
-      : items.map((item,idx)=>(
-        <div key={item.id} className="lib-card lib-in" style={{ background:L.white, borderRadius:16, border:`1px solid ${L.s200}`, marginBottom:10, boxShadow:"0 2px 6px rgba(0,0,0,0.05)", borderRight:`3px solid ${L.warn}`, animationDelay:`${idx*0.03}s` }}>
-          <div style={{ padding:"12px 14px" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
-              <div style={{ flex:1 }}>
-                <p style={{ margin:0, fontSize:13, fontWeight:700, color:L.s900 }}>{item.name}</p>
-                {item.description && <p style={{ margin:"2px 0 0", fontSize:11, color:L.s500 }}>{item.description}</p>}
-                {item.condition_data?.gate_question_label && (
-                  <div style={{ marginTop:6, background:L.warnBg, borderRadius:8, padding:"6px 10px" }}>
-                    <p style={{ margin:0, fontSize:11, color:L.warn }}>
-                      🚪 إذا: <strong>{item.condition_data.gate_question_label}</strong> = <strong>{item.condition_data.gate_required_value}</strong>
-                    </p>
+      : (
+        <div className="lib-grid">
+          {items.map((item,idx)=>(
+            <div key={item.id} className="lib-card lib-in" style={{ background:L.white, borderRadius:16, border:`1px solid ${L.s200}`, boxShadow:"0 1px 3px rgba(0,0,0,0.04)", borderRight:`3px solid ${L.warn}`, animationDelay:`${idx*0.03}s`, display:"flex", flexDirection:"column" }}>
+              <div style={{ padding:"12px 14px", flex:1, display:"flex", flexDirection:"column" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+                  <div style={{ flex:1 }}>
+                    <p style={{ margin:0, fontSize:13, fontWeight:700, color:L.s900 }}>{item.name}</p>
+                    {item.description && <p style={{ margin:"2px 0 0", fontSize:11, color:L.s500 }}>{item.description}</p>}
+                    {item.condition_data?.gate_question_label && (
+                      <div style={{ marginTop:6, background:L.warnBg, borderRadius:8, padding:"6px 10px" }}>
+                        <p style={{ margin:0, fontSize:11, color:L.warn }}>
+                          🚪 إذا: <strong>{item.condition_data.gate_question_label}</strong> = <strong>{item.condition_data.gate_required_value}</strong>
+                        </p>
+                      </div>
+                    )}
                   </div>
-                )}
+                  <button onClick={()=>handleFav(item)} style={{ background:"none", border:"none", fontSize:18, cursor:"pointer", color:item.is_favorite?L.gold:L.s200 }}>⭐</button>
+                </div>
+                <div style={{ display:"flex", gap:6, borderTop:`1px solid ${L.s100}`, paddingTop:8, marginTop:"auto" }}>
+                  <LBtn sm variant="secondary" onClick={()=>openForm(item)}>✏️ تعديل</LBtn>
+                  <LBtn sm variant="danger" onClick={()=>handleDelete(item.id)}>🗑️</LBtn>
+                </div>
               </div>
-              <button onClick={()=>handleFav(item)} style={{ background:"none", border:"none", fontSize:18, cursor:"pointer", color:item.is_favorite?L.gold:L.s200 }}>⭐</button>
             </div>
-            <div style={{ display:"flex", gap:6, borderTop:`1px solid ${L.s100}`, paddingTop:8 }}>
-              <LBtn sm variant="secondary" onClick={()=>openForm(item)}>✏️ تعديل</LBtn>
-              <LBtn sm variant="danger" onClick={()=>handleDelete(item.id)}>🗑️</LBtn>
-            </div>
-          </div>
+          ))}
         </div>
-      ))}
+      )}
 
       {formOpen && (
         <Modal title={editTarget?"تعديل الشرط":"قالب شرط جديد"} onClose={()=>setFormOpen(false)}>
@@ -716,9 +708,6 @@ function ConditionsTab({ categories, user }) {
   );
 }
 
-// ══════════════════════════════════════════════════════
-// SMART VARIABLES TAB
-// ══════════════════════════════════════════════════════
 function SmartVariablesTab() {
   const [preview, setPreview] = useState({
     school_name:"مدرسة الأمل الابتدائية", school_stage:"الابتدائية",
@@ -753,7 +742,6 @@ function SmartVariablesTab() {
         ))}
       </div>
 
-      {/* Live Preview */}
       <div style={{ background:L.white, borderRadius:16, border:`1px solid ${L.s200}`, padding:16 }}>
         <p style={{ margin:"0 0 12px", fontSize:13, fontWeight:800, color:L.s900 }}>🔍 معاينة تفاعلية</p>
         <label style={{ display:"block", fontSize:12, fontWeight:700, color:L.s700, marginBottom:5 }}>نص يحتوي متغيرات:</label>
@@ -780,9 +768,6 @@ function SmartVariablesTab() {
   );
 }
 
-// ══════════════════════════════════════════════════════
-// CATEGORIES MANAGER
-// ══════════════════════════════════════════════════════
 function CategoriesManager({ categories, onReload }) {
   const [name,    setName]    = useState("");
   const [icon,    setIcon]    = useState("📁");
@@ -825,9 +810,6 @@ function CategoriesManager({ categories, onReload }) {
   );
 }
 
-// ══════════════════════════════════════════════════════
-// IMPORT/EXPORT TAB
-// ══════════════════════════════════════════════════════
 function ImportExportTab({ user }) {
   const [importing, setImporting] = useState(false);
   const [result,    setResult]    = useState(null);
@@ -893,9 +875,6 @@ function ImportExportTab({ user }) {
   );
 }
 
-// ══════════════════════════════════════════════════════
-// MAIN CONTENT LIBRARY COMPONENT
-// ══════════════════════════════════════════════════════
 export default function ContentLibrary({ user, onInsertQuestion, onInsertSection }) {
   const [activeTab,  setActiveTab]  = useState("questions");
   const [categories, setCategories] = useState([]);
@@ -914,40 +893,43 @@ export default function ContentLibrary({ user, onInsertQuestion, onInsertSection
   }
 
   const TABS = [
-    { id:"questions",  label:"❓ الأسئلة" },
-    { id:"sections",   label:"📂 الأقسام" },
-    { id:"conditions", label:"🔀 الشروط" },
-    { id:"variables",  label:"✨ المتغيرات" },
-    { id:"categories", label:"🏷️ الفئات" },
-    { id:"io",         label:"📦 استيراد/تصدير" },
+    { id:"questions",  label:"الأسئلة",   icon:"❓" },
+    { id:"sections",   label:"الأقسام",   icon:"📂" },
+    { id:"conditions", label:"الشروط",    icon:"🔀" },
+    { id:"variables",  label:"المتغيرات", icon:"✨" },
+    { id:"categories", label:"الفئات",    icon:"🏷️" },
+    { id:"io",         label:"استيراد/تصدير", icon:"📦" },
   ];
 
   return (
-    <div style={{ padding:16, direction:"rtl" }}>
-      {/* Header */}
-      <div style={{ marginBottom:16 }}>
-        <h2 style={{ margin:0, fontSize:18, color:L.s900, fontWeight:800 }}>مكتبة المحتوى</h2>
-        <p style={{ margin:"2px 0 0", fontSize:12, color:L.s500 }}>أسئلة · أقسام · شروط · متغيرات ذكية</p>
+    <div style={{ direction:"rtl" }}>
+      <div style={{ marginBottom:18 }}>
+        <h1 style={{ margin:0, fontSize:22, color:L.s900, fontWeight:800, letterSpacing:"-0.02em" }}>مكتبة المحتوى</h1>
+        <p style={{ margin:"4px 0 0", fontSize:13, color:L.s500 }}>أسئلة · أقسام · شروط · متغيرات ذكية</p>
       </div>
 
-      {/* Tab bar */}
-      <div style={{ display:"flex", background:L.s100, borderRadius:14, padding:4, marginBottom:16, gap:2, overflowX:"auto" }}>
+      <div style={{
+        display: "flex", background: L.white, borderRadius: 12,
+        padding: 4, marginBottom: 20, border: `1px solid ${L.s200}`, gap: 2,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)", overflowX: "auto",
+      }}>
         {TABS.map(tab=>{
           const isActive = activeTab===tab.id;
           return (
             <button key={tab.id} onClick={()=>setActiveTab(tab.id)} style={{
-              flex:"0 0 auto", padding:"8px 10px", border:"none",
-              background:isActive?L.white:"transparent",
-              cursor:"pointer", fontFamily:"inherit", fontSize:11,
-              fontWeight:isActive?700:500, color:isActive?L.e700:L.s500,
-              borderRadius:10, boxShadow:isActive?"0 1px 4px rgba(0,0,0,0.08)":"none",
-              whiteSpace:"nowrap", transition:"all 0.15s",
-            }}>{tab.label}</button>
+              flex:"0 0 auto", padding: "8px 14px", border: "none", borderRadius: 9,
+              background: isActive ? L.e50 : "transparent",
+              cursor: "pointer", fontSize: 12, fontFamily: "inherit",
+              fontWeight: isActive ? 700 : 500,
+              color: isActive ? L.e700 : L.s500,
+              display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
+            }}>
+              <span>{tab.icon}</span>{tab.label}
+            </button>
           );
         })}
       </div>
 
-      {/* Tab content */}
       {!catLoaded ? <div style={{textAlign:"center",padding:40}}><div style={{width:36,height:36,borderRadius:"50%",border:`3px solid ${L.e100}`,borderTopColor:L.e600,animation:"spin 0.7s linear infinite",margin:"0 auto"}}/></div>
       : activeTab==="questions"  ? <QuestionLibraryTab categories={categories} user={user} onInsert={handleInsert}/>
       : activeTab==="sections"   ? <SectionLibraryTab  categories={categories} user={user} onInsert={handleInsert}/>
