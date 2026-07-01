@@ -1,10 +1,6 @@
 /**
  * ExecutiveDashboard — لوحة التحكم التنفيذية
  * Phase 3 — Enterprise UI redesign (Microsoft 365 / Stripe language)
- *
- * Business logic, data fetching, derived stats: 100% unchanged.
- * Only the presentation layer was rebuilt to match the new
- * AppShell sidebar/topbar design system.
  */
 
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -12,7 +8,6 @@ import { supabase, C, Btn, Card, Tag, Spinner, ExportMenu, ensureXLSX, tsStamp }
 import { SURVEY_TYPE_LABELS } from "./SurveyService.jsx";
 import { resolveState, LIFECYCLE_STATE_CONFIG } from "./SurveyLifecycleService.js";
 
-// ── Design tokens — shared with AppShell/AppSidebar/AppTopBar ──
 const D = {
   e900:"#064E3B",e800:"#065F46",e700:"#047857",e600:"#059669",e500:"#10B981",
   e100:"#D1FAE5",e50:"#ECFDF5",
@@ -32,26 +27,44 @@ if (typeof document !== "undefined" && !document.getElementById("dash-enterprise
     .dash-kpi { transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease; }
     .dash-kpi:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08) !important; }
     .dash-row { transition: background 0.12s ease; }
-    .dash-row:hover { background: ${D.s50}; }
+    .dash-row:hover { background: #F8FAFC; }
     .dash-tab { transition: all 0.15s ease; }
     .dash-filter-select { transition: border-color 0.15s ease; }
-    .dash-filter-select:focus { border-color: ${D.e600} !important; }
+    .dash-filter-select:focus { border-color: #059669 !important; }
     @keyframes dashIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
     .dash-in { animation: dashIn 0.25s ease both; }
     @keyframes spin { to { transform: rotate(360deg) } }
+
+    /* KPI grid: 2 cols on mobile, 3 on tablet, 6 on desktop */
+    .dash-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    @media (min-width: 768px) {
+      .dash-kpi-grid { grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    }
+    @media (min-width: 1280px) {
+      .dash-kpi-grid { grid-template-columns: repeat(6, 1fr); }
+    }
+
+    /* Audience mini-KPI: 2 cols always */
+    .dash-audience-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
   `;
   document.head.appendChild(s);
 }
 
-// ═══════════════════════════════════════════════════════
-// Shared visual primitives — enterprise style
-// ═══════════════════════════════════════════════════════
-
 function KPICard({ icon, label, value, sub, color = D.e600, bg, onClick, idx = 0 }) {
   return (
-    <div onClick={onClick} className={`dash-kpi dash-in${onClick ? "" : ""}`}
+    <div onClick={onClick} className="dash-kpi dash-in"
       style={{
-        background: D.white, borderRadius: 16, padding: "18px 18px 16px",
+        background: D.white, borderRadius: 16, padding: "16px 14px 14px",
         border: `1px solid ${D.s200}`, boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
         cursor: onClick ? "pointer" : "default", animationDelay: `${idx * 0.04}s`,
         position: "relative", overflow: "hidden",
@@ -60,18 +73,18 @@ function KPICard({ icon, label, value, sub, color = D.e600, bg, onClick, idx = 0
         position: "absolute", top: 0, right: 0, left: 0, height: 3,
         background: `linear-gradient(90deg, ${color}, ${color}80)`,
       }} />
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
         <div style={{
-          width: 38, height: 38, borderRadius: 11, background: bg || `${color}12`,
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+          width: 34, height: 34, borderRadius: 10, background: bg || `${color}12`,
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
         }}>{icon}</div>
         {onClick && <span style={{ fontSize: 11, color: D.s400 }}>‹</span>}
       </div>
-      <div style={{ fontSize: 26, fontWeight: 800, color: D.s900, lineHeight: 1.1, letterSpacing: "-0.02em" }}>
+      <div style={{ fontSize: 24, fontWeight: 800, color: D.s900, lineHeight: 1.1, letterSpacing: "-0.02em" }}>
         {value}
       </div>
-      <div style={{ fontSize: 12, color: D.s500, marginTop: 4, fontWeight: 600 }}>{label}</div>
-      {sub && <div style={{ fontSize: 11, color, marginTop: 4, fontWeight: 600 }}>{sub}</div>}
+      <div style={{ fontSize: 11, color: D.s500, marginTop: 4, fontWeight: 600 }}>{label}</div>
+      {sub && <div style={{ fontSize: 10, color, marginTop: 3, fontWeight: 600 }}>{sub}</div>}
     </div>
   );
 }
@@ -138,10 +151,7 @@ function StateBadge({ state, cfg }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════
-// فلتر لوحة التحكم — logic unchanged, enterprise styling
-// ═══════════════════════════════════════════════════════
-function DashboardFilters({ filters, onChange, stages, sectors, districts, surveys }) {
+function DashboardFilters({ filters, onChange, stages, sectors, surveys }) {
   function set(k, v) { onChange({ ...filters, [k]: v }); }
 
   const selStyle = {
@@ -166,7 +176,7 @@ function DashboardFilters({ filters, onChange, stages, sectors, districts, surve
       padding: 14, marginBottom: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
     }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: D.s400, marginLeft: 2 }}>تصفية:</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: D.s400 }}>تصفية:</span>
         {sel(filters.surveyId || "", v => set("surveyId", v), <>
           <option value="">كل الاستبيانات</option>
           {surveys.map(s => <option key={s.id} value={s.id}>{s.title.slice(0, 30)}</option>)}
@@ -195,9 +205,6 @@ function DashboardFilters({ filters, onChange, stages, sectors, districts, surve
   );
 }
 
-// ═══════════════════════════════════════════════════════
-// hook — جلب بيانات Dashboard — logic 100% unchanged
-// ═══════════════════════════════════════════════════════
 function useDashboardData(surveys, allSchools, filters) {
   const [responseStats,  setResponseStats]  = useState({});
   const [recentActivity, setRecentActivity] = useState([]);
@@ -237,7 +244,6 @@ function useDashboardData(surveys, allSchools, filters) {
       .order("created_at", { ascending: false })
       .limit(20);
     setRecentActivity(logs || []);
-
     setLoading(false);
   }, [filteredSurveys]);
 
@@ -258,8 +264,7 @@ function useDashboardData(surveys, allSchools, filters) {
 
     const totalResponses = Object.values(responseStats).reduce((a, b) => a + b, 0);
     const schoolTotal    = filteredSchools.length || 1;
-
-    const activeCount = published.length;
+    const activeCount    = published.length;
     const avgRate = activeCount
       ? Math.round(published.reduce((sum, s) => sum + ((responseStats[s.id] || 0) / schoolTotal * 100), 0) / activeCount)
       : 0;
@@ -274,19 +279,12 @@ function useDashboardData(surveys, allSchools, filters) {
       if (s.stage) byStage[s.stage] = (byStage[s.stage] || 0) + 1;
     });
 
-    return {
-      published, draft, closed, archived, paused,
-      closingSoon, totalResponses, avgRate, topSurveys, byStage,
-      schoolTotal,
-    };
+    return { published, draft, closed, archived, paused, closingSoon, totalResponses, avgRate, topSurveys, byStage, schoolTotal };
   }, [filteredSurveys, filteredSchools, responseStats]);
 
   return { loading, responseStats, recentActivity, derived, filteredSurveys, filteredSchools };
 }
 
-// ═══════════════════════════════════════════════════════
-// الصفحة الرئيسية
-// ═══════════════════════════════════════════════════════
 export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, user }) {
   const [filters,    setFilters]    = useState({});
   const [allSchools, setAllSchools] = useState([]);
@@ -311,9 +309,8 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
     load();
   }, []);
 
-  const stages    = useMemo(() => [...new Set(allSchools.map(s => s.stage).filter(Boolean))].sort(), [allSchools]);
-  const sectors   = useMemo(() => [...new Set(allSchools.map(s => s.sector).filter(Boolean))].sort(), [allSchools]);
-  const districts = useMemo(() => [...new Set(allSchools.map(s => s.district).filter(Boolean))].sort(), [allSchools]);
+  const stages  = useMemo(() => [...new Set(allSchools.map(s => s.stage).filter(Boolean))].sort(),  [allSchools]);
+  const sectors = useMemo(() => [...new Set(allSchools.map(s => s.sector).filter(Boolean))].sort(), [allSchools]);
 
   const { loading, responseStats, recentActivity, derived, filteredSurveys, filteredSchools }
     = useDashboardData(surveys, allSchools, filters);
@@ -323,7 +320,6 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
   async function exportDashboard() {
     const XLSX = await ensureXLSX();
     const wb   = XLSX.utils.book_new();
-
     const kpiRows = [
       ["البيان", "القيمة"],
       ["إجمالي الاستبيانات", filteredSurveys.length],
@@ -337,7 +333,6 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
       ["تنتهي قريباً", derived.closingSoon.length],
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(kpiRows), "مؤشرات الأداء");
-
     if (derived.topSurveys.length) {
       const topRows = derived.topSurveys.map(s => ({
         "الاستبيان": s.title,
@@ -346,15 +341,14 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
       }));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(topRows), "أفضل الاستبيانات");
     }
-
     XLSX.writeFile(wb, `لوحة-التحكم-${tsStamp()}.xlsx`);
   }
 
   const VIEWS = [
-    { id: "overview",  label: "نظرة عامة", icon: "🏠" },
+    { id: "overview",  label: "نظرة عامة",   icon: "🏠" },
     { id: "surveys",   label: "الاستبيانات", icon: "📋" },
-    { id: "audience",  label: "الجمهور", icon: "👥" },
-    { id: "activity",  label: "النشاط", icon: "📜" },
+    { id: "audience",  label: "الجمهور",     icon: "👥" },
+    { id: "activity",  label: "النشاط",      icon: "📜" },
   ];
 
   return (
@@ -380,26 +374,26 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
       {/* الفلاتر */}
       <DashboardFilters
         filters={filters} onChange={setFilters}
-        stages={stages} sectors={sectors} districts={districts}
+        stages={stages} sectors={sectors}
         surveys={surveys}
       />
 
-      {/* تبويبات العرض — pill style matching new design language */}
+      {/* تبويبات — pill style */}
       <div style={{
-        display: "inline-flex", background: D.white, borderRadius: 12,
+        display: "flex", background: D.white, borderRadius: 12,
         padding: 4, marginBottom: 20, border: `1px solid ${D.s200}`, gap: 2,
-        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)", overflowX: "auto",
       }}>
         {VIEWS.map(v => {
           const isActive = activeView === v.id;
           return (
             <button key={v.id} onClick={() => setActiveView(v.id)} className="dash-tab" style={{
-              padding: "8px 16px", border: "none", borderRadius: 9,
+              flex: "0 0 auto", padding: "8px 14px", border: "none", borderRadius: 9,
               background: isActive ? D.e50 : "transparent",
               cursor: "pointer", fontSize: 12, fontFamily: "inherit",
               fontWeight: isActive ? 700 : 500,
               color: isActive ? D.e700 : D.s500,
-              display: "flex", alignItems: "center", gap: 6,
+              display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
             }}>
               <span>{v.icon}</span>{v.label}
             </button>
@@ -412,12 +406,8 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
           {/* ── نظرة عامة ── */}
           {activeView === "overview" && (
             <>
-              {/* KPI Cards */}
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-                gap: 12, marginBottom: 20,
-              }}>
+              {/* KPI Grid — 2 cols mobile, 3 tablet, 6 desktop via CSS class */}
+              <div className="dash-kpi-grid">
                 <KPICard idx={0} icon="✅" label="منشورة" value={derived.published.length}
                   color={D.success} bg={D.successBg} onClick={() => onNavigate?.("surveys")}/>
                 <KPICard idx={1} icon="📝" label="مسودة" value={derived.draft.length}
@@ -507,10 +497,8 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
                       const cfg    = LIFECYCLE_STATE_CONFIG[state] || {};
                       const count  = responseStats[s.id] || 0;
                       const total  = filteredSchools.length;
-                      const pct    = total ? Math.round(count / total * 100) : 0;
                       const end    = s.end_date || s.expires_at;
                       const expiring = end && (new Date(end) - new Date()) < 3*24*60*60*1000 && new Date(end) > new Date();
-
                       return (
                         <div key={s.id} className="dash-in" style={{
                           background: D.white, borderRadius: 14, border: `1px solid ${D.s200}`,
@@ -531,7 +519,7 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
                               <MiniBar value={count} max={total} color={D.e600}
                                 label={`${count} من ${total} استجابت`}/>
                               {expiring && (
-                                <p style={{ margin: "0", fontSize: 11, color: D.warn, fontWeight: 700,
+                                <p style={{ margin: 0, fontSize: 11, color: D.warn, fontWeight: 700,
                                   display: "flex", alignItems: "center", gap: 4 }}>
                                   ⚠️ ينتهي {new Date(end).toLocaleDateString("ar-SA")}
                                 </p>
@@ -550,10 +538,8 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
           {/* ── الجمهور ── */}
           {activeView === "audience" && (
             <>
-              <div style={{
-                display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-                gap: 12, marginBottom: 20,
-              }}>
+              {/* 2-col grid always — only 2 cards here */}
+              <div className="dash-audience-grid">
                 <KPICard idx={0} icon="🏫" label="إجمالي المدارس" value={filteredSchools.length}
                   color={D.e600} bg={D.e50}/>
                 <KPICard idx={1} icon="🎓" label="المراحل الدراسية" value={Object.keys(derived.byStage).length}
@@ -651,4 +637,3 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
     </div>
   );
 }
-
