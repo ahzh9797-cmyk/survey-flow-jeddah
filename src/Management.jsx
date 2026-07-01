@@ -10,6 +10,7 @@ import { audit, AUDIT_ACTION_LABELS } from "./AuditService.js";
 import LifecycleActions, { LifecycleBadge } from "./LifecycleActions.jsx";
 import { resolveState, LIFECYCLE_STATE_CONFIG } from "./SurveyLifecycleService.js";
 import LoginPage from "./LoginPage.jsx";
+import SystemIdentityCenter from "./SystemIdentityCenter.jsx";
 
 // ── Enterprise UI styles — Phase 3, matches AppShell design system ──
 if (typeof document !== "undefined" && !document.getElementById("surveys-enterprise-styles")) {
@@ -1379,5 +1380,6 @@ export { default as NewSurveyPage } from "./SurveyBuilderEngine.jsx";
 export { SurveysList, ShareSheet, LoginPage, AnalyticsPage,
   SchoolForm, CsvUploadSheet, DeleteConfirm, SchoolsManagementPage,
   UsersManagementPage, RoleBadgeStatic, SupervisorsManagementPage,
-  AppSettingsPage, AuditLogPage };
+  AppSettingsPage, AuditLogPage, SystemIdentityCenter };
+
 
