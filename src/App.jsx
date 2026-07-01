@@ -296,6 +296,11 @@ export default function App() {
         {tab==="reports"       && <ReportingCenter surveys={surveys} user={user} schoolCount={schoolCount}/>}
         {tab==="library"       && <ContentLibrary user={user}/>}
         {tab==="review"        && <ReviewCenter surveys={surveys} user={user}/>}
+        {tab==="identity" && isAdmin && (
+  <ModalPage title="هوية النظام" onClose={()=>setTab("dashboard")}>
+    <div style={{padding:16}}>قريباً</div>
+  </ModalPage>
+)}
 
         {/* "more" landing page — kept for direct tab access (e.g. if
             a future deep-link sets tab="more"); the sidebar's admin
