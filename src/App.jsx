@@ -6,7 +6,7 @@ import PublicFill from "./PublicFill.jsx";
 import TrackingPage, { OpenSurveyTracking } from "./TrackingPage.jsx";
 import { SurveysList, NewSurveyPage, ShareSheet, LoginPage, AnalyticsPage,
   SchoolsManagementPage, UsersManagementPage, SupervisorsManagementPage,
-  AppSettingsPage, AuditLogPage } from "./Management.jsx";
+  AppSettingsPage, AuditLogPage, SystemIdentityCenter } from "./Management.jsx";
 import DirectoryPage from "./Directory.jsx";
 import TemplatesPage, { SaveAsTemplateSheet } from "./TemplatesPage.jsx";
 import { checkSurveyAccess } from "./SurveyService.jsx";
@@ -296,10 +296,7 @@ export default function App() {
         {tab==="reports"       && <ReportingCenter surveys={surveys} user={user} schoolCount={schoolCount}/>}
         {tab==="library"       && <ContentLibrary user={user}/>}
         {tab==="review"        && <ReviewCenter surveys={surveys} user={user}/>}
-        {tab==="identity" && isAdmin && (
-  <ModalPage title="هوية النظام" onClose={()=>setTab("dashboard")}>
-    <div style={{padding:16}}>قريباً</div>
-  </ModalPage>
+        {tab==="identity" && isAdmin && <SystemIdentityCenter user={user} isAdmin={isAdmin}/>}
 )}
 
         {/* "more" landing page — kept for direct tab access (e.g. if
