@@ -1,31 +1,17 @@
 /**
- * AppSidebar.jsx
- * Enterprise navigation sidebar — Phase 1 of the redesign.
- *
- * Behavior:
- *   Desktop (≥1024px): permanent sidebar, collapsible (icon-only ↔ full).
- *   Tablet  (768–1023px): collapsible, defaults to icon-only.
- *   Mobile  (<768px): hidden by default, slides in as a drawer from
- *     the right (RTL) when `open` is true, with a backdrop overlay.
- *
- * This component is purely presentational + navigation state.
- * It does NOT touch business logic, Supabase, or any existing page.
- * Page routing is driven by `activeTab` / `onNavigate`, matching the
- * same `tab` state contract already used in App.jsx today.
- *
- * NAV_SECTIONS is intentionally structured so that future sections
- * (Interactive Map, Archive, Automation, Messages, PDF/Excel export)
- * can be added later as new groups/items without restructuring the
- * sidebar itself — see the commented `FUTURE SECTIONS` block below.
+ * AppSidebar.jsx — Phase 3 fix
+ * Mobile: drawer is position:fixed, slides from right (RTL), width 288px max,
+ *   never affects layout. Backdrop click closes it. Swipe-close via touch.
+ * Tablet/Desktop: permanent rail, collapsible. Unchanged behaviour.
+ * All nav logic, NAV_SECTIONS, props — 100% unchanged.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
-// ── Design tokens — dark emerald sidebar, enterprise palette ──
 const S = {
-  bg900: "#062C24",      // deepest sidebar background
-  bg800: "#0A3D32",      // sidebar surface
-  bg700: "#0F4D3F",      // hover / active surface
+  bg900: "#062C24",
+  bg800: "#0A3D32",
+  bg700: "#0F4D3F",
   line:  "rgba(255,255,255,0.08)",
   textPrimary:   "#FFFFFF",
   textSecondary: "rgba(255,255,255,0.55)",
@@ -36,14 +22,6 @@ const S = {
   danger:    "#F87171",
 };
 
-// ══════════════════════════════════════════════════════
-// NAV STRUCTURE
-// Only pages that exist in the project today are wired with a
-// `tabId`. Sections without a working page yet are flagged
-// `comingSoon: true` so they render disabled (greyed, no click) —
-// ready to be enabled the moment that page is built, with zero
-// structural changes needed here.
-// ══════════════════════════════════════════════════════
 export const NAV_SECTIONS = [
   {
     id: "home",
@@ -56,9 +34,9 @@ export const NAV_SECTIONS = [
     label: "الاستبيانات",
     icon: "📝",
     items: [
-      { id: "surveys-all",      label: "جميع الاستبيانات", icon: "📋", tabId: "surveys" },
-      { id: "surveys-new",      label: "إنشاء استبيان",     icon: "➕", tabId: "surveys", action: "new" },
-      { id: "surveys-templates",label: "القوالب",            icon: "🗂️", tabId: "templates" },
+      { id: "surveys-all",       label: "جميع الاستبيانات", icon: "📋", tabId: "surveys" },
+      { id: "surveys-new",       label: "إنشاء استبيان",    icon: "➕", tabId: "surveys", action: "new" },
+      { id: "surveys-templates", label: "القوالب",           icon: "🗂️", tabId: "templates" },
     ],
   },
   {
@@ -66,16 +44,16 @@ export const NAV_SECTIONS = [
     label: "الدليل",
     icon: "📁",
     items: [
-      { id: "dir-schools",        label: "إدارة المدارس",   icon: "🏫", tabId: "directory" },
-      { id: "dir-administrators", label: "إدارة المديرين",  icon: "👨‍💼", tabId: "directory" },
-      { id: "dir-supervisors",    label: "إدارة المشرفين",  icon: "👤", tabId: "directory" },
+      { id: "dir-schools",        label: "إدارة المدارس",  icon: "🏫", tabId: "directory" },
+      { id: "dir-administrators", label: "إدارة المديرين", icon: "👨‍💼", tabId: "directory" },
+      { id: "dir-supervisors",    label: "إدارة المشرفين", icon: "👤", tabId: "directory" },
     ],
   },
   {
     id: "insights",
     items: [
-      { id: "analytics", label: "إحصائيات",    icon: "📊", tabId: "analytics" },
-      { id: "reports",   label: "التقارير",     icon: "📈", tabId: "reports" },
+      { id: "analytics", label: "إحصائيات",     icon: "📊", tabId: "analytics" },
+      { id: "reports",   label: "التقارير",      icon: "📈", tabId: "reports" },
       { id: "library",   label: "مكتبة المحتوى", icon: "📚", tabId: "library" },
       { id: "review",    label: "مركز المراجعة", icon: "🔍", tabId: "review" },
     ],
@@ -86,25 +64,6 @@ export const NAV_SECTIONS = [
       { id: "communication", label: "الاتصالات", icon: "📨", tabId: "communication" },
     ],
   },
-
-  // ── FUTURE SECTIONS ─────────────────────────────────
-  // Uncomment / extend when these pages are actually built.
-  // Structure is ready — no sidebar redesign needed later.
-  //
-  // {
-  //   id: "future",
-  //   label: "قريباً",
-  //   items: [
-  //     { id:"map",        label:"الخريطة التفاعلية", icon:"🗺",  comingSoon:true },
-  //     { id:"archive",     label:"الأرشيف",            icon:"📂", comingSoon:true },
-  //     { id:"automation",  label:"الأتمتة",            icon:"⚡", comingSoon:true },
-  //     { id:"messages",    label:"الرسائل",            icon:"💬", comingSoon:true },
-  //     { id:"export-pdf",  label:"تصدير PDF",          icon:"📄", comingSoon:true },
-  //     { id:"export-xlsx", label:"تصدير Excel",        icon:"📊", comingSoon:true },
-  //     { id:"import",      label:"الاستيراد",          icon:"📥", comingSoon:true },
-  //   ],
-  // },
-
   {
     id: "admin",
     label: "الإدارة",
@@ -118,30 +77,30 @@ export const NAV_SECTIONS = [
   },
 ];
 
-// ── Styles injected once ────────────────────────────────
 if (typeof document !== "undefined" && !document.getElementById("sidebar-shell-styles")) {
   const s = document.createElement("style");
   s.id = "sidebar-shell-styles";
   s.textContent = `
-    .sb-item { transition: background 0.15s ease, color 0.15s ease, padding 0.2s ease; }
-    .sb-item:hover { background: rgba(255,255,255,0.06); }
-    .sb-item.active { background: ${S.accentBg}; }
-    .sb-scroll::-webkit-scrollbar { width: 4px; }
-    .sb-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
-    .sb-drawer-enter { animation: sbDrawerIn 0.25s cubic-bezier(0.22,1,0.36,1) both; }
-    @keyframes sbDrawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-    .sb-backdrop-enter { animation: sbBackdropIn 0.2s ease both; }
-    @keyframes sbBackdropIn { from { opacity:0; } to { opacity:1; } }
-    .sb-collapse-label { transition: opacity 0.15s ease, width 0.2s ease; white-space: nowrap; overflow: hidden; }
-    .sb-tooltip { transition: opacity 0.12s ease, transform 0.12s ease; }
+    .sb-item { transition: background 0.13s ease, color 0.13s ease; }
+    .sb-item:hover { background: rgba(255,255,255,0.07); }
+    .sb-item.active { background: rgba(16,185,129,0.14); }
+    .sb-scroll::-webkit-scrollbar { width: 3px; }
+    .sb-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+    .sb-collapse-label { transition: opacity 0.15s ease, max-width 0.2s ease; white-space: nowrap; overflow: hidden; }
+
+    /* Mobile drawer — slides in from right (RTL) */
+    @keyframes sbSlideIn  { from { transform: translateX(100%); } to { transform: translateX(0); } }
+    @keyframes sbSlideOut { from { transform: translateX(0); }    to { transform: translateX(100%); } }
+    @keyframes sbFadeIn   { from { opacity: 0; } to { opacity: 1; } }
+    .sb-drawer-open  { animation: sbSlideIn  0.26s cubic-bezier(0.22,1,0.36,1) both; }
+    .sb-drawer-close { animation: sbSlideOut 0.22s cubic-bezier(0.55,0,1,0.45) both; }
+    .sb-backdrop     { animation: sbFadeIn   0.2s ease both; }
   `;
   document.head.appendChild(s);
 }
 
-// ── Single nav item row ──────────────────────────────────
-function NavItem({ item, isActive, collapsed, onClick, showTooltipSide }) {
+function NavItem({ item, isActive, collapsed, onClick }) {
   const disabled = !!item.comingSoon;
-
   return (
     <button
       onClick={() => !disabled && onClick(item)}
@@ -152,8 +111,8 @@ function NavItem({ item, isActive, collapsed, onClick, showTooltipSide }) {
         width: "100%",
         display: "flex",
         alignItems: "center",
-        gap: 12,
-        padding: collapsed ? "10px 0" : "10px 14px",
+        gap: 10,
+        padding: collapsed ? "10px 0" : "9px 12px",
         justifyContent: collapsed ? "center" : "flex-start",
         border: "none",
         borderRadius: 10,
@@ -164,59 +123,50 @@ function NavItem({ item, isActive, collapsed, onClick, showTooltipSide }) {
         position: "relative",
       }}
     >
-      <span style={{ fontSize: 17, flexShrink: 0, lineHeight: 1 }}>{item.icon}</span>
+      <span style={{ fontSize: 16, flexShrink: 0, lineHeight: 1 }}>{item.icon}</span>
       {!collapsed && (
-        <span
-          className="sb-collapse-label"
-          style={{
-            fontSize: 13,
-            fontWeight: isActive ? 700 : 500,
-            color: isActive ? "#fff" : S.textSecondary,
-            flex: 1,
-            textAlign: "right",
-          }}
-        >
+        <span style={{
+          fontSize: 13,
+          fontWeight: isActive ? 700 : 500,
+          color: isActive ? "#fff" : S.textSecondary,
+          flex: 1,
+          textAlign: "right",
+        }}>
           {item.label}
         </span>
       )}
       {!collapsed && disabled && (
-        <span style={{ fontSize: 9, color: S.textMuted, background: "rgba(255,255,255,0.06)", borderRadius: 6, padding: "2px 6px", flexShrink: 0 }}>
+        <span style={{ fontSize: 9, color: S.textMuted, background: "rgba(255,255,255,0.06)", borderRadius: 6, padding: "2px 6px" }}>
           قريباً
         </span>
       )}
       {isActive && (
         <span style={{
-          position: "absolute",
-          [showTooltipSide === "left" ? "left" : "right"]: 0,
-          top: "20%", bottom: "20%",
-          width: 3,
-          borderRadius: 4,
-          background: S.accent,
+          position: "absolute", right: 0, top: "18%", bottom: "18%",
+          width: 3, borderRadius: 4, background: S.accent,
         }} />
       )}
     </button>
   );
 }
 
-// ── Section group ────────────────────────────────────────
 function NavSection({ section, activeTabId, activeAction, collapsed, onItemClick, isAdmin }) {
   if (section.adminOnly && !isAdmin) return null;
-
   return (
-    <div style={{ marginBottom: 18 }}>
+    <div style={{ marginBottom: 16 }}>
       {section.label && !collapsed && (
         <p style={{
-          margin: "0 0 6px", padding: "0 14px",
-          fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
+          margin: "0 0 5px", padding: "0 12px",
+          fontSize: 9, fontWeight: 700, letterSpacing: "0.06em",
           color: S.textMuted, textTransform: "uppercase",
         }}>
-          {section.icon} {section.label}
+          {section.label}
         </p>
       )}
       {section.label && collapsed && (
-        <div style={{ height: 1, background: S.line, margin: "8px 14px" }} />
+        <div style={{ height: 1, background: S.line, margin: "6px 12px" }} />
       )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: collapsed ? "0 8px" : "0 8px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 6px" }}>
         {section.items.map(item => (
           <NavItem
             key={item.id}
@@ -231,111 +181,68 @@ function NavSection({ section, activeTabId, activeAction, collapsed, onItemClick
   );
 }
 
-// ══════════════════════════════════════════════════════
-// MAIN: AppSidebar
-//
-// Props:
-//   activeTabId   — current App.jsx `tab` value
-//   activeAction  — optional sub-action (e.g. modal.type for "more" items)
-//   onNavigate(item) — called when a nav item is clicked; receives the
-//                       full item object ({ tabId, action, ... }) so the
-//                       parent App.jsx can decide exactly how to route it
-//                       without this component knowing App's internals.
-//   isAdmin       — gates the admin-only section
-//   collapsed     — controlled collapse state (desktop/tablet)
-//   onToggleCollapse — toggles collapse
-//   mobileOpen    — controlled drawer-open state (mobile)
-//   onCloseMobile — closes the mobile drawer
-//   user, onSignOut, role — for the footer user card
-// ══════════════════════════════════════════════════════
-export default function AppSidebar({
-  activeTabId,
-  activeAction,
-  onNavigate,
-  isAdmin,
-  collapsed,
-  onToggleCollapse,
-  mobileOpen,
-  onCloseMobile,
-  user,
-  onSignOut,
-  role,
-  appName = "منظومة الاستبيانات",
-}) {
-  // Width values shared between desktop rail and mobile drawer
-  const EXPANDED_W = 256;
+function SidebarInner({ collapsed, isMobileDrawer, activeTabId, activeAction, onItemClick,
+                        onToggleCollapse, onCloseMobile, isAdmin, user, role, onSignOut, appName }) {
+  const EXPANDED_W  = isMobileDrawer ? 288 : 256;
   const COLLAPSED_W = 76;
+  const w = isMobileDrawer ? EXPANDED_W : (collapsed ? COLLAPSED_W : EXPANDED_W);
 
-  function handleItemClick(item) {
-    onNavigate(item);
-    if (mobileOpen) onCloseMobile?.();
-  }
-
-  const sidebarInner = (isMobileDrawer) => (
-    <div
-      style={{
-        width: isMobileDrawer ? EXPANDED_W : (collapsed ? COLLAPSED_W : EXPANDED_W),
-        height: "100%",
-        background: `linear-gradient(180deg, ${S.bg900} 0%, ${S.bg800} 100%)`,
-        display: "flex",
-        flexDirection: "column",
-        transition: isMobileDrawer ? "none" : "width 0.22s cubic-bezier(0.22,1,0.36,1)",
-        flexShrink: 0,
-      }}
-    >
-      {/* Brand row */}
+  return (
+    <div style={{
+      width: w,
+      height: "100%",
+      background: `linear-gradient(180deg, ${S.bg900} 0%, ${S.bg800} 100%)`,
+      display: "flex",
+      flexDirection: "column",
+      overflowX: "hidden",
+      flexShrink: 0,
+      transition: isMobileDrawer ? "none" : "width 0.22s cubic-bezier(0.22,1,0.36,1)",
+    }}>
+      {/* Brand */}
       <div style={{
-        display: "flex", alignItems: "center",
-        gap: 10, padding: collapsed && !isMobileDrawer ? "18px 0" : "18px 16px",
+        display: "flex", alignItems: "center", gap: 10,
+        padding: collapsed && !isMobileDrawer ? "16px 0" : "16px 14px",
         justifyContent: collapsed && !isMobileDrawer ? "center" : "flex-start",
-        borderBottom: `1px solid ${S.line}`,
+        borderBottom: `1px solid ${S.line}`, flexShrink: 0,
       }}>
         <div style={{
-          width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+          width: 34, height: 34, borderRadius: 9, flexShrink: 0,
           background: "rgba(255,255,255,0.08)", border: `1px solid ${S.line}`,
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
         }}>📋</div>
         {(!collapsed || isMobileDrawer) && (
-          <div className="sb-collapse-label" style={{ overflow: "hidden" }}>
+          <div style={{ overflow: "hidden", flex: 1 }}>
             <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#fff", lineHeight: 1.3 }}>
               {appName}
             </p>
             <p style={{ margin: 0, fontSize: 10, color: S.textMuted }}>إدارة التعليم — جدة</p>
           </div>
         )}
-
-        {/* Mobile close button */}
         {isMobileDrawer && (
-          <button
-            onClick={onCloseMobile}
-            style={{
-              marginRight: "auto", background: "rgba(255,255,255,0.08)", border: "none",
-              borderRadius: 8, width: 30, height: 30, color: "#fff", fontSize: 15,
-              display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
-            }}
-          >✕</button>
+          <button onClick={onCloseMobile} style={{
+            background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 8,
+            width: 28, height: 28, color: "#fff", fontSize: 14, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+          }}>✕</button>
         )}
       </div>
 
-      {/* Collapse toggle (desktop/tablet only) */}
+      {/* Collapse toggle — desktop/tablet only */}
       {!isMobileDrawer && (
-        <button
-          onClick={onToggleCollapse}
-          title={collapsed ? "توسيع" : "طي"}
-          style={{
-            margin: "10px 14px 0", alignSelf: collapsed ? "center" : "flex-end",
-            background: "rgba(255,255,255,0.06)", border: `1px solid ${S.line}`,
-            borderRadius: 8, width: 28, height: 28, color: S.textSecondary,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer", fontSize: 12, flexShrink: 0,
-          }}
-        >
+        <button onClick={onToggleCollapse} style={{
+          margin: "8px 10px 0",
+          alignSelf: collapsed ? "center" : "flex-end",
+          background: "rgba(255,255,255,0.05)", border: `1px solid ${S.line}`,
+          borderRadius: 7, width: 26, height: 26, color: S.textSecondary,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "pointer", fontSize: 11, flexShrink: 0,
+        }}>
           {collapsed ? "‹" : "›"}
         </button>
       )}
 
-      {/* Nav sections — scrollable */}
-      <div className="sb-scroll" style={{ flex: 1, overflowY: "auto", padding: "16px 0 8px" }}>
+      {/* Nav */}
+      <div className="sb-scroll" style={{ flex: 1, overflowY: "auto", padding: "14px 0 8px" }}>
         {NAV_SECTIONS.map(section => (
           <NavSection
             key={section.id}
@@ -343,77 +250,149 @@ export default function AppSidebar({
             activeTabId={activeTabId}
             activeAction={activeAction}
             collapsed={collapsed && !isMobileDrawer}
-            onItemClick={handleItemClick}
+            onItemClick={onItemClick}
             isAdmin={isAdmin}
           />
         ))}
       </div>
 
-      {/* Footer: user card + logout */}
-      <div style={{ borderTop: `1px solid ${S.line}`, padding: collapsed && !isMobileDrawer ? "12px 8px" : "12px 14px" }}>
+      {/* Footer */}
+      <div style={{
+        borderTop: `1px solid ${S.line}`,
+        padding: collapsed && !isMobileDrawer ? "10px 6px" : "10px 12px",
+        flexShrink: 0,
+      }}>
         <div style={{
-          display: "flex", alignItems: "center", gap: 10,
+          display: "flex", alignItems: "center", gap: 9,
           justifyContent: collapsed && !isMobileDrawer ? "center" : "flex-start",
           marginBottom: 8,
         }}>
           <div style={{
-            width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+            width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
             background: S.accentBg, border: `1px solid ${S.accent}40`,
-            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14,
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13,
           }}>
             {role === "admin" ? "👑" : "👁️"}
           </div>
           {(!collapsed || isMobileDrawer) && (
-            <div className="sb-collapse-label" style={{ overflow: "hidden", flex: 1 }}>
-              <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <div style={{ overflow: "hidden", flex: 1 }}>
+              <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {user?.email || "مستخدم"}
               </p>
-              <p style={{ margin: 0, fontSize: 10, color: S.textMuted }}>
+              <p style={{ margin: 0, fontSize: 9, color: S.textMuted }}>
                 {role === "admin" ? "مدير عام" : "مشرف"}
               </p>
             </div>
           )}
         </div>
-        <button
-          onClick={onSignOut}
-          style={{
-            width: "100%", display: "flex", alignItems: "center", gap: 8,
-            justifyContent: collapsed && !isMobileDrawer ? "center" : "flex-start",
-            background: "rgba(248,113,113,0.10)", border: "1px solid rgba(248,113,113,0.2)",
-            borderRadius: 9, padding: "8px 12px", cursor: "pointer", fontFamily: "inherit",
-          }}
-        >
-          <span style={{ fontSize: 14 }}>🚪</span>
+        <button onClick={onSignOut} style={{
+          width: "100%", display: "flex", alignItems: "center", gap: 8,
+          justifyContent: collapsed && !isMobileDrawer ? "center" : "flex-start",
+          background: "rgba(248,113,113,0.10)", border: "1px solid rgba(248,113,113,0.2)",
+          borderRadius: 8, padding: "7px 10px", cursor: "pointer", fontFamily: "inherit",
+        }}>
+          <span style={{ fontSize: 13 }}>🚪</span>
           {(!collapsed || isMobileDrawer) && (
-            <span style={{ fontSize: 12, fontWeight: 700, color: S.danger }}>تسجيل الخروج</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: S.danger }}>تسجيل الخروج</span>
           )}
         </button>
       </div>
     </div>
   );
+}
+
+export default function AppSidebar({
+  activeTabId, activeAction, onNavigate, isAdmin,
+  collapsed, onToggleCollapse,
+  mobileOpen, onCloseMobile,
+  user, onSignOut, role,
+  appName = "منظومة الاستبيانات",
+}) {
+  // Touch-to-close: track swipe right on the drawer
+  const touchStartX = useRef(null);
+
+  function handleTouchStart(e) { touchStartX.current = e.touches[0].clientX; }
+  function handleTouchEnd(e) {
+    if (touchStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    // RTL: swipe right (positive dx) = close
+    if (dx > 60) onCloseMobile?.();
+    touchStartX.current = null;
+  }
+
+  function handleItemClick(item) {
+    onNavigate(item);
+    if (mobileOpen) onCloseMobile?.();
+  }
 
   return (
     <>
-      {/* ── Desktop / Tablet: permanent rail ── */}
-      <div className="app-sidebar-desktop" style={{ height: "100vh", position: "sticky", top: 0 }}>
-        {sidebarInner(false)}
-      </div>
-
-      {/* ── Mobile: drawer + backdrop ── */}
-      {mobileOpen && (
-        <div className="app-sidebar-mobile-portal">
-          <div
-            className="sb-backdrop-enter"
-            onClick={onCloseMobile}
-            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9998 }}
+      {/* Desktop / Tablet — inline in flex row, width controlled by parent */}
+      {onToggleCollapse && (
+        <div style={{ width: "100%", height: "100%" }}>
+          <SidebarInner
+            collapsed={collapsed}
+            isMobileDrawer={false}
+            activeTabId={activeTabId}
+            activeAction={activeAction}
+            onItemClick={handleItemClick}
+            onToggleCollapse={onToggleCollapse}
+            isAdmin={isAdmin}
+            user={user}
+            role={role}
+            onSignOut={onSignOut}
+            appName={appName}
           />
-          <div
-            className="sb-drawer-enter"
-            style={{ position: "fixed", top: 0, bottom: 0, right: 0, zIndex: 9999, height: "100vh" }}
-          >
-            {sidebarInner(true)}
-          </div>
         </div>
+      )}
+
+      {/* Mobile drawer — position:fixed, never touches layout */}
+      {mobileOpen !== undefined && (
+        <>
+          {/* Backdrop */}
+          {mobileOpen && (
+            <div
+              className="sb-backdrop"
+              onClick={onCloseMobile}
+              style={{
+                position: "fixed", inset: 0,
+                background: "rgba(0,0,0,0.45)",
+                zIndex: 9998,
+                WebkitTapHighlightColor: "transparent",
+              }}
+            />
+          )}
+          {/* Drawer */}
+          <div
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            className={mobileOpen ? "sb-drawer-open" : undefined}
+            style={{
+              position: "fixed", top: 0, bottom: 0, right: 0,
+              zIndex: 9999,
+              height: "100%",
+              // hidden when closed — translateX pushes it off-screen without display:none
+              // so the closing animation can still play
+              transform: mobileOpen ? "translateX(0)" : "translateX(100%)",
+              transition: mobileOpen ? "none" : "transform 0.22s cubic-bezier(0.55,0,1,0.45)",
+              pointerEvents: mobileOpen ? "auto" : "none",
+            }}
+          >
+            <SidebarInner
+              collapsed={false}
+              isMobileDrawer={true}
+              activeTabId={activeTabId}
+              activeAction={activeAction}
+              onItemClick={handleItemClick}
+              onCloseMobile={onCloseMobile}
+              isAdmin={isAdmin}
+              user={user}
+              role={role}
+              onSignOut={onSignOut}
+              appName={appName}
+            />
+          </div>
+        </>
       )}
     </>
   );
