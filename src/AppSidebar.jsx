@@ -73,6 +73,7 @@ export const NAV_SECTIONS = [
       { id: "admin-users",    label: "إدارة المستخدمين", icon: "👥", tabId: "more", action: "users" },
       { id: "admin-audit",    label: "سجل العمليات",     icon: "📝", tabId: "more", action: "auditlog" },
       { id: "admin-settings", label: "الإعدادات",        icon: "⚙️", tabId: "more", action: "settings" },
+      { id: "system-identity", label: "هوية النظام", icon: "🏛️", tabId: "identity" },
     ],
   },
 ];
