@@ -71,10 +71,19 @@ const PT = {
 // card view (kept as-is for mobile), toggled purely via CSS media
 // query so there is zero extra JS branching or state.
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// SURVEYS LIST — v2 redesign
+// Logic: 100% unchanged. UI: compact cards with inline
+// respondents panel + direct export per survey.
+// ══════════════════════════════════════════════════════
 function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, isAdmin, onDelete, onApprove, onEdit, onSaveAsTemplate, onLifecycleChange, user }) {
   const now = new Date();
-  const [search, setSearch] = useState("");
-  const [stateFilter, setStateFilter] = useState("الكل");
+  const [search,       setSearch]       = useState("");
+  const [stateFilter,  setStateFilter]  = useState("الكل");
+  const [expanded,     setExpanded]     = useState({}); // surveyId → bool (respondents panel open)
+  const [respondents,  setRespondents]  = useState({}); // surveyId → []
+  const [loadingResp,  setLoadingResp]  = useState({}); // surveyId → bool
+  const [exporting,    setExporting]    = useState({}); // surveyId → bool
 
   if (loading) return (
     <div style={{ minHeight:"50vh", display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -90,11 +99,11 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
   const STATE_FILTERS = ["الكل","منشورة","مسودة","موقوفة","مغلقة","مؤرشفة"];
   const STATE_MAP = { "منشورة":"published","مسودة":"draft","موقوفة":"paused","مغلقة":"closed","مؤرشفة":"archived" };
   const STATE_BADGE = {
-    published:{ label:"✅ منشور", bg:PT.e50, color:PT.e700, border:`${PT.e500}40` },
-    draft:    { label:"📝 مسودة",  bg:PT.s100, color:PT.s700, border:PT.s300 },
-    paused:   { label:"⏸️ موقوف", bg:PT.warnBg, color:PT.warn, border:`${PT.warn}40` },
-    closed:   { label:"🔒 مغلق",   bg:PT.dangerBg, color:PT.danger, border:"#FECACA" },
-    archived: { label:"📦 مؤرشف", bg:PT.s100, color:PT.s400, border:PT.s200 },
+    published:{ label:"✅ منشور", bg:PT.e50,       color:PT.e700,   border:`${PT.e500}40` },
+    draft:    { label:"📝 مسودة",  bg:PT.s100,      color:PT.s700,   border:PT.s300 },
+    paused:   { label:"⏸️ موقوف", bg:PT.warnBg,    color:PT.warn,   border:`${PT.warn}40` },
+    closed:   { label:"🔒 مغلق",   bg:PT.dangerBg,  color:PT.danger, border:"#FECACA" },
+    archived: { label:"📦 مؤرشف", bg:PT.s100,      color:PT.s400,   border:PT.s200 },
   };
   const TYPE_LABEL = { school:"🏫 مدارس", supervisor:"👤 مشرفون", administrator:"🎓 إداريون", open:"🌐 مفتوح" };
 
@@ -114,231 +123,372 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
     return (s.approval_status==="pending_approval"||s.approval_status==="draft") && isAdmin;
   }
 
+  // Load respondents for a survey when panel opens
+  async function toggleRespondents(s) {
+    const sid = s.id;
+    if (expanded[sid]) { setExpanded(p=>({...p,[sid]:false})); return; }
+    setExpanded(p=>({...p,[sid]:true}));
+    if (respondents[sid]) return; // already loaded
+    setLoadingResp(p=>({...p,[sid]:true}));
+    const { data } = await supabase
+      .from("survey_responses")
+      .select("id,submitted_at,school_id,respondent_label,answers,survey_schools(name,stage,sector,principal)")
+      .eq("survey_id", sid)
+      .order("submitted_at", { ascending:false })
+      .limit(100);
+    setRespondents(p=>({...p,[sid]:data||[]}));
+    setLoadingResp(p=>({...p,[sid]:false}));
+  }
+
+  // Export directly from card
+  async function exportCard(s, format) {
+    const sid = s.id;
+    setExporting(p=>({...p,[sid]:format}));
+    try {
+      // Load data
+      const [{ data:responses }, { data:questions }, { data:allSchools }] = await Promise.all([
+        supabase.from("survey_responses").select("*,survey_schools(name,stage,sector,district,principal)").eq("survey_id",sid),
+        supabase.from("survey_questions").select("*").eq("survey_id",sid).order("order_index"),
+        supabase.from("survey_schools").select("id,name,stage,sector,district,principal,phone"),
+      ]);
+
+      if (format === "excel") {
+        const XLSX = await ensureXLSX();
+        const wb   = XLSX.utils.book_new();
+        // Summary sheet
+        const respondedCount = (responses||[]).length;
+        const totalCount = (allSchools||[]).length;
+        const summaryData = [
+          ["الاستبيان", s.title],
+          ["عدد الردود", respondedCount],
+          ["إجمالي المستهدفين", totalCount],
+          ["نسبة الاستجابة", totalCount ? `${Math.round(respondedCount/totalCount*100)}%` : "—"],
+          ["تاريخ التقرير", new Date().toLocaleDateString("ar-SA")],
+          ["أعدّه", user?.email || "—"],
+        ];
+        const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+        wsSummary["!cols"] = [{wch:24},{wch:40}];
+        XLSX.utils.book_append_sheet(wb, wsSummary, "ملخص");
+
+        // Responses sheet
+        if ((responses||[]).length && (questions||[]).length) {
+          const headers = ["المدرسة","المرحلة","القطاع","المدير","تاريخ الإجابة",...(questions||[]).map(q=>q.label)];
+          const rows = (responses||[]).map(r => [
+            r.survey_schools?.name || r.respondent_label || "—",
+            r.survey_schools?.stage || "—",
+            r.survey_schools?.sector || "—",
+            r.survey_schools?.principal || "—",
+            r.submitted_at ? new Date(r.submitted_at).toLocaleDateString("ar-SA") : "—",
+            ...(questions||[]).map(q => {
+              const ans = r.answers?.[q.id];
+              if (ans===undefined||ans===null) return "—";
+              if (typeof ans==="object") return ans.url||JSON.stringify(ans);
+              return String(ans);
+            }),
+          ]);
+          const wsResp = XLSX.utils.aoa_to_sheet([headers,...rows]);
+          wsResp["!cols"] = headers.map(()=>({wch:20}));
+          XLSX.utils.book_append_sheet(wb, wsResp, "الردود التفصيلية");
+        }
+
+        // Pending sheet
+        const respondedIds = new Set((responses||[]).map(r=>r.school_id).filter(Boolean));
+        const pending = (allSchools||[]).filter(sc=>!respondedIds.has(sc.id));
+        if (pending.length) {
+          const wsPending = XLSX.utils.json_to_sheet(pending.map(sc=>({
+            "اسم المدرسة":sc.name,"المرحلة":sc.stage||"—","القطاع":sc.sector||"—","الجوال":sc.phone||"—",
+          })));
+          wsPending["!cols"] = [{wch:30},{wch:14},{wch:16},{wch:14}];
+          XLSX.utils.book_append_sheet(wb, wsPending, "لم تستجب");
+        }
+
+        XLSX.writeFile(wb, `تقرير-${s.title}-${tsStamp()}.xlsx`);
+
+      } else if (format === "csv") {
+        const qs = questions||[];
+        const headers = ["المدرسة","المرحلة","تاريخ الإجابة",...qs.map(q=>q.label)];
+        const rows = (responses||[]).map(r=>[
+          r.survey_schools?.name||r.respondent_label||"",
+          r.survey_schools?.stage||"",
+          r.submitted_at?new Date(r.submitted_at).toLocaleDateString("ar-SA"):"",
+          ...qs.map(q=>{ const a=r.answers?.[q.id]; if(!a)return""; if(typeof a==="object")return a.url||""; return String(a).replace(/,/g,"،"); }),
+        ]);
+        const csv = [headers,...rows].map(row=>row.map(c=>`"${c}"`).join(",")).join("\n");
+        const blob = new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement("a");
+        a.href=url; a.download=`تقرير-${s.title}-${tsStamp()}.csv`; a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      await logAction({ user, action:"export", table:"survey_responses", recordLabel:`تصدير: ${s.title}` });
+    } catch(e) { console.error("Export error:", e); }
+    setExporting(p=>({...p,[sid]:false}));
+  }
+
+  // Closing soon alert
+  const closingSoon = surveys.filter(s=>{
+    const end = s.end_date||s.expires_at;
+    return end && (new Date(end)-now) < 3*24*60*60*1000 && new Date(end) > now && resolveState(s)==="published";
+  });
+
   return (
     <div style={{ direction:"rtl" }}>
       {/* Header */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18, flexWrap:"wrap", gap:12 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, flexWrap:"wrap", gap:10 }}>
         <div>
-          <h1 style={{ margin:0, fontSize:22, color:PT.s900, fontWeight:800, letterSpacing:"-0.02em" }}>الاستبيانات</h1>
-          <p style={{ margin:"4px 0 0", color:PT.s500, fontSize:13 }}>{surveys.length} استبيان · {schoolCount} مدرسة</p>
+          <h1 style={{ margin:0, fontSize:20, color:PT.s900, fontWeight:800, letterSpacing:"-0.02em" }}>الاستبيانات</h1>
+          <p style={{ margin:"3px 0 0", color:PT.s500, fontSize:12 }}>{surveys.length} استبيان · {schoolCount} مدرسة</p>
         </div>
         <button onClick={onNew} style={{
           background:`linear-gradient(135deg,${PT.e600},${PT.e800})`,
-          color:"#fff", border:"none", borderRadius:10,
-          padding:"10px 18px", fontSize:13, fontWeight:700,
-          cursor:"pointer", fontFamily:"inherit",
-          boxShadow:`0 3px 10px ${PT.e600}35`,
-          display:"flex", alignItems:"center", gap:6,
-        }}>
-          <span style={{ fontSize:16 }}>＋</span> استبيان جديد
-        </button>
+          color:"#fff", border:"none", borderRadius:10, padding:"9px 16px",
+          fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+          boxShadow:`0 3px 10px ${PT.e600}35`, display:"flex", alignItems:"center", gap:5,
+        }}>＋ جديد</button>
       </div>
 
-      {/* Search + filters bar */}
-      <div style={{
-        background:PT.white, borderRadius:16, border:`1px solid ${PT.s200}`,
-        padding:14, marginBottom:18, boxShadow:"0 1px 3px rgba(0,0,0,0.04)",
-      }}>
-        <div style={{ position:"relative", marginBottom:12 }}>
-          <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:15, pointerEvents:"none" }}>🔍</span>
-          <input
-            className="search-input"
-            value={search} onChange={e=>setSearch(e.target.value)}
-            placeholder="ابحث باسم الاستبيان أو الوصف..."
-            style={{ width:"100%", padding:"10px 40px 10px 14px", border:`1.5px solid ${PT.s200}`,
-              borderRadius:10, fontSize:13, fontFamily:"inherit", direction:"rtl",
-              boxSizing:"border-box", background:PT.s50, color:PT.s900, transition:"all 0.2s" }}/>
-          {search && (
-            <button onClick={()=>setSearch("")} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:PT.s400, cursor:"pointer", fontSize:16 }}>✕</button>
-          )}
+      {/* Alert — closing soon */}
+      {closingSoon.length > 0 && (
+        <div style={{ background:PT.warnBg, border:`1px solid ${PT.warn}30`, borderRadius:10,
+          padding:"9px 13px", marginBottom:12, fontSize:12, color:PT.warn, fontWeight:600,
+          display:"flex", alignItems:"center", gap:6 }}>
+          ⏰ {closingSoon.map(s=>s.title).join("، ")} — ينتهي خلال ٣ أيام
         </div>
-        <div style={{ display:"flex", gap:6, overflowX:"auto" }}>
+      )}
+
+      {/* Search + filter */}
+      <div style={{ background:PT.white, borderRadius:14, border:`1px solid ${PT.s200}`,
+        padding:12, marginBottom:14, boxShadow:"0 1px 3px rgba(0,0,0,0.04)" }}>
+        <div style={{ position:"relative", marginBottom:10 }}>
+          <span style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", fontSize:14, pointerEvents:"none" }}>🔍</span>
+          <input className="search-input" value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder="بحث..."
+            style={{ width:"100%", padding:"9px 36px 9px 12px", border:`1.5px solid ${PT.s200}`,
+              borderRadius:9, fontSize:12, fontFamily:"inherit", direction:"rtl",
+              boxSizing:"border-box", background:PT.s50, color:PT.s900 }}/>
+          {search && <button onClick={()=>setSearch("")} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:PT.s400, cursor:"pointer", fontSize:15 }}>✕</button>}
+        </div>
+        <div style={{ display:"flex", gap:5, overflowX:"auto" }}>
           {STATE_FILTERS.map(f => (
             <button key={f} onClick={()=>setStateFilter(f)} className="filter-chip" style={{
-              padding:"6px 14px", borderRadius:20, fontSize:12, fontFamily:"inherit",
+              padding:"5px 12px", borderRadius:20, fontSize:11, fontFamily:"inherit",
               cursor:"pointer", whiteSpace:"nowrap", fontWeight:stateFilter===f?700:500,
-              border:`1.5px solid ${stateFilter===f ? PT.e600 : PT.s200}`,
-              background: stateFilter===f ? PT.e50 : PT.white,
-              color: stateFilter===f ? PT.e700 : PT.s500,
+              border:`1.5px solid ${stateFilter===f?PT.e600:PT.s200}`,
+              background:stateFilter===f?PT.e50:PT.white,
+              color:stateFilter===f?PT.e700:PT.s500,
             }}>{f}</button>
           ))}
         </div>
       </div>
 
-      {/* Empty state */}
+      {/* Empty */}
       {filtered.length === 0 && (
-        <div style={{ textAlign:"center", padding:"48px 20px", background:PT.white,
-          borderRadius:18, border:`1px solid ${PT.s200}` }}>
-          <div style={{ fontSize:48, marginBottom:12 }}>📋</div>
-          <p style={{ margin:"0 0 6px", fontSize:15, fontWeight:700, color:PT.s900 }}>
-            {surveys.length === 0 ? "لا توجد استبيانات بعد" : "لا توجد نتائج مطابقة"}
+        <div style={{ textAlign:"center", padding:"40px 20px", background:PT.white, borderRadius:16, border:`1px solid ${PT.s200}` }}>
+          <div style={{ fontSize:40, marginBottom:10 }}>📋</div>
+          <p style={{ margin:"0 0 5px", fontSize:14, fontWeight:700, color:PT.s900 }}>
+            {surveys.length===0?"لا توجد استبيانات بعد":"لا توجد نتائج"}
           </p>
-          <p style={{ margin:0, fontSize:13, color:PT.s500 }}>
-            {surveys.length === 0 ? "اضغط ＋ جديد لإنشاء أول استبيان" : "جرب تغيير الفلاتر أو البحث"}
+          <p style={{ margin:0, fontSize:12, color:PT.s500 }}>
+            {surveys.length===0?"اضغط ＋ جديد لإنشاء أول استبيان":"جرب تغيير الفلاتر"}
           </p>
         </div>
       )}
 
-      {filtered.length > 0 && (
-        <>
-          {/* ── Desktop table view (≥1024px) ── */}
-          <div className="surveys-table-view" style={{
-            background:PT.white, borderRadius:16, border:`1px solid ${PT.s200}`,
-            overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,0.04)",
-          }}>
-            <table style={{ width:"100%", borderCollapse:"collapse" }}>
-              <thead>
-                <tr style={{ background:PT.s50, borderBottom:`1px solid ${PT.s200}` }}>
-                  <th style={{ padding:"12px 16px", textAlign:"right", fontSize:11, fontWeight:700, color:PT.s500 }}>الاستبيان</th>
-                  <th style={{ padding:"12px 16px", textAlign:"right", fontSize:11, fontWeight:700, color:PT.s500 }}>النوع</th>
-                  <th style={{ padding:"12px 16px", textAlign:"right", fontSize:11, fontWeight:700, color:PT.s500 }}>الحالة</th>
-                  <th style={{ padding:"12px 16px", textAlign:"right", fontSize:11, fontWeight:700, color:PT.s500 }}>الانتهاء</th>
-                  <th style={{ padding:"12px 16px", textAlign:"left", fontSize:11, fontWeight:700, color:PT.s500 }}>إجراءات</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((s, idx) => {
-                  const endDate = s.end_date || s.expires_at;
-                  const isExpired = endDate && new Date(endDate) < now;
-                  const expiringSoon = endDate && !isExpired && (new Date(endDate)-now) < 24*60*60*1000;
-                  const state = resolveState(s);
-                  const badge = STATE_BADGE[state] || STATE_BADGE.draft;
-                  const tc = typeColor[s.survey_type] || PT.e700;
-                  const tb = typeBg[s.survey_type] || PT.e50;
+      {/* Cards */}
+      {filtered.map((s, idx) => {
+        const sid      = s.id;
+        const endDate  = s.end_date || s.expires_at;
+        const isExpired   = endDate && new Date(endDate) < now;
+        const expiringSoon = endDate && !isExpired && (new Date(endDate)-now) < 3*24*60*60*1000;
+        const state    = resolveState(s);
+        const badge    = STATE_BADGE[state] || STATE_BADGE.draft;
+        const tc       = typeColor[s.survey_type] || PT.e700;
+        const isOpen   = !!expanded[sid];
+        const respList = respondents[sid] || [];
+        const expFmt   = exporting[sid];
 
-                  return (
-                    <tr key={s.id} className="survey-row" style={{
-                      borderBottom: idx < filtered.length-1 ? `1px solid ${PT.s100}` : "none",
-                      opacity: isExpired ? 0.6 : 1,
-                    }}>
-                      <td style={{ padding:"14px 16px", maxWidth:320 }}>
-                        <p style={{ margin:0, fontSize:13, fontWeight:700, color:PT.s900 }}>{s.title}</p>
-                        {s.description && (
-                          <p style={{ margin:"3px 0 0", fontSize:11, color:PT.s400,
-                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                            {s.description}
-                          </p>
-                        )}
-                      </td>
-                      <td style={{ padding:"14px 16px" }}>
-                        <span style={{ background:tb, color:tc, border:`1px solid ${tc}30`,
-                          borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700, whiteSpace:"nowrap" }}>
-                          {TYPE_LABEL[s.survey_type] || "🏫 مدارس"}
-                        </span>
-                      </td>
-                      <td style={{ padding:"14px 16px" }}>
-                        <span style={{ background:badge.bg, color:badge.color,
-                          border:`1px solid ${badge.border}`, borderRadius:20,
-                          padding:"3px 10px", fontSize:11, fontWeight:700, whiteSpace:"nowrap" }}>
-                          {badge.label}
-                        </span>
-                      </td>
-                      <td style={{ padding:"14px 16px" }}>
-                        {endDate ? (
-                          <span style={{ fontSize:12, color: expiringSoon ? PT.warn : PT.s500, fontWeight: expiringSoon ? 700 : 400 }}>
-                            {expiringSoon && "⚠️ "}{new Date(endDate).toLocaleDateString("ar-SA")}
-                          </span>
-                        ) : <span style={{ fontSize:12, color:PT.s300 }}>—</span>}
-                      </td>
-                      <td style={{ padding:"14px 16px" }}>
-                        <div style={{ display:"flex", gap:6, justifyContent:"flex-end", flexWrap:"wrap" }}>
-                          <ActionBtn icon="📊" label="متابعة" onClick={()=>onTrack(s)} color={PT.e700} bg={PT.e50}/>
-                          {canShare(s) && <ActionBtn icon="🔗" label="مشاركة" onClick={()=>onShare(s)} color={PT.gold} bg={PT.goldL}/>}
-                          {canApprove(s) && <ActionBtn icon="✅" label="اعتماد" onClick={()=>onApprove(s)} color={PT.success} bg={PT.successBg}/>}
-                          {isAdmin && <ActionBtn icon="✏️" onClick={()=>onEdit(s)}/>}
-                          {isAdmin && <ActionBtn icon="📋" onClick={()=>onSaveAsTemplate(s)}/>}
-                          {isAdmin && <ActionBtn icon="🗑️" onClick={()=>onDelete(s)} color={PT.danger} bg={PT.dangerBg}/>}
-                        </div>
-                        {isAdmin && (
-                          <div style={{ marginTop:8, display:"flex", justifyContent:"flex-end" }}>
-                            <LifecycleActions survey={s} user={user} isAdmin={isAdmin} onRefresh={onLifecycleChange}/>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        return (
+          <div key={sid} className="survey-card card-in"
+            style={{ background:PT.white, borderRadius:14, border:`1px solid ${PT.s200}`,
+              marginBottom:8, overflow:"hidden", opacity:isExpired?0.7:1,
+              boxShadow:"0 1px 4px rgba(0,0,0,0.05)", animationDelay:`${idx*0.04}s`,
+              borderRight:`4px solid ${tc}`,
+            }}>
 
-          {/* ── Mobile/tablet card view (<1024px) — original layout ── */}
-          <div className="surveys-card-view">
-            {filtered.map((s, idx) => {
-              const endDate = s.end_date || s.expires_at;
-              const isExpired = endDate && new Date(endDate) < now;
-              const expiringSoon = endDate && !isExpired && (new Date(endDate)-now) < 24*60*60*1000;
-              const state = resolveState(s);
-              const badge = STATE_BADGE[state] || STATE_BADGE.draft;
-              const tc = typeColor[s.survey_type] || PT.e700;
-              const tb = typeBg[s.survey_type] || PT.e50;
+            {/* Head */}
+            <div style={{ padding:"11px 14px 8px", display:"flex", alignItems:"flex-start", gap:10 }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap", marginBottom:3 }}>
+                  <p style={{ margin:0, fontSize:13, fontWeight:700, color:PT.s900 }}>{s.title}</p>
+                  {expiringSoon && <span style={{ fontSize:10, color:PT.warn, fontWeight:700 }}>⚠️ ينتهي قريباً</span>}
+                </div>
+                <p style={{ margin:0, fontSize:10.5, color:PT.s400 }}>
+                  {TYPE_LABEL[s.survey_type]||"🏫 مدارس"}{endDate?` · ${new Date(endDate).toLocaleDateString("ar-SA")}`:""}{s.created_at?` · ${new Date(s.created_at).toLocaleDateString("ar-SA")}`:""}
+                </p>
+              </div>
+              <span style={{ background:badge.bg, color:badge.color, border:`1px solid ${badge.border}`,
+                borderRadius:20, padding:"3px 9px", fontSize:10, fontWeight:700, whiteSpace:"nowrap", flexShrink:0 }}>
+                {badge.label}
+              </span>
+            </div>
 
-              return (
-                <div key={s.id} className="survey-card card-in"
-                  style={{ background:PT.white, borderRadius:18, border:`1px solid ${PT.s200}`,
-                    marginBottom:12, overflow:"hidden", opacity:isExpired?0.7:1,
-                    boxShadow:"0 2px 8px rgba(0,0,0,0.06)",
-                    animationDelay:`${idx*0.04}s`,
-                    borderRight:`4px solid ${tc}`,
-                  }}>
-                  <div style={{ padding:"14px 16px" }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10, gap:10 }}>
-                      <h3 style={{ margin:0, fontSize:15, color:PT.s900, fontWeight:700, flex:1, lineHeight:1.4 }}>{s.title}</h3>
-                      <div style={{ display:"flex", gap:4, flexShrink:0, flexWrap:"wrap", justifyContent:"flex-end" }}>
-                        <span style={{ background:tb, color:tc, border:`1px solid ${tc}30`,
-                          borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700, whiteSpace:"nowrap" }}>
-                          {TYPE_LABEL[s.survey_type] || "🏫 مدارس"}
-                        </span>
-                        <span style={{ background:badge.bg, color:badge.color,
-                          border:`1px solid ${badge.border}`, borderRadius:20,
-                          padding:"3px 10px", fontSize:11, fontWeight:700, whiteSpace:"nowrap" }}>
-                          {badge.label}
-                        </span>
-                      </div>
-                    </div>
+            {/* Progress bar — published surveys only */}
+            {state==="published" && schoolCount > 0 && (
+              <div style={{ display:"flex", alignItems:"center", gap:8, padding:"0 14px 8px" }}>
+                <div style={{ flex:1, height:6, background:PT.s100, borderRadius:6, overflow:"hidden" }}>
+                  <div style={{ height:"100%", background:`linear-gradient(90deg,${PT.e600},${PT.e500})`,
+                    borderRadius:6, width:`${Math.min(100,(respondents[sid]?.length||0)/schoolCount*100)}%`,
+                    transition:"width 0.5s" }}/>
+                </div>
+                <span style={{ fontSize:11, fontWeight:800, color:PT.e700, minWidth:32 }}>
+                  {schoolCount?Math.round((respondents[sid]?.length||0)/schoolCount*100):0}٪
+                </span>
+                <span style={{ fontSize:10, color:PT.s400 }}>{respondents[sid]?.length||0} / {schoolCount}</span>
+              </div>
+            )}
 
-                    {expiringSoon && (
-                      <div style={{ background:PT.warnBg, border:`1px solid ${PT.warn}30`, borderRadius:8,
-                        padding:"6px 10px", marginBottom:8, display:"flex", alignItems:"center", gap:6 }}>
-                        <span style={{ fontSize:14 }}>⚠️</span>
-                        <p style={{ margin:0, fontSize:11, color:PT.warn, fontWeight:700 }}>
-                          ينتهي غداً — {new Date(endDate).toLocaleDateString("ar-SA")}
-                        </p>
-                      </div>
-                    )}
-                    {endDate && !isExpired && !expiringSoon && (
-                      <p style={{ margin:"0 0 6px", fontSize:11, color:PT.s400 }}>
-                        📅 ينتهي: {new Date(endDate).toLocaleDateString("ar-SA")}
-                      </p>
-                    )}
-
-                    {s.description && (
-                      <p style={{ margin:"0 0 12px", fontSize:12, color:PT.s500, lineHeight:1.5 }}>
-                        {s.description.length > 80 ? s.description.slice(0,80)+"..." : s.description}
-                      </p>
-                    )}
-
-                    <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                      <ActionBtn icon="📊" label="متابعة" onClick={()=>onTrack(s)} color={PT.e700} bg={PT.e50}/>
-                      {canShare(s) && <ActionBtn icon="🔗" label="مشاركة" onClick={()=>onShare(s)} color={PT.gold} bg={PT.goldL}/>}
-                      {canApprove(s) && <ActionBtn icon="✅" label="اعتماد" onClick={()=>onApprove(s)} color={PT.success} bg={PT.successBg}/>}
-                      {isAdmin && <ActionBtn icon="✏️" label="تعديل" onClick={()=>onEdit(s)}/>}
-                      {isAdmin && <ActionBtn icon="📋" label="قالب" onClick={()=>onSaveAsTemplate(s)}/>}
-                      {isAdmin && <ActionBtn icon="🗑️" label="حذف" onClick={()=>onDelete(s)} color={PT.danger} bg={PT.dangerBg}/>}
-                    </div>
-
-                    {isAdmin && (
-                      <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${PT.s100}` }}>
-                        <LifecycleActions survey={s} user={user} isAdmin={isAdmin} onRefresh={onLifecycleChange}/>
-                      </div>
-                    )}
+            {/* Respondents panel */}
+            {isOpen && (
+              <div style={{ background:PT.s50, borderTop:`1px solid ${PT.s200}`, padding:"10px 14px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <p style={{ margin:0, fontSize:12, fontWeight:700, color:PT.s700 }}>
+                    👥 المستجيبون {respList.length>0?`(${respList.length})`:""}
+                  </p>
+                  <div style={{ display:"flex", gap:5 }}>
+                    {["excel","csv"].map(fmt=>(
+                      <button key={fmt} onClick={()=>exportCard(s,fmt)} disabled={!!expFmt}
+                        style={{ padding:"3px 9px", borderRadius:7, fontSize:9.5, fontWeight:700,
+                          border:"none", cursor:expFmt?"not-allowed":"pointer",
+                          background:fmt==="excel"?PT.e50:PT.purpleBg,
+                          color:fmt==="excel"?PT.e700:PT.purple,
+                          opacity:expFmt?0.5:1 }}>
+                        {expFmt===fmt?"..." : fmt==="excel"?"📊 Excel":"📄 CSV"}
+                      </button>
+                    ))}
                   </div>
                 </div>
-              );
-            })}
+
+                {loadingResp[sid] ? (
+                  <div style={{ textAlign:"center", padding:"12px", color:PT.s400, fontSize:12 }}>جاري التحميل...</div>
+                ) : respList.length===0 ? (
+                  <div style={{ textAlign:"center", padding:"12px", color:PT.s400, fontSize:12 }}>لا توجد ردود بعد</div>
+                ) : (
+                  respList.slice(0,8).map((r,i)=>(
+                    <div key={r.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 0",
+                      borderBottom:i<Math.min(respList.length,8)-1?`1px solid ${PT.s100}`:"none" }}>
+                      <div style={{ width:20, height:20, borderRadius:"50%", background:PT.e50,
+                        color:PT.e700, fontSize:9, fontWeight:800, display:"flex",
+                        alignItems:"center", justifyContent:"center", flexShrink:0 }}>{i+1}</div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <p style={{ margin:0, fontSize:12, fontWeight:600, color:PT.s900, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                          {r.survey_schools?.name||r.respondent_label||"—"}
+                        </p>
+                      </div>
+                      <span style={{ fontSize:10, color:PT.s400, flexShrink:0 }}>{r.survey_schools?.stage||""}</span>
+                      <span style={{ fontSize:10, color:PT.s400, flexShrink:0 }}>
+                        {r.submitted_at?new Date(r.submitted_at).toLocaleDateString("ar-SA"):""}
+                      </span>
+                    </div>
+                  ))
+                )}
+                {respList.length > 8 && (
+                  <p onClick={()=>onTrack(s)} style={{ textAlign:"center", margin:"8px 0 0",
+                    fontSize:11, color:PT.e700, cursor:"pointer", fontWeight:600 }}>
+                    عرض {respList.length-8} إضافي ↓
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Action strip */}
+            <div style={{ display:"flex", borderTop:`1px solid ${PT.s100}` }}>
+              {/* المستجيبون */}
+              <button onClick={()=>toggleRespondents(s)} style={{
+                flex:1, padding:"8px 2px", border:"none",
+                background:isOpen?PT.e50:"none", cursor:"pointer",
+                fontSize:10, fontWeight:600, color:isOpen?PT.e700:PT.s500,
+                display:"flex", flexDirection:"column", alignItems:"center", gap:2,
+                fontFamily:"inherit",
+              }}>
+                <span style={{ fontSize:14 }}>👥</span>المستجيبون
+              </button>
+
+              {/* تذكير */}
+              <button onClick={()=>onTrack(s)} style={{
+                flex:1, padding:"8px 2px", border:"none", background:"none", cursor:"pointer",
+                fontSize:10, fontWeight:600, color:PT.warn,
+                display:"flex", flexDirection:"column", alignItems:"center", gap:2, fontFamily:"inherit",
+              }}>
+                <span style={{ fontSize:14 }}>📱</span>تذكير
+              </button>
+
+              {/* تصدير Excel مباشر */}
+              <button onClick={()=>exportCard(s,"excel")} disabled={!!exporting[sid]}
+                style={{
+                  flex:1, padding:"8px 2px", border:"none", background:"none",
+                  cursor:exporting[sid]?"not-allowed":"pointer",
+                  fontSize:10, fontWeight:600, color:PT.purple,
+                  display:"flex", flexDirection:"column", alignItems:"center", gap:2, fontFamily:"inherit",
+                  opacity:exporting[sid]?0.5:1,
+                }}>
+                <span style={{ fontSize:14 }}>📊</span>{exporting[sid]==="excel"?"...":"Excel"}
+              </button>
+
+              {/* مشاركة */}
+              {canShare(s) && (
+                <button onClick={()=>onShare(s)} style={{
+                  flex:1, padding:"8px 2px", border:"none", background:"none", cursor:"pointer",
+                  fontSize:10, fontWeight:600, color:PT.gold,
+                  display:"flex", flexDirection:"column", alignItems:"center", gap:2, fontFamily:"inherit",
+                }}>
+                  <span style={{ fontSize:14 }}>🔗</span>مشاركة
+                </button>
+              )}
+
+              {/* تعديل */}
+              {isAdmin && (
+                <button onClick={()=>onEdit(s)} style={{
+                  flex:1, padding:"8px 2px", border:"none", background:"none", cursor:"pointer",
+                  fontSize:10, fontWeight:600, color:PT.s500,
+                  display:"flex", flexDirection:"column", alignItems:"center", gap:2, fontFamily:"inherit",
+                }}>
+                  <span style={{ fontSize:14 }}>✏️</span>تعديل
+                </button>
+              )}
+
+              {/* اعتماد */}
+              {canApprove(s) && (
+                <button onClick={()=>onApprove(s)} style={{
+                  flex:1, padding:"8px 2px", border:"none", background:"none", cursor:"pointer",
+                  fontSize:10, fontWeight:600, color:PT.success,
+                  display:"flex", flexDirection:"column", alignItems:"center", gap:2, fontFamily:"inherit",
+                }}>
+                  <span style={{ fontSize:14 }}>✅</span>اعتماد
+                </button>
+              )}
+
+              {/* حذف */}
+              {isAdmin && (
+                <button onClick={()=>onDelete(s)} style={{
+                  flex:1, padding:"8px 2px", border:"none", background:"none", cursor:"pointer",
+                  fontSize:10, fontWeight:600, color:PT.danger,
+                  display:"flex", flexDirection:"column", alignItems:"center", gap:2, fontFamily:"inherit",
+                }}>
+                  <span style={{ fontSize:14 }}>🗑️</span>حذف
+                </button>
+              )}
+            </div>
+
+            {/* Lifecycle */}
+            {isAdmin && (
+              <div style={{ padding:"0 14px 10px", borderTop:`1px solid ${PT.s100}`, paddingTop:8 }}>
+                <LifecycleActions survey={s} user={user} isAdmin={isAdmin} onRefresh={onLifecycleChange}/>
+              </div>
+            )}
           </div>
-        </>
-      )}
+        );
+      })}
     </div>
   );
 }
@@ -1381,5 +1531,6 @@ export { SurveysList, ShareSheet, LoginPage, AnalyticsPage,
   SchoolForm, CsvUploadSheet, DeleteConfirm, SchoolsManagementPage,
   UsersManagementPage, RoleBadgeStatic, SupervisorsManagementPage,
   AppSettingsPage, AuditLogPage, SystemIdentityCenter };
+
 
 
