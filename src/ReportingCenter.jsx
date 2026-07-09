@@ -244,11 +244,10 @@ function SurveyReportTab({ surveys, user, settings }) {
     async function loadSchools() {
       let all=[], from=0;
       while(true) {
-        const{d}=await supabase.from("survey_schools")
-          .select("id,name,stage,sector,district,principal,phone").range(from,from+999)
-          .then(r=>({d:r.data}));
-        if(!d?.length) break;
-        all=all.concat(d); if(d.length<1000) break; from+=1000;
+        const { data } = await supabase.from("survey_schools")
+          .select("id,name,stage,sector,district,principal,phone").range(from,from+999);
+        if(!data?.length) break;
+        all=all.concat(data); if(data.length<1000) break; from+=1000;
       }
       setAllSchools(all);
     }
