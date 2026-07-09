@@ -479,13 +479,6 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
                 </button>
               )}
             </div>
-
-            {/* Lifecycle */}
-            {isAdmin && (
-              <div style={{ padding:"0 14px 10px", borderTop:`1px solid ${PT.s100}`, paddingTop:8 }}>
-                <LifecycleActions survey={s} user={user} isAdmin={isAdmin} onRefresh={onLifecycleChange}/>
-              </div>
-            )}
           </div>
         );
       })}
