@@ -1,61 +1,87 @@
 /**
- * AppSidebar.jsx — Phase 3 fix
- * Mobile: drawer is position:fixed, slides from right (RTL), width 288px max,
- *   never affects layout. Backdrop click closes it. Swipe-close via touch.
- * Tablet/Desktop: permanent rail, collapsible. Unchanged behaviour.
- * All nav logic, NAV_SECTIONS, props — 100% unchanged.
+ * AppSidebar.jsx — Ministry Edition v2
+ * - No emoji — SVG icons only (Lucide-style inline SVG)
+ * - وزارة التعليم brand colors
+ * - Organized: الرئيسية / الاستبيانات / الدليل / التقارير / الإدارة
+ * - Mobile drawer: position:fixed, never in flex flow
+ * - Collapse toggle on desktop/tablet
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
+import { DS } from "./AppShell.jsx";
 
-const S = {
-  bg900: "#062C24",
-  bg800: "#0A3D32",
-  bg700: "#0F4D3F",
-  line:  "rgba(255,255,255,0.08)",
-  textPrimary:   "#FFFFFF",
-  textSecondary: "rgba(255,255,255,0.55)",
-  textMuted:     "rgba(255,255,255,0.35)",
-  accent:    "#10B981",
-  accentBg:  "rgba(16,185,129,0.14)",
-  gold:      "#C9A84C",
-  danger:    "#F87171",
+// ── Inline SVG Icons (Lucide-compatible) ───────────────
+const Icon = ({ d, size=16, color="currentColor", strokeWidth=1.75 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"
+    style={{ flexShrink:0, display:"block" }}>
+    <path d={d}/>
+  </svg>
+);
+
+const ICONS = {
+  home:         "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
+  surveys:      "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2",
+  plus:         "M12 5v14M5 12h14",
+  template:     "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z",
+  school:       "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 22V12h6v10",
+  users:        "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75",
+  user:         "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+  chart:        "M18 20V10M12 20V4M6 20v-6",
+  report:       "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8",
+  library:      "M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15z",
+  review:       "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
+  mail:         "M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zM22 6l-10 7L2 6",
+  settings:     "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z",
+  audit:        "M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z",
+  identity:     "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
+  logout:       "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
+  chevronLeft:  "M15 18l-6-6 6-6",
+  chevronRight: "M9 18l6-6-6-6",
+  overview:     "M3 3h7v7H3zM13 3h8v7h-8zM3 13h8v8H3zM13 13h7v3h-7zM13 18h7v3h-7z",
+  menu:         "M3 12h18M3 6h18M3 18h18",
 };
 
+const SvgIcon = ({ name, size=16, color="currentColor" }) => {
+  const d = ICONS[name] || ICONS.surveys;
+  return <Icon d={d} size={size} color={color}/>;
+};
+
+// ── Nav Sections ────────────────────────────────────────
 export const NAV_SECTIONS = [
   {
-    id: "home",
+    id: "main",
     items: [
-      { id: "dashboard",  label: "الاستبيانات",  icon: "📋", tabId: "dashboard" },
-      { id: "overview",   label: "نظرة عامة",    icon: "🏠", tabId: "overview" },
-      { id: "analytics",  label: "إحصائيات",     icon: "📊", tabId: "analytics" },
+      { id:"dashboard", label:"الاستبيانات",  icon:"surveys",  tabId:"dashboard" },
+      { id:"overview",  label:"لوحة التحكم", icon:"overview", tabId:"overview"  },
     ],
   },
   {
     id: "surveys",
     label: "الاستبيانات",
     items: [
-      { id: "surveys-new",       label: "إنشاء استبيان", icon: "➕", tabId: "dashboard", action: "new" },
-      { id: "surveys-templates", label: "القوالب",        icon: "🗂️", tabId: "templates" },
+      { id:"surveys-new",  label:"استبيان جديد", icon:"plus",     tabId:"dashboard", action:"new" },
+      { id:"templates",    label:"القوالب",       icon:"template", tabId:"templates"  },
+      { id:"analytics",    label:"الإحصائيات",   icon:"chart",    tabId:"analytics"  },
     ],
   },
   {
     id: "directory",
     label: "الدليل",
     items: [
-      { id: "dir-schools",        label: "المدارس",   icon: "🏫", tabId: "directory" },
-      { id: "dir-administrators", label: "المديرون",  icon: "👨‍💼", tabId: "directory" },
-      { id: "dir-supervisors",    label: "المشرفون",  icon: "👤", tabId: "directory" },
+      { id:"dir-schools", label:"المدارس",   icon:"school", tabId:"directory" },
+      { id:"dir-admins",  label:"المديرون",  icon:"users",  tabId:"directory" },
+      { id:"dir-super",   label:"المشرفون",  icon:"user",   tabId:"directory" },
     ],
   },
   {
-    id: "insights",
-    label: "التقارير",
+    id: "reports",
+    label: "التقارير والأدوات",
     items: [
-      { id: "reports",   label: "التقارير",       icon: "📈", tabId: "reports" },
-      { id: "library",   label: "مكتبة المحتوى",  icon: "📚", tabId: "library" },
-      { id: "review",    label: "مركز المراجعة",  icon: "🔍", tabId: "review" },
-      { id: "comms",     label: "الاتصالات",      icon: "📨", tabId: "communication" },
+      { id:"reports",  label:"التقارير",      icon:"report",  tabId:"reports"        },
+      { id:"library",  label:"مكتبة المحتوى", icon:"library", tabId:"library"        },
+      { id:"review",   label:"مركز المراجعة", icon:"review",  tabId:"review"         },
+      { id:"comms",    label:"الاتصالات",     icon:"mail",    tabId:"communication"  },
     ],
   },
   {
@@ -63,232 +89,185 @@ export const NAV_SECTIONS = [
     label: "الإدارة",
     adminOnly: true,
     items: [
-      { id: "admin-users",     label: "المستخدمون",  icon: "👥", tabId: "more", action: "users" },
-      { id: "admin-super",     label: "المشرفون",    icon: "👤", tabId: "more", action: "supervisors" },
-      { id: "admin-audit",     label: "سجل العمليات",icon: "📝", tabId: "more", action: "auditlog" },
-      { id: "admin-settings",  label: "الإعدادات",   icon: "⚙️", tabId: "more", action: "settings" },
-      { id: "admin-identity",  label: "هوية النظام", icon: "🏛️", tabId: "identity" },
+      { id:"admin-users",    label:"المستخدمون",  icon:"users",    tabId:"more", action:"users"       },
+      { id:"admin-super",    label:"المشرفون",    icon:"user",     tabId:"more", action:"supervisors" },
+      { id:"admin-audit",    label:"سجل العمليات",icon:"audit",    tabId:"more", action:"auditlog"    },
+      { id:"admin-settings", label:"الإعدادات",   icon:"settings", tabId:"more", action:"settings"   },
+      { id:"admin-identity", label:"هوية النظام", icon:"identity", tabId:"identity"                  },
     ],
   },
 ];
 
-if (typeof document !== "undefined" && !document.getElementById("sidebar-shell-styles")) {
+// ── Styles ──────────────────────────────────────────────
+if (typeof document !== "undefined" && !document.getElementById("sb-ministry-styles")) {
   const s = document.createElement("style");
-  s.id = "sidebar-shell-styles";
+  s.id = "sb-ministry-styles";
   s.textContent = `
-    .sb-item { transition: background 0.13s ease, color 0.13s ease; }
+    .sb-item { transition: background 0.12s, color 0.12s; border-radius: 8px; }
     .sb-item:hover { background: rgba(255,255,255,0.07); }
-    .sb-item.active { background: rgba(16,185,129,0.14); }
+    .sb-item.active { background: rgba(0,138,106,0.18); }
+    .sb-item.active .sb-label { color: #ffffff; font-weight: 600; }
+    .sb-scroll { overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent; }
     .sb-scroll::-webkit-scrollbar { width: 3px; }
     .sb-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
-    .sb-collapse-label { transition: opacity 0.15s ease, max-width 0.2s ease; white-space: nowrap; overflow: hidden; }
-
-    /* Mobile drawer — slides in from right (RTL) */
-    @keyframes sbSlideIn  { from { transform: translateX(100%); } to { transform: translateX(0); } }
-    @keyframes sbSlideOut { from { transform: translateX(0); }    to { transform: translateX(100%); } }
-    @keyframes sbFadeIn   { from { opacity: 0; } to { opacity: 1; } }
-    .sb-drawer-open  { animation: sbSlideIn  0.26s cubic-bezier(0.22,1,0.36,1) both; }
-    .sb-drawer-close { animation: sbSlideOut 0.22s cubic-bezier(0.55,0,1,0.45) both; }
-    .sb-backdrop     { animation: sbFadeIn   0.2s ease both; }
+    @keyframes sb-slide { from { transform: translateX(100%); opacity:0; } to { transform: translateX(0); opacity:1; } }
+    @keyframes sb-fade  { from { opacity:0; } to { opacity:1; } }
+    .sb-drawer { animation: sb-slide 0.24s cubic-bezier(0.22,1,0.36,1) both; }
+    .sb-backdrop { animation: sb-fade 0.18s ease both; }
   `;
   document.head.appendChild(s);
 }
 
+// ── NavItem ─────────────────────────────────────────────
 function NavItem({ item, isActive, collapsed, onClick }) {
-  const disabled = !!item.comingSoon;
   return (
-    <button
-      onClick={() => !disabled && onClick(item)}
-      disabled={disabled}
+    <button onClick={() => onClick(item)} className={`sb-item${isActive?" active":""}`}
       title={collapsed ? item.label : undefined}
-      className={`sb-item${isActive ? " active" : ""}`}
       style={{
-        width: "100%",
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: collapsed ? "10px 0" : "9px 12px",
+        width:"100%", display:"flex", alignItems:"center",
+        gap: collapsed ? 0 : 10,
         justifyContent: collapsed ? "center" : "flex-start",
-        border: "none",
-        borderRadius: 10,
-        background: "transparent",
-        cursor: disabled ? "not-allowed" : "pointer",
-        fontFamily: "inherit",
-        opacity: disabled ? 0.35 : 1,
-        position: "relative",
-      }}
-    >
-      <span style={{ fontSize: 16, flexShrink: 0, lineHeight: 1 }}>{item.icon}</span>
+        padding: collapsed ? "10px 0" : "9px 10px",
+        border:"none", background:"transparent", cursor:"pointer",
+        color: isActive ? "#ffffff" : "rgba(255,255,255,0.55)",
+        position:"relative",
+      }}>
+      <SvgIcon name={item.icon} size={17} color={isActive?"#ffffff":"rgba(255,255,255,0.55)"}/>
       {!collapsed && (
-        <span style={{
-          fontSize: 13,
-          fontWeight: isActive ? 700 : 500,
-          color: isActive ? "#fff" : S.textSecondary,
-          flex: 1,
-          textAlign: "right",
-        }}>
+        <span className="sb-label" style={{ fontSize:13, fontWeight:isActive?600:400, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
           {item.label}
         </span>
       )}
-      {!collapsed && disabled && (
-        <span style={{ fontSize: 9, color: S.textMuted, background: "rgba(255,255,255,0.06)", borderRadius: 6, padding: "2px 6px" }}>
-          قريباً
-        </span>
-      )}
       {isActive && (
-        <span style={{
-          position: "absolute", right: 0, top: "18%", bottom: "18%",
-          width: 3, borderRadius: 4, background: S.accent,
-        }} />
+        <span style={{ position:"absolute", right:0, top:"16%", bottom:"16%", width:3, borderRadius:4, background:DS.primary500, display: collapsed?"none":"block" }}/>
       )}
     </button>
   );
 }
 
-function NavSection({ section, activeTabId, activeAction, collapsed, onItemClick, isAdmin }) {
-  if (section.adminOnly && !isAdmin) return null;
-  return (
-    <div style={{ marginBottom: 16 }}>
-      {section.label && !collapsed && (
-        <p style={{
-          margin: "0 0 5px", padding: "0 12px",
-          fontSize: 9, fontWeight: 700, letterSpacing: "0.06em",
-          color: S.textMuted, textTransform: "uppercase",
-        }}>
-          {section.label}
-        </p>
-      )}
-      {section.label && collapsed && (
-        <div style={{ height: 1, background: S.line, margin: "6px 12px" }} />
-      )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 6px" }}>
-        {section.items.map(item => (
-          <NavItem
-            key={item.id}
-            item={item}
-            collapsed={collapsed}
-            isActive={activeTabId === item.tabId && (item.action ? activeAction === item.action : !item.action)}
-            onClick={onItemClick}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function SidebarInner({ collapsed, isMobileDrawer, activeTabId, activeAction, onItemClick,
-                        onToggleCollapse, onCloseMobile, isAdmin, user, role, onSignOut, appName }) {
-  const EXPANDED_W  = isMobileDrawer ? 288 : 256;
-  const COLLAPSED_W = 76;
-  const w = isMobileDrawer ? EXPANDED_W : (collapsed ? COLLAPSED_W : EXPANDED_W);
+// ── SidebarContent ──────────────────────────────────────
+function SidebarContent({ collapsed, isMobile, activeTabId, activeAction, onItemClick,
+                          onToggleCollapse, onCloseMobile, isAdmin, user, role, onSignOut, appName }) {
+  const W = isMobile ? 260 : (collapsed ? 64 : 240);
 
   return (
     <div style={{
-      width: w,
-      height: "100%",
-      background: `linear-gradient(180deg, ${S.bg900} 0%, ${S.bg800} 100%)`,
-      display: "flex",
-      flexDirection: "column",
-      overflowX: "hidden",
-      flexShrink: 0,
-      transition: isMobileDrawer ? "none" : "width 0.22s cubic-bezier(0.22,1,0.36,1)",
+      width:W, height:"100%",
+      background: "linear-gradient(180deg, #004D3B 0%, #003D2F 60%, #002D22 100%)",
+      display:"flex", flexDirection:"column", overflow:"hidden",
+      transition: isMobile ? "none" : "width 0.22s cubic-bezier(0.22,1,0.36,1)",
+      borderLeft: "1px solid rgba(255,255,255,0.06)",
     }}>
-      {/* Brand */}
+
+      {/* Brand header */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 10,
-        padding: collapsed && !isMobileDrawer ? "16px 0" : "16px 14px",
-        justifyContent: collapsed && !isMobileDrawer ? "center" : "flex-start",
-        borderBottom: `1px solid ${S.line}`, flexShrink: 0,
+        padding: collapsed&&!isMobile ? "16px 0" : "14px 12px",
+        borderBottom: "1px solid rgba(255,255,255,0.08)",
+        display:"flex", alignItems:"center",
+        justifyContent: collapsed&&!isMobile ? "center" : "flex-start",
+        gap:10, flexShrink:0,
       }}>
+        {/* Ministry logo placeholder */}
         <div style={{
-          width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-          background: "rgba(255,255,255,0.08)", border: `1px solid ${S.line}`,
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
-        }}>📋</div>
-        {(!collapsed || isMobileDrawer) && (
-          <div style={{ overflow: "hidden", flex: 1 }}>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#fff", lineHeight: 1.3 }}>
-              {appName}
+          width:34, height:34, borderRadius:8, flexShrink:0,
+          background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.15)",
+          display:"flex", alignItems:"center", justifyContent:"center",
+        }}>
+          <SvgIcon name="identity" size={18} color="rgba(255,255,255,0.8)"/>
+        </div>
+        {(!collapsed || isMobile) && (
+          <div style={{ overflow:"hidden", flex:1 }}>
+            <p style={{ margin:0, fontSize:12, fontWeight:700, color:"#fff", lineHeight:1.3, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+              {appName || "منظومة الاستبيانات"}
             </p>
-            <p style={{ margin: 0, fontSize: 10, color: S.textMuted }}>إدارة التعليم — جدة</p>
+            <p style={{ margin:0, fontSize:10, color:"rgba(255,255,255,0.4)" }}>إدارة التعليم — جدة</p>
           </div>
         )}
-        {isMobileDrawer && (
+        {isMobile && (
           <button onClick={onCloseMobile} style={{
-            background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 8,
-            width: 28, height: 28, color: "#fff", fontSize: 14, cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-          }}>✕</button>
+            background:"rgba(255,255,255,0.08)", border:"none", borderRadius:7,
+            width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center",
+            cursor:"pointer", flexShrink:0,
+          }}>
+            <SvgIcon name="chevronRight" size={14} color="rgba(255,255,255,0.7)"/>
+          </button>
         )}
       </div>
 
-      {/* Collapse toggle — desktop/tablet only */}
-      {!isMobileDrawer && (
+      {/* Collapse toggle */}
+      {!isMobile && onToggleCollapse && (
         <button onClick={onToggleCollapse} style={{
-          margin: "8px 10px 0",
           alignSelf: collapsed ? "center" : "flex-end",
-          background: "rgba(255,255,255,0.05)", border: `1px solid ${S.line}`,
-          borderRadius: 7, width: 26, height: 26, color: S.textSecondary,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: "pointer", fontSize: 11, flexShrink: 0,
+          margin: "8px 8px 0",
+          background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.08)",
+          borderRadius:6, width:24, height:24, cursor:"pointer",
+          display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
         }}>
-          {collapsed ? "‹" : "›"}
+          <SvgIcon name={collapsed?"chevronLeft":"chevronRight"} size={12} color="rgba(255,255,255,0.5)"/>
         </button>
       )}
 
       {/* Nav */}
-      <div className="sb-scroll" style={{ flex: 1, overflowY: "auto", padding: "14px 0 8px" }}>
-        {NAV_SECTIONS.map(section => (
-          <NavSection
-            key={section.id}
-            section={section}
-            activeTabId={activeTabId}
-            activeAction={activeAction}
-            collapsed={collapsed && !isMobileDrawer}
-            onItemClick={onItemClick}
-            isAdmin={isAdmin}
-          />
-        ))}
+      <div className="sb-scroll" style={{ flex:1, padding:"10px 6px 8px", overflowY:"auto" }}>
+        {NAV_SECTIONS.map(section => {
+          if (section.adminOnly && !isAdmin) return null;
+          return (
+            <div key={section.id} style={{ marginBottom:14 }}>
+              {section.label && !collapsed && (
+                <p style={{
+                  margin:"0 0 4px", padding:"0 8px",
+                  fontSize:9.5, fontWeight:700, letterSpacing:"0.07em",
+                  color:"rgba(255,255,255,0.25)", textTransform:"uppercase",
+                }}>
+                  {section.label}
+                </p>
+              )}
+              {section.label && collapsed && (
+                <div style={{ height:1, background:"rgba(255,255,255,0.08)", margin:"4px 10px 8px" }}/>
+              )}
+              <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
+                {section.items.map(item => {
+                  const isActive = activeTabId===item.tabId &&
+                    (item.action ? activeAction===item.action : !item.action || item.tabId===activeTabId);
+                  return (
+                    <NavItem key={item.id} item={item} isActive={isActive}
+                      collapsed={collapsed&&!isMobile} onClick={onItemClick}/>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Footer */}
-      <div style={{
-        borderTop: `1px solid ${S.line}`,
-        padding: collapsed && !isMobileDrawer ? "10px 6px" : "10px 12px",
-        flexShrink: 0,
-      }}>
-        <div style={{
-          display: "flex", alignItems: "center", gap: 9,
-          justifyContent: collapsed && !isMobileDrawer ? "center" : "flex-start",
-          marginBottom: 8,
-        }}>
-          <div style={{
-            width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
-            background: S.accentBg, border: `1px solid ${S.accent}40`,
-            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13,
-          }}>
-            {role === "admin" ? "👑" : "👁️"}
-          </div>
-          {(!collapsed || isMobileDrawer) && (
-            <div style={{ overflow: "hidden", flex: 1 }}>
-              <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <div style={{ padding: collapsed&&!isMobile?"10px 6px":"10px 8px", borderTop:"1px solid rgba(255,255,255,0.08)", flexShrink:0 }}>
+        {(!collapsed||isMobile) && (
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8, padding:"4px 2px" }}>
+            <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(0,138,106,0.25)", border:"1px solid rgba(0,138,106,0.4)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+              <SvgIcon name="user" size={13} color="rgba(255,255,255,0.7)"/>
+            </div>
+            <div style={{ overflow:"hidden", flex:1 }}>
+              <p style={{ margin:0, fontSize:11, fontWeight:500, color:"rgba(255,255,255,0.85)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                 {user?.email || "مستخدم"}
               </p>
-              <p style={{ margin: 0, fontSize: 9, color: S.textMuted }}>
-                {role === "admin" ? "مدير عام" : "مشرف"}
+              <p style={{ margin:0, fontSize:9.5, color:"rgba(255,255,255,0.35)" }}>
+                {role==="admin"?"مدير عام":"مشرف"}
               </p>
             </div>
-          )}
-        </div>
+          </div>
+        )}
         <button onClick={onSignOut} style={{
-          width: "100%", display: "flex", alignItems: "center", gap: 8,
-          justifyContent: collapsed && !isMobileDrawer ? "center" : "flex-start",
-          background: "rgba(248,113,113,0.10)", border: "1px solid rgba(248,113,113,0.2)",
-          borderRadius: 8, padding: "7px 10px", cursor: "pointer", fontFamily: "inherit",
+          width:"100%", display:"flex", alignItems:"center",
+          gap: collapsed&&!isMobile ? 0 : 7,
+          justifyContent: collapsed&&!isMobile ? "center" : "flex-start",
+          padding: collapsed&&!isMobile ? "8px 0" : "7px 8px",
+          background:"rgba(220,38,38,0.08)", border:"1px solid rgba(220,38,38,0.15)",
+          borderRadius:8, cursor:"pointer",
         }}>
-          <span style={{ fontSize: 13 }}>🚪</span>
-          {(!collapsed || isMobileDrawer) && (
-            <span style={{ fontSize: 11, fontWeight: 700, color: S.danger }}>تسجيل الخروج</span>
+          <SvgIcon name="logout" size={15} color="#F87171"/>
+          {(!collapsed||isMobile) && (
+            <span style={{ fontSize:12, fontWeight:500, color:"#F87171" }}>تسجيل الخروج</span>
           )}
         </button>
       </div>
@@ -296,21 +275,20 @@ function SidebarInner({ collapsed, isMobileDrawer, activeTabId, activeAction, on
   );
 }
 
+// ── Main Export ─────────────────────────────────────────
 export default function AppSidebar({
   activeTabId, activeAction, onNavigate, isAdmin,
   collapsed, onToggleCollapse,
   mobileOpen, onCloseMobile,
   user, onSignOut, role,
-  appName = "منظومة الاستبيانات",
+  appName,
 }) {
-  // Touch-to-close: track swipe right on the drawer
   const touchStartX = useRef(null);
 
   function handleTouchStart(e) { touchStartX.current = e.touches[0].clientX; }
   function handleTouchEnd(e) {
     if (touchStartX.current === null) return;
     const dx = e.changedTouches[0].clientX - touchStartX.current;
-    // RTL: swipe right (positive dx) = close
     if (dx > 60) onCloseMobile?.();
     touchStartX.current = null;
   }
@@ -322,69 +300,40 @@ export default function AppSidebar({
 
   return (
     <>
-      {/* Desktop / Tablet — inline in flex row, width controlled by parent */}
+      {/* Desktop / Tablet */}
       {onToggleCollapse && (
-        <div style={{ width: "100%", height: "100%" }}>
-          <SidebarInner
-            collapsed={collapsed}
-            isMobileDrawer={false}
-            activeTabId={activeTabId}
-            activeAction={activeAction}
-            onItemClick={handleItemClick}
-            onToggleCollapse={onToggleCollapse}
-            isAdmin={isAdmin}
-            user={user}
-            role={role}
-            onSignOut={onSignOut}
-            appName={appName}
+        <div style={{ width:"100%", height:"100%" }}>
+          <SidebarContent
+            collapsed={collapsed} isMobile={false}
+            activeTabId={activeTabId} activeAction={activeAction}
+            onItemClick={handleItemClick} onToggleCollapse={onToggleCollapse}
+            isAdmin={isAdmin} user={user} role={role} onSignOut={onSignOut} appName={appName}
           />
         </div>
       )}
 
-      {/* Mobile drawer — position:fixed, never touches layout */}
+      {/* Mobile drawer */}
       {mobileOpen !== undefined && (
         <>
-          {/* Backdrop */}
           {mobileOpen && (
-            <div
-              className="sb-backdrop"
-              onClick={onCloseMobile}
-              style={{
-                position: "fixed", inset: 0,
-                background: "rgba(0,0,0,0.45)",
-                zIndex: 9998,
-                WebkitTapHighlightColor: "transparent",
-              }}
-            />
+            <div className="sb-backdrop" onClick={onCloseMobile} style={{
+              position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:9998,
+            }}/>
           )}
-          {/* Drawer */}
           <div
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
-            className={mobileOpen ? "sb-drawer-open" : undefined}
+            onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}
+            className={mobileOpen ? "sb-drawer" : undefined}
             style={{
-              position: "fixed", top: 0, bottom: 0, right: 0,
-              zIndex: 9999,
-              height: "100%",
-              // hidden when closed — translateX pushes it off-screen without display:none
-              // so the closing animation can still play
+              position:"fixed", top:0, bottom:0, right:0, zIndex:9999, height:"100%",
               transform: mobileOpen ? "translateX(0)" : "translateX(100%)",
-              transition: mobileOpen ? "none" : "transform 0.22s cubic-bezier(0.55,0,1,0.45)",
+              transition: mobileOpen ? "none" : "transform 0.2s cubic-bezier(0.55,0,1,0.45)",
               pointerEvents: mobileOpen ? "auto" : "none",
-            }}
-          >
-            <SidebarInner
-              collapsed={false}
-              isMobileDrawer={true}
-              activeTabId={activeTabId}
-              activeAction={activeAction}
-              onItemClick={handleItemClick}
-              onCloseMobile={onCloseMobile}
-              isAdmin={isAdmin}
-              user={user}
-              role={role}
-              onSignOut={onSignOut}
-              appName={appName}
+            }}>
+            <SidebarContent
+              collapsed={false} isMobile={true}
+              activeTabId={activeTabId} activeAction={activeAction}
+              onItemClick={handleItemClick} onCloseMobile={onCloseMobile}
+              isAdmin={isAdmin} user={user} role={role} onSignOut={onSignOut} appName={appName}
             />
           </div>
         </>
@@ -392,4 +341,3 @@ export default function AppSidebar({
     </>
   );
 }
-
