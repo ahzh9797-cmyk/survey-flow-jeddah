@@ -12,7 +12,7 @@ import { resolveState, LIFECYCLE_STATE_CONFIG } from "./SurveyLifecycleService.j
 import LoginPage from "./LoginPage.jsx";
 import SystemIdentityCenter from "./SystemIdentityCenter.jsx";
 
-// ── Enterprise UI styles — Phase 3, matches AppShell design system ──
+//  Enterprise UI styles — Phase 3, matches AppShell design system 
 if (typeof document !== "undefined" && !document.getElementById("surveys-enterprise-styles")) {
   const _s = document.createElement("style");
   _s.id = "surveys-enterprise-styles";
@@ -64,19 +64,19 @@ const PT = {
   success:"#059669",successBg:"#ECFDF5",purple:"#7B2D8B",purpleBg:"#F5EEFA",amber:"#B7791F",
 };
 
-// ══════════════════════════════════════════════════════
+// 
 // SURVEYS LIST — Phase 3 enterprise redesign
 // Logic: filtering, state resolution, all handlers — 100% unchanged.
 // Adds: a table view for desktop (≥1024px) alongside the existing
 // card view (kept as-is for mobile), toggled purely via CSS media
 // query so there is zero extra JS branching or state.
-// ══════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════
+// 
+// 
 // SURVEYS LIST — v2 redesign
 // Logic: 100% unchanged. UI: compact cards with inline
 // respondents panel + direct export per survey.
-// ══════════════════════════════════════════════════════
-// ── Ministry SVG Icons ─────────────────────────────────
+// 
+//  Ministry SVG Icons 
 function MIcon({ d, size=15, color="currentColor" }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -104,7 +104,7 @@ const MI = {
   chevron: "M6 9l6 6 6-6",
 };
 
-// ── State badge config (no emoji) ─────────────────────
+//  State badge config (no emoji) 
 const STATE_BADGE_MINISTRY = {
   published: { label:"منشور",  bg:"#ECFDF5", color:"#047857", border:"#D1FAE5", dot:"#059669" },
   draft:     { label:"مسودة",  bg:"#F8FAFC", color:"#64748B", border:"#E2E8F0", dot:"#94A3B8" },
@@ -127,7 +127,7 @@ const TYPE_COLOR = {
   open:          "#0284C7",
 };
 
-// ── SurveysList — Ministry Edition ─────────────────────
+//  SurveysList — Ministry Edition 
 function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, isAdmin, onDelete, onApprove, onEdit, onSaveAsTemplate, onLifecycleChange, user }) {
   const now = new Date();
   const [search,        setSearch]        = useState("");
@@ -137,6 +137,27 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
   const [loadingResp,   setLoadingResp]   = useState({});
   const [exporting,     setExporting]     = useState({});
   const [targetCounts,  setTargetCounts]  = useState({});
+  const [typeCounts,    setTypeCounts]    = useState({ supervisors:0, administrators:0 });
+
+  // Load supervisor/administrator counts once on mount
+  useEffect(() => {
+    async function loadTypeCounts() {
+      const [{ count: supCount }, { count: admCount }] = await Promise.all([
+        supabase.from("supervisors").select("*", { count:"exact", head:true }).eq("status", "نشط"),
+        supabase.from("administrators").select("*", { count:"exact", head:true }).eq("status", "نشط"),
+      ]);
+      setTypeCounts({ supervisors: supCount||0, administrators: admCount||0 });
+    }
+    loadTypeCounts();
+  }, []);
+
+  // Compute correct target count per survey
+  function getTargetCount(s) {
+    if (s.survey_type === "supervisor")    return typeCounts.supervisors;
+    if (s.survey_type === "administrator") return typeCounts.administrators;
+    if (s.survey_type === "open")         return 0;
+    return schoolCount; // default: schools
+  }
 
   if (loading) return (
     <div style={{ minHeight:"50vh", display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -178,16 +199,7 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
       .eq("survey_id", sid)
       .order("submitted_at", { ascending:false })
       .limit(100);
-    let targetCount = schoolCount;
-    if (s.survey_type === "supervisor") {
-      const { count } = await supabase.from("supervisors").select("*",{count:"exact",head:true}).eq("status","نشط");
-      targetCount = count || 0;
-    } else if (s.survey_type === "administrator") {
-      const { count } = await supabase.from("administrators").select("*",{count:"exact",head:true}).eq("status","نشط");
-      targetCount = count || 0;
-    } else if (s.survey_type === "open") {
-      targetCount = 0;
-    }
+    const targetCount = getTargetCount(s);
     setRespondents(p=>({...p,[sid]:data||[]}));
     setTargetCounts(p=>({...p,[sid]:targetCount}));
     setLoadingResp(p=>({...p,[sid]:false}));
@@ -273,7 +285,7 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
     return end && (new Date(end)-now) < 3*24*60*60*1000 && new Date(end) > now && resolveState(s)==="published";
   });
 
-  // ── Shared action button ──
+  //  Shared action button 
   function ActBtn({ icon, label, onClick, color="#64748B", bg="#F8FAFC", active, disabled: dis }) {
     return (
       <button onClick={onClick} disabled={dis} style={{
@@ -389,7 +401,7 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
         const respList    = respondents[sid] || [];
         const expFmt      = exporting[sid];
 
-        const tc = targetCounts[sid] ?? schoolCount;
+        const tc = targetCounts[sid] ?? getTargetCount(s);
         const rc = respList.length || 0;
         const pct = tc > 0 ? Math.min(100, Math.round(rc/tc*100)) : 0;
 
@@ -545,21 +557,21 @@ function ActionBtn({ icon, label, onClick, color, bg }) {
   );
 }
 
-// ══════════════════════════════════════════════════════
+// 
 // Question Toolbar / QuestionCard / NewSurveyPage — these are
 // no longer used directly (SurveyBuilderEngine.jsx is the active
 // builder, re-exported below), kept only because other exports
 // in this file reference shared constants below them. No logic
 // or markup here was touched in Phase 3.
-// ══════════════════════════════════════════════════════
+// 
 
 const Q_TYPES = [
-  {v:"text",      l:"نص قصير",              icon:"✏️"},
-  {v:"textarea",  l:"نص طويل",              icon:"📝"},
-  {v:"number",    l:"رقم / إحصائية",        icon:"🔢"},
-  {v:"select",    l:"اختيار من قائمة",      icon:"☑️"},
-  {v:"rating",    l:"تقييم بالنجوم",        icon:"⭐"},
-  {v:"file",      l:"رفع ملف (PDF/Excel)",  icon:"📎"},
+  {v:"text",      l:"نص قصير",              icon:""},
+  {v:"textarea",  l:"نص طويل",              icon:""},
+  {v:"number",    l:"رقم / إحصائية",        icon:""},
+  {v:"select",    l:"اختيار من قائمة",      icon:""},
+  {v:"rating",    l:"تقييم بالنجوم",        icon:""},
+  {v:"file",      l:"رفع ملف (PDF/Excel)",  icon:""},
 ];
 
 function ShareSheet({ survey, onClose }) {
@@ -579,10 +591,10 @@ function ShareSheet({ survey, onClose }) {
         <div style={{ padding:"0 16px" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
             <h3 style={{ margin:0, fontSize:17, color:C.dark, fontWeight:800 }}>مشاركة الاستبيان</h3>
-            <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.muted }}>✕</button>
+            <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.muted }}></button>
           </div>
           <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:20 }}>
-            {[["link","🔗 رابط"],["qr","📱 QR"],["whatsapp","💬 واتساب"]].map(([k,l]) => (
+            {[["link"," رابط"],["qr"," QR"],["whatsapp"," واتساب"]].map(([k,l]) => (
               <button key={k} onClick={()=>setTab(k)} style={{ flex:1, padding:"10px 4px", border:"none", background:"none", cursor:"pointer",
                 fontSize:12, fontFamily:"inherit", fontWeight:tab===k?700:400, color:tab===k?C.primary:C.muted,
                 borderBottom:`2px solid ${tab===k?C.primary:"transparent"}`, marginBottom:-1 }}>{l}</button>
@@ -592,7 +604,7 @@ function ShareSheet({ survey, onClose }) {
             <div>
               <div style={{ background:C.bg, borderRadius:10, padding:14, marginBottom:12, border:`1px solid ${C.border}`, wordBreak:"break-all", fontSize:13, color:C.muted }}>{link}</div>
               <Btn full variant={copied?"secondary":"primary"} onClick={()=>{ navigator.clipboard.writeText(link).catch(()=>{}); setCopied(true); setTimeout(()=>setCopied(false),2000); }}>
-                {copied?"✓ تم النسخ!":"نسخ الرابط"}
+                {copied?" تم النسخ!":"نسخ الرابط"}
               </Btn>
             </div>
           )}
@@ -604,7 +616,7 @@ function ShareSheet({ survey, onClose }) {
           )}
           {tab==="whatsapp" && (
             <a href={`https://wa.me/?text=${wa}`} target="_blank" rel="noopener noreferrer" style={{ display:"block", textDecoration:"none" }}>
-              <Btn full variant="green">📱 إرسال عبر واتساب</Btn>
+              <Btn full variant="green"> إرسال عبر واتساب</Btn>
             </a>
           )}
         </div>
@@ -692,7 +704,7 @@ function AnalyticsPage({ surveys, onNavigate }) {
   return (
     <div style={{ padding:16, direction:"rtl" }}>
       <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:16 }}>
-        {[["dashboard","🏠 لوحة التحكم"],["whatsapp","📱 إشعارات واتس"],["details","📊 تفاصيل"]].map(([k,l]) => (
+        {[["dashboard"," لوحة التحكم"],["whatsapp"," إشعارات واتس"],["details"," تفاصيل"]].map(([k,l]) => (
           <button key={k} onClick={()=>setActiveTab(k)} style={{ flex:1, padding:"10px 4px", border:"none", background:"none", cursor:"pointer", fontSize:12, fontFamily:"inherit", fontWeight:activeTab===k?700:400, color:activeTab===k?C.primary:C.muted, borderBottom:`2px solid ${activeTab===k?C.primary:"transparent"}`, marginBottom:-1 }}>{l}</button>
         ))}
       </div>
@@ -700,10 +712,10 @@ function AnalyticsPage({ surveys, onNavigate }) {
         <>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:12, marginBottom:20 }}>
             {[
-              {l:"إجمالي المدارس",v:schoolCount,i:"🏫",c:C.primary,nav:"directory",sub:"اضغط للإدارة"},
-              {l:"استبيانات نشطة",v:activeSurveys.length,i:"📋",c:C.accent,nav:"surveys",sub:"اضغط للعرض"},
-              {l:"إجمالي الردود",v:totalResponded,i:"📝",c:C.success,nav:"surveys",sub:"اضغط للتفاصيل"},
-              {l:"متوسط الاستجابة",v:schoolCount&&activeSurveys.length?`${Math.round(totalResponded/activeSurveys.length/schoolCount*100)}%`:"—",i:"📊",c:"#7B2D8B",nav:null,sub:"من المدارس"},
+              {l:"إجمالي المدارس",v:schoolCount,i:"",c:C.primary,nav:"directory",sub:"اضغط للإدارة"},
+              {l:"استبيانات نشطة",v:activeSurveys.length,i:"",c:C.accent,nav:"surveys",sub:"اضغط للعرض"},
+              {l:"إجمالي الردود",v:totalResponded,i:"",c:C.success,nav:"surveys",sub:"اضغط للتفاصيل"},
+              {l:"متوسط الاستجابة",v:schoolCount&&activeSurveys.length?`${Math.round(totalResponded/activeSurveys.length/schoolCount*100)}%`:"—",i:"",c:"#7B2D8B",nav:null,sub:"من المدارس"},
             ].map((x,i) => (
               <div key={i} onClick={()=>x.nav&&onNavigate&&onNavigate(x.nav)} className={x.nav?"card-hover":undefined}
                 style={{ background:C.white, borderRadius:16, padding:16, border:`1px solid ${C.border}`, borderTop:`3px solid ${x.c}`, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", cursor:x.nav?"pointer":"default", textAlign:"center" }}>
@@ -725,10 +737,10 @@ function AnalyticsPage({ surveys, onNavigate }) {
                   <p style={{ margin:0, fontSize:14, fontWeight:700, color:C.dark, flex:1 }}>{s.title}</p>
                   <span style={{ fontSize:13, fontWeight:800, color:C.primary }}>{pct}%</span>
                 </div>
-                {expiresTomorrow && <div style={{ background:C.warnBg, borderRadius:8, padding:"5px 10px", marginBottom:8 }}><p style={{ margin:0, fontSize:11, color:C.warn, fontWeight:700 }}>⚠️ ينتهي غداً</p></div>}
+                {expiresTomorrow && <div style={{ background:C.warnBg, borderRadius:8, padding:"5px 10px", marginBottom:8 }}><p style={{ margin:0, fontSize:11, color:C.warn, fontWeight:700 }}> ينتهي غداً</p></div>}
                 <div style={{ height:10, background:C.border, borderRadius:6, marginBottom:8 }}><div style={{ height:"100%", width:`${pct}%`, background:`linear-gradient(90deg,${C.primary},${C.primaryLight})`, borderRadius:6, transition:"width 0.5s" }}/></div>
-                <p style={{ margin:"0 0 4px", fontSize:12, color:C.muted }}>✅ {count} استجابت · ⏳ {pending} لم تستجب</p>
-                {s.expires_at && <p style={{ margin:0, fontSize:11, color:C.muted }}>📅 ينتهي: {new Date(s.expires_at).toLocaleDateString("ar-SA")}</p>}
+                <p style={{ margin:"0 0 4px", fontSize:12, color:C.muted }}> {count} استجابت · ⏳ {pending} لم تستجب</p>
+                {s.expires_at && <p style={{ margin:0, fontSize:11, color:C.muted }}> ينتهي: {new Date(s.expires_at).toLocaleDateString("ar-SA")}</p>}
               </Card>
             );
           })}
@@ -737,7 +749,7 @@ function AnalyticsPage({ surveys, onNavigate }) {
       {activeTab === "whatsapp" && (
         <>
           <div style={{ background:C.primaryBg, borderRadius:12, padding:14, marginBottom:16 }}>
-            <p style={{ margin:"0 0 4px", fontSize:13, fontWeight:700, color:C.primary }}>📱 إرسال تذكيرات واتس</p>
+            <p style={{ margin:"0 0 4px", fontSize:13, fontWeight:700, color:C.primary }}> إرسال تذكيرات واتس</p>
             <p style={{ margin:0, fontSize:12, color:C.muted, lineHeight:1.7 }}>ترسل رسالة واتس تلقائية لكل مدرسة لم تستجب بعد</p>
           </div>
           {activeSurveys.filter(s=>s.survey_type==="school").length === 0 ? <Card style={{ textAlign:"center", padding:24 }}><p style={{ margin:0, color:C.muted, fontSize:13 }}>لا توجد استبيانات مدرسية نشطة</p></Card>
@@ -746,9 +758,9 @@ function AnalyticsPage({ surveys, onNavigate }) {
             return (
               <Card key={s.id} style={{ marginBottom:12 }}>
                 <p style={{ margin:"0 0 6px", fontSize:14, fontWeight:700, color:C.dark }}>{s.title}</p>
-                <p style={{ margin:"0 0 12px", fontSize:12, color:C.muted }}>⏳ {pending.length} مدرسة لم تستجب · 📱 {withPhone.length} لديها جوال</p>
-                {sent !== undefined && <div style={{ background:C.successBg, borderRadius:8, padding:"6px 10px", marginBottom:10 }}><p style={{ margin:0, fontSize:12, color:C.success }}>✅ تم إرسال {sent} رسالة</p></div>}
-                {withPhone.length > 0 ? <Btn full loading={isSending} onClick={()=>sendReminders(s)}>{isSending?`جاري الإرسال...`:`📱 إرسال تذكير لـ ${withPhone.length} مدرسة`}</Btn>
+                <p style={{ margin:"0 0 12px", fontSize:12, color:C.muted }}>⏳ {pending.length} مدرسة لم تستجب ·  {withPhone.length} لديها جوال</p>
+                {sent !== undefined && <div style={{ background:C.successBg, borderRadius:8, padding:"6px 10px", marginBottom:10 }}><p style={{ margin:0, fontSize:12, color:C.success }}> تم إرسال {sent} رسالة</p></div>}
+                {withPhone.length > 0 ? <Btn full loading={isSending} onClick={()=>sendReminders(s)}>{isSending?`جاري الإرسال...`:` إرسال تذكير لـ ${withPhone.length} مدرسة`}</Btn>
                 : <p style={{ margin:0, fontSize:12, color:C.muted, textAlign:"center" }}>لا توجد أرقام جوال للمدارس غير المستجيبة</p>}
               </Card>
             );
@@ -759,7 +771,7 @@ function AnalyticsPage({ surveys, onNavigate }) {
         <>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
             <p style={{ margin:0, fontSize:13, color:C.muted }}>{surveys.length} استبيان</p>
-            {surveys.length > 0 && <ExportMenu options={[{key:"xlsx",icon:"📊",label:"تصدير Excel",action:exportAnalyticsExcel}]}/>}
+            {surveys.length > 0 && <ExportMenu options={[{key:"xlsx",icon:"",label:"تصدير Excel",action:exportAnalyticsExcel}]}/>}
           </div>
           {surveys.map(s => {
             const count = stats[s.id]||0, total = s.survey_type==="school"?schoolCount:count, pct = total?Math.round(count/total*100):0;
@@ -811,7 +823,7 @@ function SchoolForm({ initial, onSaved, onCancel, user }) {
       <div style={{ background:C.bg, width:"100%", maxHeight:"92vh", overflowY:"auto", borderRadius:"18px 18px 0 0", padding:18, direction:"rtl" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
           <h3 style={{ margin:0, fontSize:16, color:C.dark }}>{isEdit?"تعديل مدرسة":"إضافة مدرسة جديدة"}</h3>
-          <button onClick={onCancel} style={{ background:"none", border:"none", fontSize:20, color:C.muted, cursor:"pointer" }}>✕</button>
+          <button onClick={onCancel} style={{ background:"none", border:"none", fontSize:20, color:C.muted, cursor:"pointer" }}></button>
         </div>
         <ErrorBanner message={error}/>
         <label style={labelStyle}>الرقم الوزاري *</label>
@@ -893,24 +905,24 @@ function CsvUploadSheet({ onDone, onCancel, user }) {
       <div style={{ background:C.bg, width:"100%", maxHeight:"90vh", overflowY:"auto", borderRadius:"18px 18px 0 0", padding:18, direction:"rtl" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
           <h3 style={{ margin:0, fontSize:16, color:C.dark }}>رفع مدارس عبر CSV</h3>
-          <button onClick={onCancel} style={{ background:"none", border:"none", fontSize:20, color:C.muted, cursor:"pointer" }}>✕</button>
+          <button onClick={onCancel} style={{ background:"none", border:"none", fontSize:20, color:C.muted, cursor:"pointer" }}></button>
         </div>
         {!result && (
           <>
             <Card style={{ marginBottom:14, background:C.primaryBg }}><p style={{ margin:0, fontSize:12, color:C.text, lineHeight:1.8 }}>الأعمدة المطلوبة: <strong>id, name</strong> (إلزامية)</p></Card>
             <label style={{ display:"block", padding:"30px 16px", border:`2px dashed ${C.border}`, borderRadius:14, textAlign:"center", cursor:"pointer", background:"#fff", marginBottom:14 }}>
               <input type="file" accept=".csv" onChange={handleFile} style={{ display:"none" }}/>
-              <div style={{ fontSize:30, marginBottom:6 }}>📄</div>
+              <div style={{ fontSize:30, marginBottom:6 }}></div>
               <div style={{ fontSize:13, color:C.primary, fontWeight:700 }}>{fileName||"اضغط لاختيار ملف CSV"}</div>
             </label>
             <ErrorBanner message={error}/>
             {parsing && <div style={{ textAlign:"center", padding:14 }}><Spinner/></div>}
-            {!parsing && rows.length>0 && <Card style={{ marginBottom:14 }}><p style={{ margin:"0 0 8px", fontSize:13, fontWeight:700, color:C.success }}>✅ تم العثور على {rows.length} مدرسة</p><div style={{ maxHeight:160, overflowY:"auto" }}>{rows.slice(0,5).map((r,i)=><div key={i} style={{ fontSize:11, color:C.muted, padding:"4px 0", borderBottom:`1px solid ${C.border}` }}>{r.id} — {r.name}</div>)}{rows.length>5&&<p style={{ fontSize:11, color:C.muted, margin:"6px 0 0" }}>... و{rows.length-5} أخرى</p>}</div></Card>}
+            {!parsing && rows.length>0 && <Card style={{ marginBottom:14 }}><p style={{ margin:"0 0 8px", fontSize:13, fontWeight:700, color:C.success }}> تم العثور على {rows.length} مدرسة</p><div style={{ maxHeight:160, overflowY:"auto" }}>{rows.slice(0,5).map((r,i)=><div key={i} style={{ fontSize:11, color:C.muted, padding:"4px 0", borderBottom:`1px solid ${C.border}` }}>{r.id} — {r.name}</div>)}{rows.length>5&&<p style={{ fontSize:11, color:C.muted, margin:"6px 0 0" }}>... و{rows.length-5} أخرى</p>}</div></Card>}
             {uploading && <div style={{ marginBottom:14 }}><div style={{ height:8, background:C.border, borderRadius:6, overflow:"hidden" }}><div style={{ height:"100%", width:`${progress}%`, background:C.primary, transition:"width 0.3s" }}/></div><p style={{ fontSize:11, color:C.muted, textAlign:"center", marginTop:6 }}>{progress}%</p></div>}
             <Btn full onClick={upload} disabled={rows.length===0} loading={uploading}>رفع {rows.length>0?`${rows.length} مدرسة`:"الملف"}</Btn>
           </>
         )}
-        {result && <div style={{ textAlign:"center", padding:20 }}><div style={{ fontSize:40, marginBottom:10 }}>{result.failed===0?"✅":"⚠️"}</div><p style={{ fontWeight:700, color:C.dark, margin:"0 0 6px" }}>تم الانتهاء</p><p style={{ fontSize:13, color:C.success, margin:"0 0 4px" }}>نجح: {result.success}</p>{result.failed>0&&<p style={{ fontSize:13, color:C.danger, margin:0 }}>فشل: {result.failed}</p>}<div style={{ marginTop:18 }}><Btn full onClick={onDone}>تم</Btn></div></div>}
+        {result && <div style={{ textAlign:"center", padding:20 }}><div style={{ fontSize:40, marginBottom:10 }}>{result.failed===0?"":""}</div><p style={{ fontWeight:700, color:C.dark, margin:"0 0 6px" }}>تم الانتهاء</p><p style={{ fontSize:13, color:C.success, margin:"0 0 4px" }}>نجح: {result.success}</p>{result.failed>0&&<p style={{ fontSize:13, color:C.danger, margin:0 }}>فشل: {result.failed}</p>}<div style={{ marginTop:18 }}><Btn full onClick={onDone}>تم</Btn></div></div>}
       </div>
     </div>
   );
@@ -928,7 +940,7 @@ function DeleteConfirm({ school, onConfirm, onCancel, user }) {
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.4)", zIndex:50, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
       <div style={{ background:"#fff", borderRadius:16, padding:22, maxWidth:340, width:"100%", direction:"rtl" }}>
-        <div style={{ fontSize:32, textAlign:"center", marginBottom:10 }}>🗑️</div>
+        <div style={{ fontSize:32, textAlign:"center", marginBottom:10 }}></div>
         <p style={{ textAlign:"center", fontWeight:700, color:C.dark, margin:"0 0 6px" }}>تأكيد الحذف</p>
         <p style={{ textAlign:"center", fontSize:13, color:C.muted, margin:"0 0 18px" }}>هل أنت متأكد من حذف مدرسة<br/><strong style={{ color:C.text }}>{school.name}</strong>؟<br/>لا يمكن التراجع.</p>
         <div style={{ display:"flex", gap:8 }}>
@@ -997,9 +1009,9 @@ function SchoolsManagementPage({ isAdmin, user }) {
     <div style={{ padding:16, direction:"rtl" }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
         <div><h2 style={{ margin:0, fontSize:17, color:C.dark }}>إدارة المدارس</h2><p style={{ margin:"2px 0 0", fontSize:12, color:C.muted }}>{schools.length} مدرسة مسجّلة</p></div>
-        <ExportMenu options={[{key:"xlsx",icon:"📊",label:"تصدير Excel",action:exportSchoolsExcel},{key:"pdf",icon:"📄",label:"تصدير PDF",action:exportSchoolsPdf}]}/>
+        <ExportMenu options={[{key:"xlsx",icon:"",label:"تصدير Excel",action:exportSchoolsExcel},{key:"pdf",icon:"",label:"تصدير PDF",action:exportSchoolsPdf}]}/>
       </div>
-      {isAdmin ? <div style={{ display:"flex", gap:8, marginBottom:12 }}><Btn full onClick={()=>setFormTarget(null)}>➕ إضافة مدرسة</Btn><Btn full variant="secondary" onClick={()=>setCsvOpen(true)}>📄 رفع CSV</Btn></div>
+      {isAdmin ? <div style={{ display:"flex", gap:8, marginBottom:12 }}><Btn full onClick={()=>setFormTarget(null)}> إضافة مدرسة</Btn><Btn full variant="secondary" onClick={()=>setCsvOpen(true)}> رفع CSV</Btn></div>
       : <ViewerNotice action="إضافة أو رفع المدارس"/>}
       <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder="ابحث بالاسم أو الرقم الوزاري أو المدير..."
         style={{ width:"100%", padding:"10px 14px", border:`1.5px solid ${C.border}`, borderRadius:10, fontSize:13, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", outline:"none", marginBottom:10 }}/>
@@ -1020,8 +1032,8 @@ function SchoolsManagementPage({ isAdmin, user }) {
                     <div style={{ display:"flex", gap:6, marginTop:6, flexWrap:"wrap" }}><Tag color={C.primary}>{s.stage}</Tag><Tag color={s.status==="مُسندة"?C.success:C.warn}>{s.status}</Tag></div>
                   </div>
                   {isAdmin && <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                    <button onClick={()=>setFormTarget(s)} style={{ background:C.primaryBg, border:"none", borderRadius:8, padding:"6px 10px", fontSize:11, color:C.primary, cursor:"pointer", fontFamily:"inherit" }}>✏️ تعديل</button>
-                    <button onClick={()=>setDeleteTarget(s)} style={{ background:"#fdf0ee", border:"none", borderRadius:8, padding:"6px 10px", fontSize:11, color:C.danger, cursor:"pointer", fontFamily:"inherit" }}>🗑️ حذف</button>
+                    <button onClick={()=>setFormTarget(s)} style={{ background:C.primaryBg, border:"none", borderRadius:8, padding:"6px 10px", fontSize:11, color:C.primary, cursor:"pointer", fontFamily:"inherit" }}> تعديل</button>
+                    <button onClick={()=>setDeleteTarget(s)} style={{ background:"#fdf0ee", border:"none", borderRadius:8, padding:"6px 10px", fontSize:11, color:C.danger, cursor:"pointer", fontFamily:"inherit" }}> حذف</button>
                   </div>}
                 </div>
               </Card>
@@ -1077,12 +1089,12 @@ function UsersManagementPage({ currentUser }) {
       <h2 style={{ margin:"0 0 4px", fontSize:17, color:C.dark }}>إدارة المستخدمين والصلاحيات</h2>
       <p style={{ margin:"0 0 16px", fontSize:12, color:C.muted }}>تحكم في من يملك صلاحية التعديل الكاملة</p>
       <ErrorBanner message={error}/>
-      {info&&<div style={{ background:C.successBg, border:`1px solid ${C.success}40`, borderRadius:10, padding:"10px 14px", fontSize:13, color:C.success, marginBottom:12 }}>✅ {info}</div>}
+      {info&&<div style={{ background:C.successBg, border:`1px solid ${C.success}40`, borderRadius:10, padding:"10px 14px", fontSize:13, color:C.success, marginBottom:12 }}> {info}</div>}
       {loading?<div style={{ textAlign:"center", padding:30 }}><Spinner/></div>:(
         <>
-          {pending.length>0&&<div style={{ marginBottom:20 }}><p style={{ margin:"0 0 10px", fontSize:13, fontWeight:700, color:C.warn }}>🔔 طلبات تسجيل بانتظار الموافقة ({pending.length})</p><div style={{ display:"flex", flexDirection:"column", gap:8 }}>{pending.map(r=><Card key={r.user_id} style={{ padding:14, background:C.warnBg, border:`1px solid ${C.warn}40` }}><p style={{ margin:"0 0 2px", fontSize:13, fontWeight:700, color:C.dark }}>{r.display_name||"مستخدم"}</p><p style={{ margin:"0 0 10px", fontSize:11, color:C.muted }}>طلب التسجيل {new Date(r.created_at).toLocaleDateString("ar-SA")}</p><div style={{ display:"flex", gap:8 }}><Btn sm full variant="primary" onClick={()=>approve(r.user_id,r.display_name)}>✅ قبول</Btn><Btn sm full variant="danger" onClick={()=>reject(r.user_id,r.display_name)}>❌ رفض</Btn></div></Card>)}</div></div>}
+          {pending.length>0&&<div style={{ marginBottom:20 }}><p style={{ margin:"0 0 10px", fontSize:13, fontWeight:700, color:C.warn }}> طلبات تسجيل بانتظار الموافقة ({pending.length})</p><div style={{ display:"flex", flexDirection:"column", gap:8 }}>{pending.map(r=><Card key={r.user_id} style={{ padding:14, background:C.warnBg, border:`1px solid ${C.warn}40` }}><p style={{ margin:"0 0 2px", fontSize:13, fontWeight:700, color:C.dark }}>{r.display_name||"مستخدم"}</p><p style={{ margin:"0 0 10px", fontSize:11, color:C.muted }}>طلب التسجيل {new Date(r.created_at).toLocaleDateString("ar-SA")}</p><div style={{ display:"flex", gap:8 }}><Btn sm full variant="primary" onClick={()=>approve(r.user_id,r.display_name)}> قبول</Btn><Btn sm full variant="danger" onClick={()=>reject(r.user_id,r.display_name)}> رفض</Btn></div></Card>)}</div></div>}
           {others.length===0?<Card style={{ textAlign:"center", padding:24 }}><p style={{ margin:0, color:C.muted, fontSize:13 }}>لا يوجد مستخدمون آخرون بعد</p></Card>
-          :<div style={{ display:"flex", flexDirection:"column", gap:8 }}>{others.map(r=><Card key={r.user_id} style={{ padding:14, opacity:r.status==="rejected"?0.6:1 }}><div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}><div><p style={{ margin:0, fontSize:13, fontWeight:700, color:C.dark }}>{r.display_name||"مستخدم"} {r.user_id===currentUser?.id&&<span style={{color:C.primary,fontSize:11}}>(أنت)</span>}</p><p style={{ margin:"2px 0 0", fontSize:11, color:C.muted, direction:"ltr", textAlign:"right" }}>{r.user_id.slice(0,8)}...</p></div><div style={{ display:"flex", gap:6, alignItems:"center" }}>{r.status==="rejected"&&<Tag color={C.danger}>مرفوض</Tag>}<RoleBadgeStatic role={r.role}/></div></div>{r.status!=="rejected"&&<div style={{ display:"flex", gap:8 }}><button onClick={()=>setRole(r.user_id,"admin",r.display_name)} disabled={r.role==="admin"} style={{ flex:1, padding:"7px 0", borderRadius:8, fontSize:11, fontFamily:"inherit", border:`1.5px solid ${r.role==="admin"?C.accent:C.border}`, background:r.role==="admin"?C.accentLight:"#fff", color:r.role==="admin"?C.accent:C.muted, cursor:r.role==="admin"?"default":"pointer", fontWeight:700 }}>👑 مدير عام</button><button onClick={()=>setRole(r.user_id,"viewer",r.display_name)} disabled={r.role==="viewer"} style={{ flex:1, padding:"7px 0", borderRadius:8, fontSize:11, fontFamily:"inherit", border:`1.5px solid ${r.role==="viewer"?C.primary:C.border}`, background:r.role==="viewer"?C.primaryBg:"#fff", color:r.role==="viewer"?C.primary:C.muted, cursor:r.role==="viewer"?"default":"pointer", fontWeight:700 }}>👁️ مشرف (عرض فقط)</button></div>}{r.status==="rejected"&&<Btn sm full variant="secondary" onClick={()=>approve(r.user_id,r.display_name)}>إعادة القبول</Btn>}</Card>)}</div>}
+          :<div style={{ display:"flex", flexDirection:"column", gap:8 }}>{others.map(r=><Card key={r.user_id} style={{ padding:14, opacity:r.status==="rejected"?0.6:1 }}><div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}><div><p style={{ margin:0, fontSize:13, fontWeight:700, color:C.dark }}>{r.display_name||"مستخدم"} {r.user_id===currentUser?.id&&<span style={{color:C.primary,fontSize:11}}>(أنت)</span>}</p><p style={{ margin:"2px 0 0", fontSize:11, color:C.muted, direction:"ltr", textAlign:"right" }}>{r.user_id.slice(0,8)}...</p></div><div style={{ display:"flex", gap:6, alignItems:"center" }}>{r.status==="rejected"&&<Tag color={C.danger}>مرفوض</Tag>}<RoleBadgeStatic role={r.role}/></div></div>{r.status!=="rejected"&&<div style={{ display:"flex", gap:8 }}><button onClick={()=>setRole(r.user_id,"admin",r.display_name)} disabled={r.role==="admin"} style={{ flex:1, padding:"7px 0", borderRadius:8, fontSize:11, fontFamily:"inherit", border:`1.5px solid ${r.role==="admin"?C.accent:C.border}`, background:r.role==="admin"?C.accentLight:"#fff", color:r.role==="admin"?C.accent:C.muted, cursor:r.role==="admin"?"default":"pointer", fontWeight:700 }}> مدير عام</button><button onClick={()=>setRole(r.user_id,"viewer",r.display_name)} disabled={r.role==="viewer"} style={{ flex:1, padding:"7px 0", borderRadius:8, fontSize:11, fontFamily:"inherit", border:`1.5px solid ${r.role==="viewer"?C.primary:C.border}`, background:r.role==="viewer"?C.primaryBg:"#fff", color:r.role==="viewer"?C.primary:C.muted, cursor:r.role==="viewer"?"default":"pointer", fontWeight:700 }}> مشرف (عرض فقط)</button></div>}{r.status==="rejected"&&<Btn sm full variant="secondary" onClick={()=>approve(r.user_id,r.display_name)}>إعادة القبول</Btn>}</Card>)}</div>}
         </>
       )}
     </div>
@@ -1091,15 +1103,15 @@ function UsersManagementPage({ currentUser }) {
 
 function RoleBadgeStatic({ role }) {
   const isAdmin=role==="admin";
-  return <span style={{ background:isAdmin?C.accentLight:C.primaryBg, color:isAdmin?C.accent:C.primary, border:`1px solid ${isAdmin?C.accent:C.primary}40`, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>{isAdmin?"👑 مدير عام":"👁️ مشرف"}</span>;
+  return <span style={{ background:isAdmin?C.accentLight:C.primaryBg, color:isAdmin?C.accent:C.primary, border:`1px solid ${isAdmin?C.accent:C.primary}40`, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>{isAdmin?" مدير عام":" مشرف"}</span>;
 }
 
 const ACTION_LABELS = {
   ...Object.fromEntries(Object.entries(AUDIT_ACTION_LABELS).map(([k,v])=>[k,v])),
-  create:{label:"إضافة",color:"#1A7A4A",icon:"➕"},
-  update:{label:"تعديل",color:"#0B6E6E",icon:"✏️"},
-  delete:{label:"حذف",color:"#C0392B",icon:"🗑️"},
-  bulk_upload:{label:"رفع جماعي",color:"#C49A28",icon:"📄"},
+  create:{label:"إضافة",color:"#1A7A4A",icon:""},
+  update:{label:"تعديل",color:"#0B6E6E",icon:""},
+  delete:{label:"حذف",color:"#C0392B",icon:""},
+  bulk_upload:{label:"رفع جماعي",color:"#C49A28",icon:""},
 };
 
 const TABLE_LABELS = {
@@ -1191,31 +1203,31 @@ function SupervisorsManagementPage({ user }) {
     <div style={{ padding:16, direction:"rtl" }}>
       <h2 style={{ margin:"0 0 4px", fontSize:17, color:C.dark }}>إدارة المشرفين</h2>
       <p style={{ margin:"0 0 12px", fontSize:12, color:C.muted }}>{sups.length} مشرف مسجّل</p>
-      <div style={{ display:"flex", gap:8, marginBottom:12 }}><Btn sm full onClick={()=>setForm({})}>➕ إضافة مشرف</Btn><Btn sm full variant="secondary" onClick={()=>{setCsvOpen(true);setPreviewRows(null);}}>📄 رفع Excel/PDF</Btn></div>
-      <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder="🔍 ابحث بالاسم أو رقم الهوية أو الجوال..."
+      <div style={{ display:"flex", gap:8, marginBottom:12 }}><Btn sm full onClick={()=>setForm({})}> إضافة مشرف</Btn><Btn sm full variant="secondary" onClick={()=>{setCsvOpen(true);setPreviewRows(null);}}> رفع Excel/PDF</Btn></div>
+      <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder=" ابحث بالاسم أو رقم الهوية أو الجوال..."
         style={{ width:"100%", padding:"10px 12px", border:`1.5px solid ${C.border}`, borderRadius:10, fontSize:13, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", outline:"none", marginBottom:12 }}/>
       <ErrorBanner message={error}/>
-      {info&&<div style={{ background:C.successBg, border:`1px solid ${C.success}40`, borderRadius:10, padding:"10px 14px", fontSize:12, color:C.success, marginBottom:12 }}>✅ {info}</div>}
+      {info&&<div style={{ background:C.successBg, border:`1px solid ${C.success}40`, borderRadius:10, padding:"10px 14px", fontSize:12, color:C.success, marginBottom:12 }}> {info}</div>}
       {loading?<div style={{ textAlign:"center", padding:30 }}><Spinner/></div>:(
         <>
           <p style={{ fontSize:11, color:C.muted, margin:"0 0 8px" }}>عرض {paged.length} من {filtered.length}</p>
           <Card style={{ padding:0, overflow:"hidden" }}>
             {paged.length===0?<p style={{ padding:20, textAlign:"center", color:C.muted, fontSize:13 }}>لا توجد نتائج</p>
-            :paged.map((s,i)=><div key={s.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", borderBottom:i<paged.length-1?`1px solid ${C.border}`:undefined }}><div style={{ flex:1, minWidth:0 }}><p style={{ margin:0, fontSize:13, fontWeight:700, color:C.dark }}>{s.name}</p><p style={{ margin:"2px 0 0", fontSize:11, color:C.muted }}>هوية: {s.national_id} {s.phone&&`· 📱 ${s.phone}`}</p></div><Tag color={s.status==="مُسندة"?C.success:C.muted}>{s.status}</Tag><div style={{ display:"flex", gap:6, flexShrink:0 }}><button onClick={()=>setForm(s)} style={{ background:C.primaryBg, border:"none", borderRadius:8, padding:"5px 8px", fontSize:11, color:C.primary, cursor:"pointer", fontFamily:"inherit" }}>✏️</button><button onClick={()=>setDelTarget(s)} style={{ background:"#fdf0ee", border:"none", borderRadius:8, padding:"5px 8px", fontSize:11, color:C.danger, cursor:"pointer", fontFamily:"inherit" }}>🗑️</button></div></div>)}
+            :paged.map((s,i)=><div key={s.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", borderBottom:i<paged.length-1?`1px solid ${C.border}`:undefined }}><div style={{ flex:1, minWidth:0 }}><p style={{ margin:0, fontSize:13, fontWeight:700, color:C.dark }}>{s.name}</p><p style={{ margin:"2px 0 0", fontSize:11, color:C.muted }}>هوية: {s.national_id} {s.phone&&`·  ${s.phone}`}</p></div><Tag color={s.status==="مُسندة"?C.success:C.muted}>{s.status}</Tag><div style={{ display:"flex", gap:6, flexShrink:0 }}><button onClick={()=>setForm(s)} style={{ background:C.primaryBg, border:"none", borderRadius:8, padding:"5px 8px", fontSize:11, color:C.primary, cursor:"pointer", fontFamily:"inherit" }}></button><button onClick={()=>setDelTarget(s)} style={{ background:"#fdf0ee", border:"none", borderRadius:8, padding:"5px 8px", fontSize:11, color:C.danger, cursor:"pointer", fontFamily:"inherit" }}></button></div></div>)}
           </Card>
           {Math.ceil(filtered.length/PER)>1&&<div style={{ display:"flex", justifyContent:"center", gap:8, marginTop:12 }}><Btn sm variant="secondary" disabled={page===1} onClick={()=>setPage(p=>p-1)}>السابق</Btn><span style={{ padding:"8px 14px", fontSize:13, color:C.muted }}>{page}/{Math.ceil(filtered.length/PER)}</span><Btn sm variant="secondary" disabled={page>=Math.ceil(filtered.length/PER)} onClick={()=>setPage(p=>p+1)}>التالي</Btn></div>}
         </>
       )}
       {form!==null&&<div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:100, display:"flex", alignItems:"flex-end", direction:"rtl" }}><div style={{ width:"100%", background:C.white, borderRadius:"20px 20px 0 0", padding:20, maxHeight:"80vh", overflowY:"auto" }}><h3 style={{ margin:"0 0 16px", fontSize:16, color:C.dark }}>{form.id?"تعديل بيانات المشرف":"إضافة مشرف جديد"}</h3>{[["الاسم","name","اسم المشرف"],["رقم الهوية","national_id","10 أرقام"],["رقم الجوال","phone","05xxxxxxxx"],["البريد الإلكتروني","email",""]].map(([l,k,ph])=><div key={k}><label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:4 }}>{l}</label><input value={form[k]||""} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} placeholder={ph} style={inputStyle}/></div>)}<label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:4 }}>الحالة</label><select value={form.status||"مُسندة"} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{ ...inputStyle, background:C.white }}><option>مُسندة</option><option>غير مُسندة</option></select><ErrorBanner message={error}/><div style={{ display:"flex", gap:8 }}><Btn full variant="secondary" onClick={()=>{setForm(null);setError("");}}>إلغاء</Btn><Btn full onClick={()=>saveSup(form)}>حفظ</Btn></div></div></div>}
       {delTarget&&<div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}><div style={{ background:C.white, borderRadius:16, padding:20, width:"100%", maxWidth:340 }}><p style={{ textAlign:"center", fontWeight:700, color:C.dark, fontSize:15 }}>حذف {delTarget.name}؟</p><p style={{ textAlign:"center", color:C.muted, fontSize:12 }}>لا يمكن التراجع</p><div style={{ display:"flex", gap:8, marginTop:14 }}><Btn full variant="secondary" onClick={()=>setDelTarget(null)}>إلغاء</Btn><Btn full variant="danger" onClick={()=>deleteSup(delTarget.id,delTarget.name)}>حذف</Btn></div></div></div>}
-      {csvOpen&&<div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:100, display:"flex", alignItems:"flex-end", direction:"rtl" }}><div style={{ width:"100%", background:C.white, borderRadius:"20px 20px 0 0", padding:20, maxHeight:"85vh", overflowY:"auto" }}><h3 style={{ margin:"0 0 12px", fontSize:16 }}>رفع قائمة مشرفين</h3>{!previewRows?(<><Card style={{ marginBottom:12, background:C.primaryBg }}><p style={{ margin:"0 0 6px", fontSize:12, color:C.text, lineHeight:1.8 }}><strong>Excel/CSV:</strong> أعمدة: الاسم، رقم الهوية (إلزامي)</p><p style={{ margin:0, fontSize:12, color:C.warn, lineHeight:1.8 }}><strong>PDF:</strong> استخراج تلقائي قد يحتاج مراجعة</p></Card><ErrorBanner message={error}/><input type="file" accept=".xlsx,.xls,.csv,.pdf" onChange={e=>{if(e.target.files?.[0]) parseFile(e.target.files[0]);}} style={{ width:"100%", fontSize:13, marginBottom:12 }}/><Btn full variant="secondary" onClick={()=>{setCsvOpen(false);setError("");}}>إلغاء</Btn></>):(<><div style={{ background:C.successBg, border:`1px solid ${C.success}40`, borderRadius:10, padding:"10px 14px", fontSize:12, color:C.success, marginBottom:12 }}>✅ تم قراءة <strong>{previewRows.length}</strong> سجل</div><div style={{ overflowX:"auto", marginBottom:14 }}><table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}><thead><tr style={{ background:C.primaryBg }}>{["الاسم","رقم الهوية","الجوال"].map(h=><th key={h} style={{ padding:"8px 10px", textAlign:"right", color:C.primary, borderBottom:`1px solid ${C.border}` }}>{h}</th>)}</tr></thead><tbody>{previewRows.slice(0,20).map((r,i)=><tr key={i} style={{ borderBottom:`1px solid ${C.border}` }}><td style={{ padding:"7px 10px", color:C.dark }}>{r.name||"—"}</td><td style={{ padding:"7px 10px", color:C.muted, direction:"ltr" }}>{r.national_id}</td><td style={{ padding:"7px 10px", color:C.muted }}>{r.phone||"—"}</td></tr>)}</tbody></table>{previewRows.length>20&&<p style={{ textAlign:"center", fontSize:11, color:C.muted, marginTop:6 }}>... و{previewRows.length-20} سجل آخر</p>}</div><div style={{ display:"flex", gap:8 }}><Btn full variant="secondary" onClick={()=>setPreviewRows(null)}>← رجوع</Btn><Btn full onClick={confirmImport}>💾 حفظ الكل</Btn></div></>)}</div></div>}
+      {csvOpen&&<div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:100, display:"flex", alignItems:"flex-end", direction:"rtl" }}><div style={{ width:"100%", background:C.white, borderRadius:"20px 20px 0 0", padding:20, maxHeight:"85vh", overflowY:"auto" }}><h3 style={{ margin:"0 0 12px", fontSize:16 }}>رفع قائمة مشرفين</h3>{!previewRows?(<><Card style={{ marginBottom:12, background:C.primaryBg }}><p style={{ margin:"0 0 6px", fontSize:12, color:C.text, lineHeight:1.8 }}><strong>Excel/CSV:</strong> أعمدة: الاسم، رقم الهوية (إلزامي)</p><p style={{ margin:0, fontSize:12, color:C.warn, lineHeight:1.8 }}><strong>PDF:</strong> استخراج تلقائي قد يحتاج مراجعة</p></Card><ErrorBanner message={error}/><input type="file" accept=".xlsx,.xls,.csv,.pdf" onChange={e=>{if(e.target.files?.[0]) parseFile(e.target.files[0]);}} style={{ width:"100%", fontSize:13, marginBottom:12 }}/><Btn full variant="secondary" onClick={()=>{setCsvOpen(false);setError("");}}>إلغاء</Btn></>):(<><div style={{ background:C.successBg, border:`1px solid ${C.success}40`, borderRadius:10, padding:"10px 14px", fontSize:12, color:C.success, marginBottom:12 }}> تم قراءة <strong>{previewRows.length}</strong> سجل</div><div style={{ overflowX:"auto", marginBottom:14 }}><table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}><thead><tr style={{ background:C.primaryBg }}>{["الاسم","رقم الهوية","الجوال"].map(h=><th key={h} style={{ padding:"8px 10px", textAlign:"right", color:C.primary, borderBottom:`1px solid ${C.border}` }}>{h}</th>)}</tr></thead><tbody>{previewRows.slice(0,20).map((r,i)=><tr key={i} style={{ borderBottom:`1px solid ${C.border}` }}><td style={{ padding:"7px 10px", color:C.dark }}>{r.name||"—"}</td><td style={{ padding:"7px 10px", color:C.muted, direction:"ltr" }}>{r.national_id}</td><td style={{ padding:"7px 10px", color:C.muted }}>{r.phone||"—"}</td></tr>)}</tbody></table>{previewRows.length>20&&<p style={{ textAlign:"center", fontSize:11, color:C.muted, marginTop:6 }}>... و{previewRows.length-20} سجل آخر</p>}</div><div style={{ display:"flex", gap:8 }}><Btn full variant="secondary" onClick={()=>setPreviewRows(null)}>← رجوع</Btn><Btn full onClick={confirmImport}> حفظ الكل</Btn></div></>)}</div></div>}
     </div>
   );
 }
 
-// ══════════════════════════════════════════════════════
+// 
 // APP SETTINGS PAGE — unchanged
-// ══════════════════════════════════════════════════════
+// 
 function AppSettingsPage({ onSaved }) {
   const { settings, reload } = useAppSettings();
   const [logoUrl,            setLogoUrl]            = useState("");
@@ -1295,7 +1307,7 @@ function AppSettingsPage({ onSaved }) {
         <p style={{ margin:"3px 0 0", fontSize:12, color:PT.s500 }}>تخصيص الهوية البصرية والإعدادات الافتراضية</p>
       </div>
 
-      <SettingSection icon="🖼️" title="الشعار الرسمي">
+      <SettingSection icon="" title="الشعار الرسمي">
         {logoUrl ? (
           <div style={{ textAlign:"center", marginBottom:14, padding:"16px", background:PT.s50, borderRadius:12 }}>
             <img src={logoUrl} alt="logo" style={{ maxHeight:80, maxWidth:"100%", borderRadius:10, objectFit:"contain" }}/>
@@ -1303,7 +1315,7 @@ function AppSettingsPage({ onSaved }) {
         ) : (
           <div style={{ textAlign:"center", marginBottom:14, padding:"20px", background:PT.s50,
             borderRadius:12, border:`2px dashed ${PT.s200}` }}>
-            <div style={{ fontSize:32, marginBottom:4 }}>🏛️</div>
+            <div style={{ fontSize:32, marginBottom:4 }}></div>
             <p style={{ margin:0, fontSize:12, color:PT.s400 }}>لا يوجد شعار حالياً</p>
           </div>
         )}
@@ -1323,22 +1335,22 @@ function AppSettingsPage({ onSaved }) {
         {logoUrl && (
           <button onClick={()=>setLogoUrl("")} style={{ background:"none", border:"none",
             color:PT.danger, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
-            ✕ إزالة الشعار
+             إزالة الشعار
           </button>
         )}
       </SettingSection>
 
-      <SettingSection icon="📝" title="عناوين النظام">
+      <SettingSection icon="" title="عناوين النظام">
         <label style={lSt}>اسم النظام:</label>
         <input value={appName} onChange={e=>setAppName(e.target.value)} style={{ ...iSt, marginBottom:12 }}/>
         <label style={lSt}>العنوان الفرعي:</label>
         <input value={appSubtitle} onChange={e=>setAppSubtitle(e.target.value)} style={iSt}/>
       </SettingSection>
 
-      <SettingSection icon="⚙️" title="الإعدادات الافتراضية">
+      <SettingSection icon="" title="الإعدادات الافتراضية">
         <label style={lSt}>نوع الاستبيان الافتراضي:</label>
         <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
-          {[["school","🏫 مدارس"],["supervisor","👤 مشرفون"],["administrator","🎓 إداريون"],["open","🌐 مفتوح"]].map(([v,l])=>(
+          {[["school"," مدارس"],["supervisor"," مشرفون"],["administrator"," إداريون"],["open"," مفتوح"]].map(([v,l])=>(
             <button key={v} onClick={()=>setDefaultSurveyType(v)} style={{
               padding:"8px 14px", borderRadius:10, fontSize:12, fontFamily:"inherit", cursor:"pointer",
               border:`1.5px solid ${defaultSurveyType===v?PT.e600:PT.s200}`,
@@ -1354,7 +1366,7 @@ function AppSettingsPage({ onSaved }) {
           style={{ ...iSt, resize:"vertical" }}/>
       </SettingSection>
 
-      <SettingSection icon="📄" title="هوية التقارير">
+      <SettingSection icon="" title="هوية التقارير">
         <label style={lSt}>ترويسة التقارير:</label>
         <input value={reportHeader} onChange={e=>setReportHeader(e.target.value)}
           placeholder="مثال: إدارة التعليم بجدة — قسم الاستبيانات"
@@ -1367,10 +1379,10 @@ function AppSettingsPage({ onSaved }) {
 
       {error && <div style={{ background:PT.dangerBg, border:"1px solid #FECACA", borderRadius:12,
         padding:"10px 14px", fontSize:13, color:PT.danger, marginBottom:12,
-        display:"flex", gap:8 }}><span>⚠️</span>{error}</div>}
+        display:"flex", gap:8 }}><span></span>{error}</div>}
       {info && <div style={{ background:PT.successBg, border:`1px solid ${PT.success}30`, borderRadius:12,
         padding:"10px 14px", fontSize:13, color:PT.success, marginBottom:12,
-        display:"flex", gap:8 }}><span>✅</span>{info}</div>}
+        display:"flex", gap:8 }}><span></span>{info}</div>}
 
       <button onClick={save} disabled={saving} style={{
         width:"100%", padding:"14px",
@@ -1378,15 +1390,15 @@ function AppSettingsPage({ onSaved }) {
         color:"#fff", border:"none", borderRadius:14, fontSize:14, fontWeight:800,
         cursor:saving?"not-allowed":"pointer", fontFamily:"inherit",
         boxShadow:saving?"none":`0 4px 16px ${PT.e600}40`,
-      }}>{saving?"جاري الحفظ...":"💾 حفظ الإعدادات"}</button>
+      }}>{saving?"جاري الحفظ...":" حفظ الإعدادات"}</button>
     </div>
   );
 }
 
-// ══════════════════════════════════════════════════════
+// 
 // AUDIT LOG PAGE — unchanged (one pre-existing typo fixed below:
 // exportLogExcel's map callback was missing its arrow `=>`)
-// ══════════════════════════════════════════════════════
+// 
 function AuditLogPage() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1430,10 +1442,10 @@ function AuditLogPage() {
   }
 
   const QUICK_FILTERS = [
-    {v:"الكل",l:"الكل"},{v:"survey_publish",l:"🚀 نشر"},
-    {v:"survey_pause",l:"⏸️ إيقاف"},{v:"survey_close",l:"🔒 إغلاق"},
-    {v:"survey_archive",l:"📦 أرشفة"},{v:"survey_duplicate",l:"📄 نسخ"},
-    {v:"create",l:"➕ إضافة"},{v:"update",l:"✏️ تعديل"},{v:"delete",l:"🗑️ حذف"},
+    {v:"الكل",l:"الكل"},{v:"survey_publish",l:" نشر"},
+    {v:"survey_pause",l:"⏸ إيقاف"},{v:"survey_close",l:" إغلاق"},
+    {v:"survey_archive",l:" أرشفة"},{v:"survey_duplicate",l:" نسخ"},
+    {v:"create",l:" إضافة"},{v:"update",l:" تعديل"},{v:"delete",l:" حذف"},
   ];
 
   function dateLabel(dateStr) {
@@ -1457,12 +1469,12 @@ function AuditLogPage() {
             background:PT.e50, color:PT.e700, border:`1px solid ${PT.e100}`,
             borderRadius:10, padding:"8px 14px", fontSize:12, fontWeight:700,
             cursor:"pointer", fontFamily:"inherit",
-          }}>📊 تصدير</button>
+          }}> تصدير</button>
         )}
       </div>
 
       <div style={{ position:"relative", marginBottom:10 }}>
-        <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:15, pointerEvents:"none" }}>🔍</span>
+        <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:15, pointerEvents:"none" }}></span>
         <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}
           placeholder="ابحث بالمستخدم أو الإجراء أو العنصر..."
           style={{ width:"100%", padding:"11px 42px 11px 14px", border:`1.5px solid ${PT.s200}`,
@@ -1470,7 +1482,7 @@ function AuditLogPage() {
             boxSizing:"border-box", background:PT.white, color:PT.s900 }}
           onFocus={e=>{e.target.style.borderColor=PT.e600;e.target.style.boxShadow=`0 0 0 3px rgba(5,150,105,0.12)`;}}
           onBlur={e=>{e.target.style.borderColor=PT.s200;e.target.style.boxShadow="none";}}/>
-        {search && <button onClick={()=>setSearch("")} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:PT.s400, cursor:"pointer", fontSize:16 }}>✕</button>}
+        {search && <button onClick={()=>setSearch("")} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:PT.s400, cursor:"pointer", fontSize:16 }}></button>}
       </div>
 
       <div style={{ display:"flex", gap:5, marginBottom:14, overflowX:"auto", paddingBottom:4 }}>
@@ -1495,7 +1507,7 @@ function AuditLogPage() {
       ) : filtered.length === 0 ? (
         <div style={{ textAlign:"center", padding:"40px 20px", background:PT.white,
           borderRadius:18, border:`1px solid ${PT.s200}` }}>
-          <div style={{ fontSize:40, marginBottom:10 }}>📋</div>
+          <div style={{ fontSize:40, marginBottom:10 }}></div>
           <p style={{ margin:0, color:PT.s500, fontSize:13 }}>لا توجد سجلات مطابقة</p>
         </div>
       ) : (
