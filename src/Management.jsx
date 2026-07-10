@@ -124,19 +124,38 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
   }
 
   // Load respondents for a survey when panel opens
+  // targetCount per survey_type — loaded once when panel opens
+  const [targetCounts, setTargetCounts] = useState({}); // surveyId → count
+
   async function toggleRespondents(s) {
     const sid = s.id;
     if (expanded[sid]) { setExpanded(p=>({...p,[sid]:false})); return; }
     setExpanded(p=>({...p,[sid]:true}));
     if (respondents[sid]) return; // already loaded
     setLoadingResp(p=>({...p,[sid]:true}));
+
+    // Load responses
     const { data } = await supabase
       .from("survey_responses")
       .select("id,submitted_at,school_id,respondent_label,answers,survey_schools(name,stage,sector,principal)")
       .eq("survey_id", sid)
       .order("submitted_at", { ascending:false })
       .limit(100);
+
+    // Calculate correct target count based on survey_type
+    let targetCount = schoolCount; // default = schools
+    if (s.survey_type === "supervisor") {
+      const { count } = await supabase.from("supervisors").select("*",{count:"exact",head:true}).eq("status","نشط");
+      targetCount = count || 0;
+    } else if (s.survey_type === "administrator") {
+      const { count } = await supabase.from("administrators").select("*",{count:"exact",head:true}).eq("status","نشط");
+      targetCount = count || 0;
+    } else if (s.survey_type === "open") {
+      targetCount = 0; // open surveys have no fixed target
+    }
+
     setRespondents(p=>({...p,[sid]:data||[]}));
+    setTargetCounts(p=>({...p,[sid]:targetCount}));
     setLoadingResp(p=>({...p,[sid]:false}));
   }
 
@@ -334,17 +353,25 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
             </div>
 
             {/* Progress bar — published surveys only */}
-            {state==="published" && schoolCount > 0 && (
+            {state==="published" && (
               <div style={{ display:"flex", alignItems:"center", gap:8, padding:"0 14px 8px" }}>
-                <div style={{ flex:1, height:6, background:PT.s100, borderRadius:6, overflow:"hidden" }}>
-                  <div style={{ height:"100%", background:`linear-gradient(90deg,${PT.e600},${PT.e500})`,
-                    borderRadius:6, width:`${Math.min(100,(respondents[sid]?.length||0)/schoolCount*100)}%`,
-                    transition:"width 0.5s" }}/>
-                </div>
-                <span style={{ fontSize:11, fontWeight:800, color:PT.e700, minWidth:32 }}>
-                  {schoolCount?Math.round((respondents[sid]?.length||0)/schoolCount*100):0}٪
-                </span>
-                <span style={{ fontSize:10, color:PT.s400 }}>{respondents[sid]?.length||0} / {schoolCount}</span>
+                {(() => {
+                  const tc = (targetCounts && targetCounts[sid]) ? targetCounts[sid] : schoolCount;
+                  const rc = respondents[sid]?.length || 0;
+                  const pct = tc > 0 ? Math.min(100, Math.round(rc/tc*100)) : 0;
+                  return (
+                    <>
+                      <div style={{ flex:1, height:6, background:PT.s100, borderRadius:6, overflow:"hidden" }}>
+                        <div style={{ height:"100%", background:`linear-gradient(90deg,${PT.e600},${PT.e500})`,
+                          borderRadius:6, width:`${pct}%`, transition:"width 0.5s" }}/>
+                      </div>
+                      <span style={{ fontSize:11, fontWeight:800, color:PT.e700, minWidth:32 }}>{pct}٪</span>
+                      <span style={{ fontSize:10, color:PT.s400 }}>
+                        {rc}{tc > 0 ? ` / ${tc}` : ""}
+                      </span>
+                    </>
+                  );
+                })()}
               </div>
             )}
 
@@ -479,6 +506,13 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
                 </button>
               )}
             </div>
+
+            {/* Lifecycle */}
+            {isAdmin && (
+              <div style={{ padding:"0 14px 10px", borderTop:`1px solid ${PT.s100}`, paddingTop:8 }}>
+                <LifecycleActions survey={s} user={user} isAdmin={isAdmin} onRefresh={onLifecycleChange}/>
+              </div>
+            )}
           </div>
         );
       })}
@@ -1524,6 +1558,7 @@ export { SurveysList, ShareSheet, LoginPage, AnalyticsPage,
   SchoolForm, CsvUploadSheet, DeleteConfirm, SchoolsManagementPage,
   UsersManagementPage, RoleBadgeStatic, SupervisorsManagementPage,
   AppSettingsPage, AuditLogPage, SystemIdentityCenter };
+
 
 
 
