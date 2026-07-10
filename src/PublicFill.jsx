@@ -591,4 +591,3 @@ function PublicFillWithGate({ survey, onBack }) {
 }
 
 export default PublicFillWithGate;
-
