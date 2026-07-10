@@ -193,9 +193,14 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
     setExpanded(p=>({...p,[sid]:true}));
     if (respondents[sid]) return;
     setLoadingResp(p=>({...p,[sid]:true}));
+    // Load responses with correct join based on survey_type
+    const isSchoolSurvey = !s.survey_type || s.survey_type === "school";
+    const selectFields = isSchoolSurvey
+      ? "id,submitted_at,school_id,respondent_label,respondent_national_id,answers,survey_schools(name,stage,sector,principal)"
+      : "id,submitted_at,respondent_label,respondent_national_id,answers";
     const { data } = await supabase
       .from("survey_responses")
-      .select("id,submitted_at,school_id,respondent_label,answers,survey_schools(name,stage,sector,principal)")
+      .select(selectFields)
       .eq("survey_id", sid)
       .order("submitted_at", { ascending:false })
       .limit(100);
@@ -495,7 +500,7 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
                       <div style={{ flex:1, minWidth:0 }}>
                         <p style={{ margin:0, fontSize:12, fontWeight:500, color:"#0F172A",
                           overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                          {r.survey_schools?.name||r.respondent_label||"—"}
+                          {r.survey_schools?.name || r.respondent_label || r.respondent_national_id || "—"}
                         </p>
                       </div>
                       <span style={{ fontSize:10, color:"#94A3B8", flexShrink:0 }}>{r.survey_schools?.stage||""}</span>
