@@ -304,372 +304,365 @@ function autoDetectMapping(excelColumns, entityType) {
  return mapping;
 }
 
+// ══════════════════════════════════════════════════════
+// Smart ImportEngine — Ministry Edition v2
+// Auto-detect columns + flexible mapping + preview
+// ══════════════════════════════════════════════════════
+
+const ENTITY_FIELDS = {
+  schools: [
+    { key:"name",            label:"اسم المدرسة",       required:true  },
+    { key:"id",              label:"الرقم الوزاري",      required:true  },
+    { key:"phone",           label:"رقم الجوال",         required:false },
+    { key:"email",           label:"البريد الإلكتروني",  required:false },
+    { key:"principal",       label:"مدير المدرسة",       required:false },
+    { key:"stage",           label:"المرحلة الدراسية",   required:false },
+    { key:"gender",          label:"النوع",              required:false },
+    { key:"sector",          label:"القطاع",             required:false },
+    { key:"district",        label:"الحي / المنطقة",     required:false },
+    { key:"status",          label:"الحالة",             required:false },
+  ],
+  supervisors: [
+    { key:"national_id", label:"رقم الهوية",         required:true  },
+    { key:"name",        label:"الاسم الكامل",       required:true  },
+    { key:"phone",       label:"رقم الجوال",         required:false },
+    { key:"email",       label:"البريد الإلكتروني",  required:false },
+    { key:"department",  label:"الإدارة / القسم",    required:false },
+    { key:"section",     label:"الشعبة",             required:false },
+    { key:"job_title",   label:"المسمى الوظيفي",     required:false },
+    { key:"status",      label:"الحالة",             required:false },
+  ],
+  administrators: [
+    { key:"national_id", label:"رقم الهوية",         required:true  },
+    { key:"full_name",   label:"الاسم الكامل",       required:true  },
+    { key:"phone",       label:"رقم الجوال",         required:false },
+    { key:"email",       label:"البريد الإلكتروني",  required:false },
+    { key:"department",  label:"الإدارة",             required:false },
+    { key:"section",     label:"الشعبة",             required:false },
+    { key:"job_title",   label:"المسمى الوظيفي",     required:false },
+    { key:"status",      label:"الحالة",             required:false },
+  ],
+};
+
+const FIELD_ALIASES = {
+  name:            ["اسم المدرسة","المدرسة","الاسم","name","school","school_name","اسم"],
+  full_name:       ["الاسم","اسم المشرف","اسم المدير","الاسم الكامل","full_name","name"],
+  national_id:     ["رقم الهوية","هوية","national_id","id_number","الهوية","هويه","الرقم الوطني"],
+  id:              ["الرقم الوزاري","رقم وزاري","ministry_number","وزاري","الرقم"],
+  phone:           ["الجوال","رقم الجوال","هاتف","phone","mobile","جوال"],
+  email:           ["البريد","email","الإيميل","بريد","email_address"],
+  principal:       ["المدير","مدير المدرسة","principal","اسم المدير"],
+  stage:           ["المرحلة","stage","المرحلة الدراسية","مرحلة"],
+  gender:          ["النوع","gender","الجنس"],
+  sector:          ["القطاع","sector","قطاع"],
+  district:        ["الحي","district","المنطقة","الحي / المنطقة"],
+  status:          ["الحالة","status","حالة"],
+  department:      ["الإدارة","القسم","department","إدارة","قسم"],
+  section:         ["الشعبة","section","شعبة"],
+  job_title:       ["المسمى","المنصب","الوظيفة","job_title","position","المسمى الوظيفي"],
+};
+
+function autoDetect(excelCols, entityType) {
+  const fields = ENTITY_FIELDS[entityType] || [];
+  const mapping = {};
+  fields.forEach(field => {
+    const aliases = FIELD_ALIASES[field.key] || [field.label];
+    const matched = excelCols.find(col => {
+      const c = col.trim().toLowerCase();
+      return aliases.some(a => {
+        const al = a.toLowerCase();
+        return c === al || c.includes(al) || al.includes(c);
+      });
+    });
+    if (matched) mapping[field.key] = matched;
+  });
+  return mapping;
+}
+
 function ImportEngine({ config, onDone, onCancel, user }) {
- const [step, setStep] = useState("upload"); // upload → mapping → preview → importing → done
- const [excelRows, setExcelRows] = useState([]); // raw rows from file
- const [excelCols, setExcelCols] = useState([]); // column names from file
- const [mapping, setMapping] = useState({}); // fieldKey → excelCol
- const [parsed, setParsed] = useState([]); // mapped rows
- const [importing, setImporting] = useState(false);
- const [progress, setProgress] = useState(0);
- const [importMode, setImportMode] = useState("new_only"); // new_only | update
- const [existingKeys,setExistingKeys]= useState(new Set());
- const [result, setResult] = useState(null);
- const [error, setError] = useState("");
- const [parsing, setParsing] = useState(false);
- const fileRef = useRef();
+  const [step,         setStep]         = useState("upload");
+  const [excelRows,    setExcelRows]    = useState([]);
+  const [excelCols,    setExcelCols]    = useState([]);
+  const [mapping,      setMapping]      = useState({});
+  const [parsed,       setParsed]       = useState([]);
+  const [importing,    setImporting]    = useState(false);
+  const [progress,     setProgress]     = useState(0);
+  const [importMode,   setImportMode]   = useState("new_only");
+  const [existingKeys, setExistingKeys] = useState(new Set());
+  const [result,       setResult]       = useState(null);
+  const [error,        setError]        = useState("");
+  const [parsing,      setParsing]      = useState(false);
+  const fileRef = useRef();
 
- const entityType = config.entityType || "schools";
- const fields = ENTITY_FIELDS[entityType] || [];
+  const entityType = config.entityType || "schools";
+  const fields     = ENTITY_FIELDS[entityType] || [];
 
- // Load existing primary keys to detect duplicates
- async function loadExistingKeys() {
- let all = [], from = 0;
- while (true) {
- const { data } = await supabase.from(config.table).select(config.primaryKey).range(from, from+999);
- if (!data?.length) break;
- data.forEach(r => all.push(r[config.primaryKey]));
- if (data.length < 1000) break;
- from += 1000;
- }
- setExistingKeys(new Set(all));
- }
+  async function loadExistingKeys() {
+    let all = [], from = 0;
+    while (true) {
+      const { data } = await supabase.from(config.table).select(config.primaryKey).range(from, from+999);
+      if (!data?.length) break;
+      data.forEach(r => all.push(r[config.primaryKey]));
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+    setExistingKeys(new Set(all));
+  }
 
- // Parse uploaded file
- async function handleFile(file) {
- if (!file) return;
- setParsing(true); setError("");
- try {
- const XLSX = await ensureXLSX();
- const ab = await file.arrayBuffer();
- const wb = XLSX.read(ab);
- const ws = wb.Sheets[wb.SheetNames[0]];
- const rows = XLSX.utils.sheet_to_json(ws, { defval:"", raw:false });
- if (!rows.length) { setError("الملف فارغ أو لا يحتوي بيانات."); setParsing(false); return; }
- const cols = Object.keys(rows[0]);
- setExcelRows(rows);
- setExcelCols(cols);
- // Auto-detect mapping
- const autoMap = autoDetectMapping(cols, entityType);
- setMapping(autoMap);
- await loadExistingKeys();
- setStep("mapping");
- } catch (e) { setError("فشل قراءة الملف: " + e.message); }
- setParsing(false);
- }
+  async function handleFile(file) {
+    if (!file) return;
+    setParsing(true); setError("");
+    try {
+      const XLSX = await ensureXLSX();
+      const ab   = await file.arrayBuffer();
+      const wb   = XLSX.read(ab);
+      const ws   = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval:"", raw:false });
+      if (!rows.length) { setError("الملف فارغ."); setParsing(false); return; }
+      const cols = Object.keys(rows[0]);
+      setExcelRows(rows);
+      setExcelCols(cols);
+      setMapping(autoDetect(cols, entityType));
+      await loadExistingKeys();
+      setStep("mapping");
+    } catch(e) { setError("فشل قراءة الملف: " + e.message); }
+    setParsing(false);
+  }
 
- // Apply mapping to rows
- function applyMapping() {
- const requiredFields = fields.filter(f => f.required);
- const missing = requiredFields.filter(f => !mapping[f.key]);
- if (missing.length) {
- setError("يرجى تعيين الأعمدة المطلوبة: " + missing.map(f=>f.label).join("، "));
- return;
- }
- const rows = excelRows.map(r => {
- const obj = { ...config.defaultValues };
- Object.entries(mapping).forEach(([fieldKey, excelCol]) => {
- if (excelCol && r[excelCol] !== undefined) {
- obj[fieldKey] = String(r[excelCol]).trim();
- }
- });
- return obj;
- }).filter(r => requiredFields.every(f => r[f.key] && String(r[f.key]).trim()));
- if (!rows.length) { setError("لا توجد صفوف صالحة بعد تطبيق التعيين."); return; }
- setError("");
- setParsed(rows);
- setStep("preview");
- }
+  function applyMapping() {
+    const required = fields.filter(f => f.required);
+    const missing  = required.filter(f => !mapping[f.key]);
+    if (missing.length) { setError("الحقول المطلوبة غير مُعيَّنة: " + missing.map(f=>f.label).join("، ")); return; }
+    const rows = excelRows.map(r => {
+      const obj = { ...(config.defaultValues||{}) };
+      Object.entries(mapping).forEach(([fk, col]) => {
+        if (col && r[col] !== undefined) obj[fk] = String(r[col]).trim();
+      });
+      return obj;
+    }).filter(r => required.every(f => r[f.key] && String(r[f.key]).trim()));
+    if (!rows.length) { setError("لا توجد صفوف صالحة."); return; }
+    setError(""); setParsed(rows); setStep("preview");
+  }
 
- const newRecords = useMemo(() => parsed.filter(r => !existingKeys.has(r[config.primaryKey])), [parsed, existingKeys, config.primaryKey]);
- const duplicates = useMemo(() => parsed.filter(r => existingKeys.has(r[config.primaryKey])), [parsed, existingKeys, config.primaryKey]);
- const toImport = importMode === "update" ? parsed : newRecords;
+  const newRecs  = useMemo(() => parsed.filter(r => !existingKeys.has(r[config.primaryKey])), [parsed, existingKeys, config.primaryKey]);
+  const dups     = useMemo(() => parsed.filter(r =>  existingKeys.has(r[config.primaryKey])), [parsed, existingKeys, config.primaryKey]);
+  const toImport = importMode === "update" ? parsed : newRecs;
 
- // Run import
- async function runImport() {
- setImporting(true); setError(""); setProgress(0);
- let inserted=0, updated=0;
- const BATCH = 100;
- const total = toImport.length;
- for (let i=0; i<total; i+=BATCH) {
- const batch = toImport.slice(i, i+BATCH);
- if (importMode === "update") {
- const { error:e } = await supabase.from(config.table).upsert(batch, { onConflict: config.conflictColumn });
- if (e) { setError("خطأ في الاستيراد: " + e.message); setImporting(false); return; }
- const nib = batch.filter(r => !existingKeys.has(r[config.primaryKey])).length;
- inserted += nib; updated += batch.length - nib;
- } else {
- const { error:e } = await supabase.from(config.table).insert(batch);
- if (e) { setError("خطأ في الاستيراد: " + e.message); setImporting(false); return; }
- inserted += batch.length;
- }
- setProgress(Math.round((i+batch.length)/total*100));
- }
- logAction({ user, action:"bulk_import", table:config.table, details:{ inserted, updated, total } });
- setResult({ inserted, updated, skipped:duplicates.length });
- setStep("done"); setImporting(false);
- }
+  async function runImport() {
+    setImporting(true); setError(""); setProgress(0);
+    let inserted=0, updated=0;
+    const BATCH=100, total=toImport.length;
+    for (let i=0; i<total; i+=BATCH) {
+      const batch = toImport.slice(i, i+BATCH);
+      if (importMode === "update") {
+        const { error:e } = await supabase.from(config.table).upsert(batch, { onConflict: config.conflictColumn });
+        if (e) { setError("خطأ: " + e.message); setImporting(false); return; }
+        const nib = batch.filter(r=>!existingKeys.has(r[config.primaryKey])).length;
+        inserted+=nib; updated+=batch.length-nib;
+      } else {
+        const { error:e } = await supabase.from(config.table).insert(batch);
+        if (e) { setError("خطأ: " + e.message); setImporting(false); return; }
+        inserted+=batch.length;
+      }
+      setProgress(Math.round((i+batch.length)/total*100));
+    }
+    logAction({ user, action:"bulk_import", table:config.table, details:{ inserted, updated, total } });
+    setResult({ inserted, updated, skipped:dups.length });
+    setStep("done"); setImporting(false);
+  }
 
- // Shared styles 
- const card = { background:"#fff", borderRadius:12, border:"1px solid #E2E8F0", padding:16, marginBottom:12, boxShadow:"0 1px 3px rgba(0,0,0,0.04)" };
- const btnPrimary = { background:"#006B54", color:"#fff", border:"none", borderRadius:8, padding:"9px 18px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" };
- const btnSecondary = { background:"#F1F5F9", color:"#334155", border:"1px solid #E2E8F0", borderRadius:8, padding:"9px 18px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" };
+  const S = {
+    card:   { background:"#fff", borderRadius:12, border:"1px solid #E2E8F0", padding:16, marginBottom:10, boxShadow:"0 1px 3px rgba(0,0,0,0.04)" },
+    btnP:   { background:"#006B54", color:"#fff", border:"none", borderRadius:8, padding:"9px 18px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" },
+    btnS:   { background:"#F1F5F9", color:"#334155", border:"1px solid #E2E8F0", borderRadius:8, padding:"9px 14px", fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:"inherit" },
+  };
 
- // STEP 1: Upload 
- if (step === "upload") return (
- <div style={{ padding:16, direction:"rtl" }}>
- <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
- <h2 style={{ margin:0, fontSize:16, fontWeight:700, color:"#0F172A" }}>استيراد بيانات</h2>
- <button onClick={onCancel} style={{ ...btnSecondary, padding:"6px 12px" }}>إلغاء</button>
- </div>
+  if (step === "upload") return (
+    <div style={{ padding:16, direction:"rtl" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+        <h2 style={{ margin:0, fontSize:16, fontWeight:700, color:"#0F172A" }}>استيراد — {config.label||"بيانات"}</h2>
+        <button onClick={onCancel} style={S.btnS}>إلغاء</button>
+      </div>
+      <div style={{ ...S.card, border:"2px dashed #CBD5E1", textAlign:"center", padding:"28px 16px", cursor:"pointer", background:"#F8FAFC" }}
+        onClick={()=>fileRef.current?.click()}
+        onDragOver={e=>e.preventDefault()}
+        onDrop={e=>{ e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}>
+        <div style={{ width:48, height:48, borderRadius:12, background:"#EBF7F4", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 12px" }}>
+          <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#006B54" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+          </svg>
+        </div>
+        {parsing
+          ? <p style={{ margin:0, fontSize:13, color:"#006B54", fontWeight:600 }}>جاري قراءة الملف...</p>
+          : <>
+              <p style={{ margin:"0 0 4px", fontSize:14, fontWeight:600, color:"#0F172A" }}>اسحب الملف هنا أو اضغط للرفع</p>
+              <p style={{ margin:0, fontSize:12, color:"#64748B" }}>Excel (.xlsx, .xls) أو CSV</p>
+            </>}
+      </div>
+      <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display:"none" }} onChange={e=>handleFile(e.target.files?.[0])}/>
+      {error && <p style={{ color:"#DC2626", fontSize:12, marginTop:8 }}>{error}</p>}
+      <div style={{ ...S.card, marginTop:10 }}>
+        <p style={{ margin:"0 0 8px", fontSize:12, fontWeight:600, color:"#334155" }}>الحقول المتوقعة:</p>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
+          {fields.map(f=>(
+            <span key={f.key} style={{ padding:"3px 10px", borderRadius:20, fontSize:11,
+              background:f.required?"#EBF7F4":"#F1F5F9", color:f.required?"#006B54":"#64748B",
+              border:f.required?"1px solid #D6EFE9":"1px solid #E2E8F0", fontWeight:f.required?600:400 }}>
+              {f.label}{f.required?" *":""}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 
- <div style={{ ...card, border:"2px dashed #CBD5E1", textAlign:"center", padding:"32px 16px",
- cursor:"pointer", background:"#F8FAFC" }}
- onClick={() => fileRef.current?.click()}
- onDragOver={e=>e.preventDefault()}
- onDrop={e=>{ e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}>
- <div style={{ width:52, height:52, borderRadius:12, background:"#EBF7F4",
- display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 12px" }}>
- <svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke="#006B54" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
- <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
- </svg>
- </div>
- {parsing ? (
- <p style={{ margin:0, fontSize:13, color:"#006B54", fontWeight:600 }}>جاري قراءة الملف...</p>
- ) : (
- <>
- <p style={{ margin:"0 0 4px", fontSize:14, fontWeight:600, color:"#0F172A" }}>اسحب الملف هنا أو اضغط للرفع</p>
- <p style={{ margin:0, fontSize:12, color:"#64748B" }}>Excel (.xlsx, .xls) أو CSV — الحد الأقصى 5000 صف</p>
- </>
- )}
- </div>
- <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display:"none" }}
- onChange={e=>handleFile(e.target.files?.[0])}/>
- {error && <p style={{ color:"#DC2626", fontSize:12, marginTop:8 }}>{error}</p>}
+  if (step === "mapping") return (
+    <div style={{ padding:16, direction:"rtl" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+        <div>
+          <h2 style={{ margin:0, fontSize:16, fontWeight:700, color:"#0F172A" }}>تعيين الأعمدة</h2>
+          <p style={{ margin:"2px 0 0", fontSize:12, color:"#64748B" }}>{excelRows.length} صف — عيّن كل حقل للعمود المقابل</p>
+        </div>
+        <button onClick={()=>setStep("upload")} style={S.btnS}>رجوع</button>
+      </div>
+      {Object.keys(mapping).length > 0 && (
+        <div style={{ background:"#EBF7F4", border:"1px solid #D6EFE9", borderRadius:8, padding:"8px 12px", marginBottom:10, fontSize:12, color:"#006B54" }}>
+          تم الكشف التلقائي عن {Object.keys(mapping).length} أعمدة — راجع وعدّل إذا لزم
+        </div>
+      )}
+      <div style={{ display:"grid", gap:6 }}>
+        {fields.map(field=>(
+          <div key={field.key} style={{ ...S.card, display:"flex", alignItems:"center", gap:10, padding:"9px 12px", marginBottom:0 }}>
+            <div style={{ flex:"0 0 130px" }}>
+              <p style={{ margin:0, fontSize:12, fontWeight:600, color:"#0F172A" }}>{field.label}</p>
+              {field.required && <p style={{ margin:0, fontSize:10, color:"#DC2626" }}>مطلوب</p>}
+            </div>
+            <select value={mapping[field.key]||""} onChange={e=>setMapping(p=>({...p,[field.key]:e.target.value||undefined}))}
+              style={{ flex:1, padding:"7px 10px", border:`1.5px solid ${mapping[field.key]?"#006B54":"#E2E8F0"}`,
+                borderRadius:8, fontSize:12, fontFamily:"inherit", direction:"rtl",
+                background:mapping[field.key]?"#EBF7F4":"#fff", color:mapping[field.key]?"#006B54":"#64748B", outline:"none" }}>
+              <option value="">— لا يوجد —</option>
+              {excelCols.map(col=><option key={col} value={col}>{col}</option>)}
+            </select>
+            {mapping[field.key] && excelRows[0]?.[mapping[field.key]] && (
+              <span style={{ fontSize:10, color:"#94A3B8", maxWidth:70, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", flexShrink:0 }}>
+                مثال: {String(excelRows[0][mapping[field.key]]).slice(0,12)}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+      {error && <p style={{ color:"#DC2626", fontSize:12, marginTop:8 }}>{error}</p>}
+      <div style={{ display:"flex", gap:8, marginTop:14 }}>
+        <button onClick={applyMapping} style={{ ...S.btnP, flex:1 }}>معاينة البيانات</button>
+        <button onClick={onCancel} style={S.btnS}>إلغاء</button>
+      </div>
+    </div>
+  );
 
- <div style={{ ...card, marginTop:12 }}>
- <p style={{ margin:"0 0 8px", fontSize:12, fontWeight:700, color:"#334155" }}>الأعمدة المتوقعة لـ {config.label || "المدارس"}:</p>
- <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
- {fields.map(f => (
- <span key={f.key} style={{
- padding:"3px 10px", borderRadius:20, fontSize:11,
- background: f.required ? "#EBF7F4" : "#F1F5F9",
- color: f.required ? "#006B54" : "#64748B",
- border: f.required ? "1px solid #D6EFE9" : "1px solid #E2E8F0",
- fontWeight: f.required ? 600 : 400,
- }}>
- {f.label}{f.required ? " *" : ""}
- </span>
- ))}
- </div>
- </div>
- </div>
- );
+  if (step === "preview") return (
+    <div style={{ padding:16, direction:"rtl" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+        <div>
+          <h2 style={{ margin:0, fontSize:16, fontWeight:700, color:"#0F172A" }}>معاينة البيانات</h2>
+          <p style={{ margin:"2px 0 0", fontSize:12, color:"#64748B" }}>{parsed.length} صف جاهز</p>
+        </div>
+        <button onClick={()=>setStep("mapping")} style={S.btnS}>رجوع</button>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:12 }}>
+        {[{l:"جديد",v:newRecs.length,c:"#006B54",bg:"#EBF7F4"},{l:"مكرر",v:dups.length,c:"#D97706",bg:"#FFFBEB"},{l:"الإجمالي",v:parsed.length,c:"#0F172A",bg:"#F1F5F9"}].map(s=>(
+          <div key={s.l} style={{ background:s.bg, borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
+            <p style={{ margin:0, fontSize:20, fontWeight:800, color:s.c }}>{s.v}</p>
+            <p style={{ margin:0, fontSize:11, color:s.c }}>{s.l}</p>
+          </div>
+        ))}
+      </div>
+      {dups.length > 0 && (
+        <div style={{ ...S.card, marginBottom:10 }}>
+          <p style={{ margin:"0 0 8px", fontSize:12, fontWeight:600, color:"#334155" }}>التعامل مع المكررة:</p>
+          <div style={{ display:"flex", gap:6 }}>
+            {[{v:"new_only",l:"تجاهل المكررة"},{v:"update",l:"تحديث المكررة"}].map(opt=>(
+              <button key={opt.v} onClick={()=>setImportMode(opt.v)} style={{
+                flex:1, padding:"7px", borderRadius:8, cursor:"pointer", fontFamily:"inherit", fontSize:12,
+                fontWeight:importMode===opt.v?700:400, border:`1.5px solid ${importMode===opt.v?"#006B54":"#E2E8F0"}`,
+                background:importMode===opt.v?"#EBF7F4":"#fff", color:importMode===opt.v?"#006B54":"#64748B" }}>
+                {opt.l}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div style={{ overflowX:"auto", borderRadius:10, border:"1px solid #E2E8F0", marginBottom:12 }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", minWidth:360 }}>
+          <thead>
+            <tr style={{ background:"#EBF7F4" }}>
+              {fields.filter(f=>mapping[f.key]).slice(0,5).map(f=>(
+                <th key={f.key} style={{ padding:"7px 10px", fontSize:11, fontWeight:700, color:"#006B54", textAlign:"right", whiteSpace:"nowrap" }}>{f.label}</th>
+              ))}
+              <th style={{ padding:"7px 10px", fontSize:11, fontWeight:700, color:"#006B54", textAlign:"right" }}>الحالة</th>
+            </tr>
+          </thead>
+          <tbody>
+            {parsed.slice(0,12).map((row,i)=>{
+              const isDup = existingKeys.has(row[config.primaryKey]);
+              return (
+                <tr key={i} style={{ borderBottom:"1px solid #F1F5F9", background:isDup?"#FFFBEB":"#fff" }}>
+                  {fields.filter(f=>mapping[f.key]).slice(0,5).map(f=>(
+                    <td key={f.key} style={{ padding:"7px 10px", fontSize:12, color:"#334155", maxWidth:120, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{row[f.key]||"—"}</td>
+                  ))}
+                  <td style={{ padding:"7px 10px" }}>
+                    <span style={{ fontSize:10, fontWeight:600, padding:"2px 7px", borderRadius:20,
+                      background:isDup?"#FEF3C7":"#ECFDF5", color:isDup?"#D97706":"#059669" }}>
+                      {isDup?"مكرر":"جديد"}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {parsed.length > 12 && <p style={{ textAlign:"center", padding:6, fontSize:11, color:"#94A3B8", margin:0 }}>عرض 12 من {parsed.length}</p>}
+      </div>
+      {error && <p style={{ color:"#DC2626", fontSize:12, marginBottom:8 }}>{error}</p>}
+      <div style={{ display:"flex", gap:8 }}>
+        <button onClick={runImport} disabled={toImport.length===0}
+          style={{ ...S.btnP, flex:1, opacity:toImport.length===0?0.5:1, cursor:toImport.length===0?"not-allowed":"pointer" }}>
+          استيراد {toImport.length} سجل
+        </button>
+        <button onClick={onCancel} style={S.btnS}>إلغاء</button>
+      </div>
+    </div>
+  );
 
- // STEP 2: Column Mapping 
- if (step === "mapping") return (
- <div style={{ padding:16, direction:"rtl" }}>
- <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
- <div>
- <h2 style={{ margin:0, fontSize:16, fontWeight:700, color:"#0F172A" }}>تعيين الأعمدة</h2>
- <p style={{ margin:"3px 0 0", fontSize:12, color:"#64748B" }}>{excelRows.length} صف في الملف — عيّن كل حقل للعمود المقابل</p>
- </div>
- <button onClick={()=>setStep("upload")} style={{ ...btnSecondary, padding:"6px 12px" }}>رجوع</button>
- </div>
+  if (importing) return (
+    <div style={{ padding:40, textAlign:"center", direction:"rtl" }}>
+      <div style={{ width:44, height:44, borderRadius:"50%", border:"3px solid #D6EFE9", borderTopColor:"#006B54", animation:"spin 0.7s linear infinite", margin:"0 auto 14px" }}/>
+      <p style={{ margin:"0 0 14px", fontSize:14, fontWeight:600, color:"#0F172A" }}>جاري الاستيراد... {progress}%</p>
+      <div style={{ height:7, background:"#F1F5F9", borderRadius:6, overflow:"hidden", maxWidth:280, margin:"0 auto" }}>
+        <div style={{ height:"100%", background:"linear-gradient(90deg,#006B54,#008A6A)", borderRadius:6, width:`${progress}%`, transition:"width 0.3s" }}/>
+      </div>
+    </div>
+  );
 
- {/* Auto-detect banner */}
- {Object.keys(mapping).length > 0 && (
- <div style={{ background:"#EBF7F4", border:"1px solid #D6EFE9", borderRadius:8,
- padding:"8px 12px", marginBottom:12, fontSize:12, color:"#006B54", fontWeight:500,
- display:"flex", alignItems:"center", gap:6 }}>
- <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
- تم الكشف التلقائي عن {Object.keys(mapping).length} أعمدة — راجع التعيين وعدّله إذا لزم
- </div>
- )}
+  if (step === "done" && result) return (
+    <div style={{ padding:28, textAlign:"center", direction:"rtl" }}>
+      <div style={{ width:52, height:52, borderRadius:14, background:"#EBF7F4", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 14px" }}>
+        <svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke="#006B54" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </div>
+      <h2 style={{ margin:"0 0 6px", fontSize:17, fontWeight:700, color:"#0F172A" }}>اكتمل الاستيراد</h2>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, margin:"14px auto", maxWidth:300 }}>
+        {[{l:"أُضيف",v:result.inserted,c:"#006B54",bg:"#EBF7F4"},{l:"حُدِّث",v:result.updated,c:"#D97706",bg:"#FFFBEB"},{l:"تجاهَل",v:result.skipped,c:"#64748B",bg:"#F1F5F9"}].map(s=>(
+          <div key={s.l} style={{ background:s.bg, borderRadius:10, padding:"10px 8px" }}>
+            <p style={{ margin:0, fontSize:20, fontWeight:800, color:s.c }}>{s.v}</p>
+            <p style={{ margin:0, fontSize:11, color:s.c }}>{s.l}</p>
+          </div>
+        ))}
+      </div>
+      <button onClick={onDone} style={{ ...S.btnP, marginTop:6 }}>العودة للدليل</button>
+    </div>
+  );
 
- <div style={{ display:"grid", gap:8 }}>
- {fields.map(field => (
- <div key={field.key} style={{ ...card, display:"flex", alignItems:"center", gap:12, padding:"10px 14px" }}>
- <div style={{ flex:"0 0 140px" }}>
- <p style={{ margin:0, fontSize:12, fontWeight:600, color:"#0F172A" }}>{field.label}</p>
- {field.required && <p style={{ margin:0, fontSize:10, color:"#DC2626" }}>مطلوب</p>}
- </div>
- <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0 }}>
- <path d="M9 18l6-6-6-6"/>
- </svg>
- <select value={mapping[field.key] || ""} onChange={e => setMapping(p=>({...p,[field.key]:e.target.value||undefined}))}
- style={{ flex:1, padding:"8px 10px", border:`1.5px solid ${mapping[field.key]?"#006B54":"#E2E8F0"}`,
- borderRadius:8, fontSize:12, fontFamily:"inherit", direction:"rtl",
- background: mapping[field.key] ? "#EBF7F4" : "#fff",
- color: mapping[field.key] ? "#006B54" : "#64748B",
- outline:"none" }}>
- <option value="">— لا يوجد —</option>
- {excelCols.map(col => <option key={col} value={col}>{col}</option>)}
- </select>
- {mapping[field.key] && (
- <span style={{ fontSize:10, color:"#94A3B8", flexShrink:0, maxWidth:80, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
- {excelRows[0]?.[mapping[field.key]] ? `مثال: ${String(excelRows[0][mapping[field.key]]).slice(0,15)}` : ""}
- </span>
- )}
- </div>
- ))}
- </div>
-
- {error && <p style={{ color:"#DC2626", fontSize:12, marginTop:8 }}>{error}</p>}
-
- <div style={{ display:"flex", gap:8, marginTop:16 }}>
- <button onClick={applyMapping} style={{ ...btnPrimary, flex:1 }}>
- معاينة البيانات
- </button>
- <button onClick={onCancel} style={{ ...btnSecondary }}>إلغاء</button>
- </div>
- </div>
- );
-
- // STEP 3: Preview 
- if (step === "preview") return (
- <div style={{ padding:16, direction:"rtl" }}>
- <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
- <div>
- <h2 style={{ margin:0, fontSize:16, fontWeight:700, color:"#0F172A" }}>معاينة البيانات</h2>
- <p style={{ margin:"3px 0 0", fontSize:12, color:"#64748B" }}>{parsed.length} صف جاهز للاستيراد</p>
- </div>
- <button onClick={()=>setStep("mapping")} style={{ ...btnSecondary, padding:"6px 12px" }}>رجوع</button>
- </div>
-
- {/* Stats */}
- <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:14 }}>
- {[
- { label:"جديد", value:newRecords.length, color:"#006B54", bg:"#EBF7F4" },
- { label:"مكرر", value:duplicates.length, color:"#D97706", bg:"#FFFBEB" },
- { label:"الإجمالي", value:parsed.length, color:"#0F172A", bg:"#F1F5F9" },
- ].map(s=>(
- <div key={s.label} style={{ background:s.bg, borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
- <p style={{ margin:0, fontSize:20, fontWeight:800, color:s.color }}>{s.value}</p>
- <p style={{ margin:0, fontSize:11, color:s.color }}>{s.label}</p>
- </div>
- ))}
- </div>
-
- {/* Import mode */}
- {duplicates.length > 0 && (
- <div style={{ ...card, marginBottom:12 }}>
- <p style={{ margin:"0 0 8px", fontSize:12, fontWeight:600, color:"#334155" }}>كيف تتعامل مع السجلات المكررة؟</p>
- <div style={{ display:"flex", gap:8 }}>
- {[
- { v:"new_only", l:"تجاهل المكررة" },
- { v:"update", l:"تحديث المكررة" },
- ].map(opt=>(
- <button key={opt.v} onClick={()=>setImportMode(opt.v)} style={{
- flex:1, padding:"8px", borderRadius:8, cursor:"pointer", fontFamily:"inherit",
- fontSize:12, fontWeight:importMode===opt.v?700:400,
- border:`1.5px solid ${importMode===opt.v?"#006B54":"#E2E8F0"}`,
- background:importMode===opt.v?"#EBF7F4":"#fff",
- color:importMode===opt.v?"#006B54":"#64748B",
- }}>{opt.l}</button>
- ))}
- </div>
- </div>
- )}
-
- {/* Preview table */}
- <div style={{ overflowX:"auto", borderRadius:10, border:"1px solid #E2E8F0", marginBottom:14 }}>
- <table style={{ width:"100%", borderCollapse:"collapse", minWidth:400 }}>
- <thead>
- <tr style={{ background:"#EBF7F4" }}>
- {fields.filter(f=>mapping[f.key]).slice(0,5).map(f=>(
- <th key={f.key} style={{ padding:"8px 12px", fontSize:11, fontWeight:700, color:"#006B54", textAlign:"right", whiteSpace:"nowrap" }}>
- {f.label}
- </th>
- ))}
- <th style={{ padding:"8px 12px", fontSize:11, fontWeight:700, color:"#006B54", textAlign:"right" }}>الحالة</th>
- </tr>
- </thead>
- <tbody>
- {parsed.slice(0,15).map((row,i)=>{
- const isDup = existingKeys.has(row[config.primaryKey]);
- return (
- <tr key={i} style={{ borderBottom:"1px solid #F1F5F9", background:isDup?"#FFFBEB":"#fff" }}>
- {fields.filter(f=>mapping[f.key]).slice(0,5).map(f=>(
- <td key={f.key} style={{ padding:"8px 12px", fontSize:12, color:"#334155", whiteSpace:"nowrap", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis" }}>
- {row[f.key] || "—"}
- </td>
- ))}
- <td style={{ padding:"8px 12px" }}>
- <span style={{ fontSize:10, fontWeight:600, padding:"2px 8px", borderRadius:20,
- background:isDup?"#FEF3C7":"#ECFDF5", color:isDup?"#D97706":"#059669" }}>
- {isDup ? "مكرر" : "جديد"}
- </span>
- </td>
- </tr>
- );
- })}
- </tbody>
- </table>
- {parsed.length > 15 && (
- <p style={{ textAlign:"center", padding:8, fontSize:11, color:"#94A3B8", margin:0 }}>
- عرض 15 من {parsed.length} صف
- </p>
- )}
- </div>
-
- {error && <p style={{ color:"#DC2626", fontSize:12, marginBottom:8 }}>{error}</p>}
-
- <div style={{ display:"flex", gap:8 }}>
- <button onClick={runImport} disabled={toImport.length===0} style={{
- ...btnPrimary, flex:1,
- opacity:toImport.length===0?0.5:1,
- cursor:toImport.length===0?"not-allowed":"pointer",
- }}>
- استيراد {toImport.length} سجل
- </button>
- <button onClick={onCancel} style={{ ...btnSecondary }}>إلغاء</button>
- </div>
- </div>
- );
-
- // STEP 4: Importing (progress) 
- if (step === "importing" || importing) return (
- <div style={{ padding:32, textAlign:"center", direction:"rtl" }}>
- <div style={{ width:48, height:48, borderRadius:"50%", border:"3px solid #D6EFE9",
- borderTopColor:"#006B54", animation:"spin 0.7s linear infinite", margin:"0 auto 16px" }}/>
- <p style={{ margin:"0 0 16px", fontSize:14, fontWeight:600, color:"#0F172A" }}>
- جاري الاستيراد... {progress}%
- </p>
- <div style={{ height:8, background:"#F1F5F9", borderRadius:6, overflow:"hidden", maxWidth:300, margin:"0 auto" }}>
- <div style={{ height:"100%", background:"linear-gradient(90deg,#006B54,#008A6A)",
- borderRadius:6, width:`${progress}%`, transition:"width 0.3s" }}/>
- </div>
- </div>
- );
-
- // STEP 5: Done 
- if (step === "done" && result) return (
- <div style={{ padding:24, textAlign:"center", direction:"rtl" }}>
- <div style={{ width:56, height:56, borderRadius:14, background:"#EBF7F4",
- display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px" }}>
- <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="#006B54" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
- <path d="M20 6 9 17l-5-5"/>
- </svg>
- </div>
- <h2 style={{ margin:"0 0 8px", fontSize:18, fontWeight:700, color:"#0F172A" }}>اكتمل الاستيراد</h2>
- <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, margin:"16px 0", maxWidth:320, marginLeft:"auto", marginRight:"auto" }}>
- {[
- { label:"أُضيف", value:result.inserted, color:"#006B54", bg:"#EBF7F4" },
- { label:"حُدِّث", value:result.updated, color:"#D97706", bg:"#FFFBEB" },
- { label:"تجاهَل", value:result.skipped, color:"#64748B", bg:"#F1F5F9" },
- ].map(s=>(
- <div key={s.label} style={{ background:s.bg, borderRadius:10, padding:"10px 8px" }}>
- <p style={{ margin:0, fontSize:22, fontWeight:800, color:s.color }}>{s.value}</p>
- <p style={{ margin:0, fontSize:11, color:s.color }}>{s.label}</p>
- </div>
- ))}
- </div>
- <button onClick={onDone} style={{ ...btnPrimary, marginTop:8 }}>العودة للدليل</button>
- </div>
- );
-
- return null;
+  return null;
 }
 
 function EntityForm({ initial, config, user, onSaved, onCancel }) {
@@ -1075,7 +1068,7 @@ const SCHOOLS_CONFIG = {
  {key:"email",label:"البريد الإلكتروني",dir:"ltr",inputType:"email"},
  {key:"status",label:"الحالة",type:"status"},
  ],
- importConfig:{table:"survey_schools",primaryKey:"id",conflictColumn:"id",requiredFields:["id","name"],
+ importConfig:{table:"survey_schools",primaryKey:"id",conflictColumn:"id",entityType:"schools",label:"المدارس",requiredFields:["id","name"],
  columnMap:{"الرقم الوزاري":"id","اسم المدرسة":"name","المرحلة":"stage","القطاع":"sector","الحي":"district","العنوان الوطني":"national_address","رابط الخريطة":"maps_url","المدير":"principal","الجوال":"phone","البريد":"email"},
  defaultValues:{status:STATUS_ACTIVE},
  previewColumns:[{key:"id",label:"الرقم الوزاري"},{key:"name",label:"اسم المدرسة"},{key:"stage",label:"المرحلة"},{key:"district",label:"الحي"},{key:"principal",label:"المدير/ة"}],
@@ -1109,7 +1102,7 @@ const SUPERVISORS_CONFIG = {
  {key:"email",label:"البريد الإلكتروني",dir:"ltr",inputType:"email"},
  {key:"status",label:"الحالة",type:"status"},
  ],
- importConfig:{table:"supervisors",primaryKey:"national_id",conflictColumn:"national_id",requiredFields:["national_id","name"],
+ importConfig:{table:"supervisors",primaryKey:"national_id",conflictColumn:"national_id",entityType:"supervisors",label:"المشرفون",requiredFields:["national_id","name"],
  columnMap:{"رقم الهوية":"national_id","الاسم الكامل":"name","الإدارة":"department","القسم":"section","المسمى الوظيفي":"job_title","الجوال":"phone","البريد":"email"},
  defaultValues:{status:STATUS_ACTIVE},
  previewColumns:[{key:"national_id",label:"رقم الهوية"},{key:"name",label:"الاسم"},{key:"department",label:"الإدارة"},{key:"job_title",label:"المسمى"}],
@@ -1143,7 +1136,7 @@ const ADMINISTRATORS_CONFIG = {
  {key:"email",label:"البريد الإلكتروني",dir:"ltr",inputType:"email"},
  {key:"status",label:"الحالة",type:"status"},
  ],
- importConfig:{table:"administrators",primaryKey:"national_id",conflictColumn:"national_id",requiredFields:["national_id","full_name"],
+ importConfig:{table:"administrators",primaryKey:"national_id",conflictColumn:"national_id",entityType:"administrators",label:"المديرون",requiredFields:["national_id","full_name"],
  columnMap:{"رقم الهوية":"national_id","الاسم الكامل":"full_name","الإدارة":"department","القسم":"section","المسمى الوظيفي":"job_title","الجوال":"phone","البريد":"email"},
  defaultValues:{status:STATUS_ACTIVE},
  previewColumns:[{key:"national_id",label:"رقم الهوية"},{key:"full_name",label:"الاسم"},{key:"department",label:"الإدارة"},{key:"job_title",label:"المسمى"}],
