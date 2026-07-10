@@ -402,18 +402,40 @@ function SendMessagePanel({ surveys, user, isAdmin }) {
  async function loadAudience() {
    const sType = selectedSurvey.survey_type;
    let audience = [];
-   if (sType === "supervisor") {
-     const { data } = await supabase.from("supervisors")
-       .select("id,name,phone,department,section,status").eq("status","نشط");
-     audience = (data||[]).map(s=>({ ...s, _type:"supervisor" }));
-   } else if (sType === "administrator") {
-     const { data } = await supabase.from("administrators")
-       .select("id,full_name,phone,department,section,status").eq("status","نشط");
-     audience = (data||[]).map(s=>({ ...s, name:s.full_name, _type:"administrator" }));
+
+   if (sType === "supervisor" || sType === "administrator") {
+     // Load all people of this type
+     let allPeople = [];
+     if (sType === "supervisor") {
+       const { data } = await supabase.from("supervisors")
+         .select("id,name,phone,department,section,status").eq("status","نشط");
+       allPeople = (data||[]).map(s=>({ ...s, _type:"supervisor" }));
+     } else {
+       const { data } = await supabase.from("administrators")
+         .select("id,full_name,phone,department,section,status").eq("status","نشط");
+       allPeople = (data||[]).map(s=>({ ...s, name:s.full_name, _type:"administrator" }));
+     }
+
+     // Load respondents for this survey
+     const { data: responses } = await supabase
+       .from("survey_responses")
+       .select("respondent_id,school_id")
+       .eq("survey_id", selectedSurvey.id);
+
+     // Build set of responded IDs
+     const respondedIds = new Set(
+       (responses||[]).map(r => r.respondent_id || r.school_id).filter(Boolean)
+     );
+
+     // Filter out respondents
+     audience = allPeople.filter(p => !respondedIds.has(p.id));
+
    } else {
+     // Schools: use existing fetchNonRespondents
      if (!allSchools.length) return;
      audience = await fetchNonRespondents(selectedSurvey, allSchools);
    }
+
    setNonRespondents(audience);
    setRecipients(audience);
  }
