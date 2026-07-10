@@ -26,54 +26,48 @@ export const NAV_SECTIONS = [
   {
     id: "home",
     items: [
-      { id: "dashboard", label: "الرئيسية", icon: "🏠", tabId: "dashboard" },
+      { id: "dashboard",  label: "الاستبيانات",  icon: "📋", tabId: "dashboard" },
+      { id: "overview",   label: "نظرة عامة",    icon: "🏠", tabId: "overview" },
+      { id: "analytics",  label: "إحصائيات",     icon: "📊", tabId: "analytics" },
     ],
   },
   {
     id: "surveys",
     label: "الاستبيانات",
-    icon: "📝",
     items: [
-      { id: "surveys-all",       label: "جميع الاستبيانات", icon: "📋", tabId: "surveys" },
-      { id: "surveys-new",       label: "إنشاء استبيان",    icon: "➕", tabId: "surveys", action: "new" },
-      { id: "surveys-templates", label: "القوالب",           icon: "🗂️", tabId: "templates" },
+      { id: "surveys-new",       label: "إنشاء استبيان", icon: "➕", tabId: "dashboard", action: "new" },
+      { id: "surveys-templates", label: "القوالب",        icon: "🗂️", tabId: "templates" },
     ],
   },
   {
     id: "directory",
     label: "الدليل",
-    icon: "📁",
     items: [
-      { id: "dir-schools",        label: "إدارة المدارس",  icon: "🏫", tabId: "directory" },
-      { id: "dir-administrators", label: "إدارة المديرين", icon: "👨‍💼", tabId: "directory" },
-      { id: "dir-supervisors",    label: "إدارة المشرفين", icon: "👤", tabId: "directory" },
+      { id: "dir-schools",        label: "المدارس",   icon: "🏫", tabId: "directory" },
+      { id: "dir-administrators", label: "المديرون",  icon: "👨‍💼", tabId: "directory" },
+      { id: "dir-supervisors",    label: "المشرفون",  icon: "👤", tabId: "directory" },
     ],
   },
   {
     id: "insights",
+    label: "التقارير",
     items: [
-      { id: "analytics", label: "إحصائيات",     icon: "📊", tabId: "analytics" },
-      { id: "reports",   label: "التقارير",      icon: "📈", tabId: "reports" },
-      { id: "library",   label: "مكتبة المحتوى", icon: "📚", tabId: "library" },
-      { id: "review",    label: "مركز المراجعة", icon: "🔍", tabId: "review" },
-    ],
-  },
-  {
-    id: "comms",
-    items: [
-      { id: "communication", label: "الاتصالات", icon: "📨", tabId: "communication" },
+      { id: "reports",   label: "التقارير",       icon: "📈", tabId: "reports" },
+      { id: "library",   label: "مكتبة المحتوى",  icon: "📚", tabId: "library" },
+      { id: "review",    label: "مركز المراجعة",  icon: "🔍", tabId: "review" },
+      { id: "comms",     label: "الاتصالات",      icon: "📨", tabId: "communication" },
     ],
   },
   {
     id: "admin",
     label: "الإدارة",
-    icon: "⚙",
     adminOnly: true,
     items: [
-      { id: "admin-users",    label: "إدارة المستخدمين", icon: "👥", tabId: "more", action: "users" },
-      { id: "admin-audit",    label: "سجل العمليات",     icon: "📝", tabId: "more", action: "auditlog" },
-      { id: "admin-settings", label: "الإعدادات",        icon: "⚙️", tabId: "more", action: "settings" },
-      { id: "system-identity", label: "هوية النظام", icon: "🏛️", tabId: "identity" },
+      { id: "admin-users",     label: "المستخدمون",  icon: "👥", tabId: "more", action: "users" },
+      { id: "admin-super",     label: "المشرفون",    icon: "👤", tabId: "more", action: "supervisors" },
+      { id: "admin-audit",     label: "سجل العمليات",icon: "📝", tabId: "more", action: "auditlog" },
+      { id: "admin-settings",  label: "الإعدادات",   icon: "⚙️", tabId: "more", action: "settings" },
+      { id: "admin-identity",  label: "هوية النظام", icon: "🏛️", tabId: "identity" },
     ],
   },
 ];
