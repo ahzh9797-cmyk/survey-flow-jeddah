@@ -1,1592 +1,786 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { supabase, C, Btn, Card, Tag, Spinner, ErrorBanner, ExportMenu,
-  ensureXLSX, ensurePDF, pdfRTLText, tsStamp, loadScript, logAction,
-  RoleBadge, ViewerNotice, useSchoolCount, useAppSettings, saveSetting } from "./lib.jsx";
-import { SURVEY_TYPES, SURVEY_TYPE_LABELS, SURVEY_STATUS_LABELS,
-  SurveyTypeSelector, SurveySettingsPanel } from "./SurveyService.jsx";
-import { AudienceSelector, saveTargeting, loadTargeting, emptyTargeting } from "./TargetingService.jsx";
-import { genId, deepClone } from "./utils.js";
-import { audit, AUDIT_ACTION_LABELS } from "./AuditService.js";
-import LifecycleActions, { LifecycleBadge } from "./LifecycleActions.jsx";
-import { resolveState, LIFECYCLE_STATE_CONFIG } from "./SurveyLifecycleService.js";
-import LoginPage from "./LoginPage.jsx";
-import SystemIdentityCenter from "./SystemIdentityCenter.jsx";
+/**
+ * CommunicationCenter — مركز الاتصالات
+ * Phase 3 — Enterprise UI redesign (Microsoft 365 / Stripe language)
+ * Logic: 100% unchanged. Only presentation layer rebuilt.
+ */
 
-//  Enterprise UI styles — Phase 3, matches AppShell design system 
-if (typeof document !== "undefined" && !document.getElementById("surveys-enterprise-styles")) {
-  const _s = document.createElement("style");
-  _s.id = "surveys-enterprise-styles";
-  _s.textContent = `
-    .survey-row { transition: background 0.12s ease; }
-    .survey-row:hover { background: #F8FAFC; }
-    .survey-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
-    .survey-card:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(0,0,0,0.10) !important; }
-    .action-btn { transition: all 0.12s ease; }
-    .action-btn:hover { filter: brightness(0.95); }
-    .action-btn:active { transform: scale(0.95); }
-    .search-input:focus { border-color: #059669 !important; box-shadow: 0 0 0 3px rgba(5,150,105,0.12) !important; outline: none; }
-    .filter-chip { transition: all 0.15s ease; }
-    @keyframes card-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
-    .card-in { animation: card-in 0.25s ease both; }
-    @keyframes spin { to { transform: rotate(360deg) } }
-    @keyframes q-in { from { opacity:0; transform:translateY(6px) scale(0.99); } to { opacity:1; transform:translateY(0) scale(1); } }
-    .q-card { animation: q-in 0.2s ease both; transition: box-shadow 0.15s ease, transform 0.15s ease; }
-    .q-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08) !important; }
-    .q-card.dragging { opacity: 0.5; transform: scale(0.98); }
-    .q-card.drag-over { border-color: #059669 !important; box-shadow: 0 0 0 2px #05966940 !important; }
-    .q-toolbar-btn { transition: all 0.12s ease; background: none; border: none; cursor: pointer;
-      padding: 6px; border-radius: 8px; font-size: 14px; color: #64748B; display:flex; align-items:center; justify-content:center; }
-    .q-toolbar-btn:hover { background: #F1F5F9; color: #334155; }
-    .q-toolbar-btn:active { transform: scale(0.9); }
-    .q-toolbar-btn.danger:hover { background: #FEF2F2; color: #DC2626; }
-    .q-body-collapsed { overflow:hidden; max-height:0; opacity:0; }
-    .q-body-expanded { overflow:visible; max-height:1000px; opacity:1; transition: max-height 0.25s ease, opacity 0.2s ease; }
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { supabase, C, Btn, Card, Tag, Spinner, ErrorBanner } from "./lib.jsx";
+import { SURVEY_TYPE_LABELS } from "./SurveyService.jsx";
+import { resolveTargetedSchools, emptyTargeting, loadTargeting } from "./TargetingService.jsx";
+import {
+ TEMPLATE_CATEGORIES, TEMPLATE_VARIABLES,
+ resolveTemplate, buildTemplateVariables,
+ fetchTemplates, createTemplate, updateTemplate,
+ archiveTemplate, duplicateTemplate,
+ sendCommunication, fetchCommunicationLog, fetchNonRespondents,
+} from "./CommunicationService.js";
+import { NOTIFICATION_CHANNELS } from "./NotificationService.js";
 
-    /* Desktop table view — shown ≥1024px, hidden below */
-    .surveys-table-view { display: none; }
-    .surveys-card-view { display: block; }
-    @media (min-width: 1024px) {
-      .surveys-table-view { display: block; }
-      .surveys-card-view { display: none; }
-    }
-  `;
-  document.head.appendChild(_s);
+// Enterprise styles — Phase 3, matches Dashboard/SurveysList/Directory/Templates 
+if (typeof document !== "undefined" && !document.getElementById("comm-enterprise-styles")) {
+ const _s = document.createElement("style");
+ _s.id = "comm-enterprise-styles";
+ _s.textContent = `
+ .comm-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+ .comm-card:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,0,0,0.09) !important; }
+ .comm-btn { transition: all 0.12s ease; }
+ .comm-btn:active { transform: scale(0.95); }
+ .comm-search:focus { border-color: #059669 !important; box-shadow: 0 0 0 3px rgba(5,150,105,0.12) !important; outline: none; }
+ .comm-chip { transition: all 0.15s ease; }
+ @keyframes comm-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+ .comm-in { animation: comm-in 0.2s ease both; }
+ @keyframes spin { to { transform: rotate(360deg) } }
+
+ /* Desktop two-column layout for the Send panel — shown ≥1280px */
+ .comm-send-layout { display: block; }
+ @media (min-width: 1280px) {
+ .comm-send-layout { display: grid; grid-template-columns: 1fr 380px; gap: 18px; align-items: start; }
+ }
+
+ /* Templates grid — responsive like TemplatesPage */
+ .comm-tmpl-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+ @media (min-width: 1024px) {
+ .comm-tmpl-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
+ }
+ @media (min-width: 1440px) {
+ .comm-tmpl-grid { grid-template-columns: repeat(3, 1fr); }
+ }
+ `;
+ document.head.appendChild(_s);
 }
 
-const PT = {
-  e900:"#064E3B",e800:"#065F46",e700:"#047857",e600:"#059669",e500:"#10B981",
-  e100:"#D1FAE5",e50:"#ECFDF5",
-  gold:"#C9A84C",goldL:"#FEF3C7",
-  s900:"#0F172A",s700:"#334155",s500:"#64748B",s400:"#94A3B8",
-  s300:"#CBD5E1",s200:"#E2E8F0",s100:"#F1F5F9",s50:"#F8FAFC",
-  white:"#FFFFFF",bg:"#F0F4F8",
-  danger:"#DC2626",dangerBg:"#FEF2F2",warn:"#D97706",warnBg:"#FFFBEB",
-  success:"#059669",successBg:"#ECFDF5",purple:"#7B2D8B",purpleBg:"#F5EEFA",amber:"#B7791F",
+const CC = {
+ e900:"#064E3B",e800:"#065F46",e700:"#047857",e600:"#059669",e500:"#10B981",
+ e100:"#D1FAE5",e50:"#ECFDF5",
+ gold:"#C9A84C",goldL:"#FEF3C7",
+ s900:"#0F172A",s700:"#334155",s500:"#64748B",s400:"#94A3B8",
+ s300:"#CBD5E1",s200:"#E2E8F0",s100:"#F1F5F9",s50:"#F8FAFC",
+ white:"#FFFFFF",bg:"#F0F4F8",
+ danger:"#DC2626",dangerBg:"#FEF2F2",warn:"#D97706",warnBg:"#FFFBEB",
+ success:"#059669",successBg:"#ECFDF5",purple:"#7B2D8B",purpleBg:"#F5EEFA",
+};
+
+// Shared UI 
+function StatusBadge({ status }) {
+ const cfg = {
+ sent: { label:"تم الإرسال", color:CC.success, bg:CC.successBg },
+ partial: { label:"جزئي", color:CC.warn, bg:CC.warnBg },
+ failed: { label:"فشل", color:CC.danger, bg:CC.dangerBg },
+ active: { label:"نشط", color:CC.success, bg:CC.successBg },
+ archived:{ label:"مؤرشف", color:CC.s400, bg:CC.s100 },
+ }[status] || { label:status, color:CC.s400, bg:CC.s100 };
+ return (
+ <span style={{ background:cfg.bg, color:cfg.color, border:`1px solid ${cfg.color}30`,
+ borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700, whiteSpace:"nowrap" }}>
+ {cfg.label}
+ </span>
+ );
+}
+
+function SectionCard({ title, step, children }) {
+ return (
+ <div className="comm-card" style={{ background:CC.white, borderRadius:16,
+ border:`1px solid ${CC.s200}`, marginBottom:14,
+ boxShadow:"0 1px 3px rgba(0,0,0,0.04)", overflow:"hidden" }}>
+ {title && (
+ <div style={{ padding:"12px 16px 10px", borderBottom:`1px solid ${CC.s100}`,
+ display:"flex", alignItems:"center", gap:10 }}>
+ {step && (
+ <span style={{ background:`linear-gradient(135deg,${CC.e600},${CC.e800})`,
+ color:"#fff", borderRadius:8, width:24, height:24,
+ display:"flex", alignItems:"center", justifyContent:"center",
+ fontSize:12, fontWeight:800, flexShrink:0 }}>{step}</span>
+ )}
+ <p style={{ margin:0, fontSize:13, fontWeight:800, color:CC.s900 }}>{title}</p>
+ </div>
+ )}
+ <div style={{ padding:"14px 16px" }}>{children}</div>
+ </div>
+ );
+}
+
+function FilterChip({ label, active, color=CC.e600, bg, onClick }) {
+ return (
+ <button onClick={onClick} className="comm-chip" style={{
+ padding:"5px 12px", borderRadius:20, fontSize:11, fontFamily:"inherit",
+ cursor:"pointer", whiteSpace:"nowrap", fontWeight:active?700:500,
+ border:`1.5px solid ${active?color:CC.s200}`,
+ background:active?(bg||`${color}10`):CC.white,
+ color:active?color:CC.s500,
+ }}>{label}</button>
+ );
+}
+
+const iSt = {
+ width:"100%", padding:"11px 13px", border:`1.5px solid ${CC.s200}`,
+ borderRadius:12, fontSize:14, fontFamily:"inherit", direction:"rtl",
+ boxSizing:"border-box", outline:"none", background:CC.white, color:CC.s900,
+ transition:"border-color 0.2s",
 };
 
 // 
-// SURVEYS LIST — Phase 3 enterprise redesign
-// Logic: filtering, state resolution, all handlers — 100% unchanged.
-// Adds: a table view for desktop (≥1024px) alongside the existing
-// card view (kept as-is for mobile), toggled purely via CSS media
-// query so there is zero extra JS branching or state.
+// TEMPLATE FORM — logic unchanged
 // 
-// 
-// SURVEYS LIST — v2 redesign
-// Logic: 100% unchanged. UI: compact cards with inline
-// respondents panel + direct export per survey.
-// 
-//  Ministry SVG Icons 
-function MIcon({ d, size=15, color="currentColor" }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"
-      style={{ flexShrink:0, display:"block" }}>
-      <path d={d}/>
-    </svg>
-  );
-}
-const MI = {
-  users:   "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75",
-  bell:    "M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0",
-  excel:   "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h8M8 9h2",
-  share:   "M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13",
-  edit:    "M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z",
-  check:   "M20 6 9 17l-5-5",
-  trash:   "M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6",
-  clock:   "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2",
-  search:  "M21 21l-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0z",
-  x:       "M18 6 6 18M6 6l12 12",
-  filter:  "M22 3H2l8 9.46V19l4 2v-8.54L22 3z",
-  plus:    "M12 5v14M5 12h14",
-  warn:    "M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01",
-  csv:     "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6",
-  chevron: "M6 9l6 6 6-6",
-};
+function TemplateForm({ existing, user, onSaved, onCancel }) {
+ // All logic unchanged 
+ const isEdit = !!existing;
+ const [title, setTitle] = useState(existing?.title || "");
+ const [subject, setSubject] = useState(existing?.subject || "");
+ const [body, setBody] = useState(existing?.body || "");
+ const [category, setCategory] = useState(existing?.category || "reminder");
+ const [saving, setSaving] = useState(false);
+ const [error, setError] = useState("");
 
-//  State badge config (no emoji) 
-const STATE_BADGE_MINISTRY = {
-  published: { label:"منشور",  bg:"#ECFDF5", color:"#047857", border:"#D1FAE5", dot:"#059669" },
-  draft:     { label:"مسودة",  bg:"#F8FAFC", color:"#64748B", border:"#E2E8F0", dot:"#94A3B8" },
-  paused:    { label:"موقوف",  bg:"#FFFBEB", color:"#D97706", border:"#FDE68A", dot:"#D97706" },
-  closed:    { label:"مغلق",   bg:"#FEF2F2", color:"#DC2626", border:"#FECACA", dot:"#DC2626" },
-  archived:  { label:"مؤرشف", bg:"#F8FAFC", color:"#94A3B8", border:"#E2E8F0", dot:"#CBD5E1" },
-};
+ async function save() {
+ if (!title.trim() || !body.trim()) { setError("العنوان والنص حقلان إلزاميان"); return; }
+ setSaving(true); setError("");
+ const payload = { title:title.trim(), subject:subject.trim()||null, body:body.trim(), category };
+ const { error:err } = isEdit
+ ? await updateTemplate(existing.id, payload, user)
+ : await createTemplate(payload, user);
+ setSaving(false);
+ if (err) { setError("فشل الحفظ: "+err.message); return; }
+ onSaved();
+ }
+ // End unchanged logic 
 
-const TYPE_LABEL_MINISTRY = {
-  school:        "مدارس",
-  supervisor:    "مشرفون",
-  administrator: "إداريون",
-  open:          "مفتوح",
-};
+ return (
+ <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200,
+ display:"flex", alignItems:"flex-end", direction:"rtl" }}
+ onClick={e=>{ if(e.target===e.currentTarget) onCancel(); }}>
+ <div style={{ width:"100%", maxWidth:560, margin:"0 auto", background:CC.white, borderRadius:"24px 24px 0 0",
+ maxHeight:"90vh", overflowY:"auto", paddingBottom:32 }}>
+ <div style={{ display:"flex", justifyContent:"center", padding:"14px 0 4px" }}>
+ <div style={{ width:44, height:4, background:CC.s200, borderRadius:4 }}/>
+ </div>
+ <div style={{ padding:"8px 18px 0" }}>
+ <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+ <h3 style={{ margin:0, fontSize:17, color:CC.s900, fontWeight:800 }}>
+ {isEdit ? "تعديل القالب" : "قالب جديد"}
+ </h3>
+ <button onClick={onCancel} style={{ background:CC.s100, border:"none", borderRadius:10,
+ width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center",
+ fontSize:16, cursor:"pointer", color:CC.s500 }}></button>
+ </div>
 
-const TYPE_COLOR = {
-  school:        "#006B54",
-  supervisor:    "#7B2D8B",
-  administrator: "#B7791F",
-  open:          "#0284C7",
-};
+ <div style={{ marginBottom:12 }}>
+ <label style={{ display:"block", fontSize:12, fontWeight:700, color:CC.s700, marginBottom:6 }}>
+ اسم القالب <span style={{color:CC.danger}}>*</span>
+ </label>
+ <input value={title} onChange={e=>setTitle(e.target.value)} style={iSt}/>
+ </div>
 
-//  SurveysList — Ministry Edition 
-function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, isAdmin, onDelete, onApprove, onEdit, onSaveAsTemplate, onLifecycleChange, user }) {
-  const now = new Date();
-  const [search,        setSearch]        = useState("");
-  const [stateFilter,   setStateFilter]   = useState("الكل");
-  const [expanded,      setExpanded]      = useState({});
-  const [respondents,   setRespondents]   = useState({});
-  const [loadingResp,   setLoadingResp]   = useState({});
-  const [exporting,     setExporting]     = useState({});
-  const [targetCounts,  setTargetCounts]  = useState({});
-  const [typeCounts,    setTypeCounts]    = useState({ supervisors:0, administrators:0 });
+ <div style={{ marginBottom:12 }}>
+ <label style={{ display:"block", fontSize:12, fontWeight:700, color:CC.s700, marginBottom:6 }}>الفئة</label>
+ <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+ {Object.values(TEMPLATE_CATEGORIES).map(cat => (
+ <button key={cat.id} onClick={()=>setCategory(cat.id)} className="comm-chip" style={{
+ padding:"7px 12px", borderRadius:20, fontSize:12, fontFamily:"inherit", cursor:"pointer",
+ border:`1.5px solid ${category===cat.id?CC.e600:CC.s200}`,
+ background:category===cat.id?CC.e50:CC.white,
+ color:category===cat.id?CC.e700:CC.s500,
+ fontWeight:category===cat.id?700:400,
+ }}>{cat.icon} {cat.label}</button>
+ ))}
+ </div>
+ </div>
 
-  // Load supervisor/administrator counts once on mount
-  useEffect(() => {
-    async function loadTypeCounts() {
-      const [{ count: supCount }, { count: admCount }] = await Promise.all([
-        supabase.from("supervisors").select("*", { count:"exact", head:true }).eq("status", "نشط"),
-        supabase.from("administrators").select("*", { count:"exact", head:true }).eq("status", "نشط"),
-      ]);
-      setTypeCounts({ supervisors: supCount||0, administrators: admCount||0 });
-    }
-    loadTypeCounts();
-  }, []);
+ <div style={{ marginBottom:12 }}>
+ <label style={{ display:"block", fontSize:12, fontWeight:700, color:CC.s700, marginBottom:6 }}>موضوع الرسالة</label>
+ <input value={subject} onChange={e=>setSubject(e.target.value)}
+ placeholder="يُستخدم في البريد الإلكتروني مستقبلاً" style={iSt}/>
+ </div>
 
-  // Compute correct target count per survey
-  function getTargetCount(s) {
-    if (s.survey_type === "supervisor")    return typeCounts.supervisors;
-    if (s.survey_type === "administrator") return typeCounts.administrators;
-    if (s.survey_type === "open")         return 0;
-    return schoolCount; // default: schools
-  }
+ <div style={{ marginBottom:14 }}>
+ <label style={{ display:"block", fontSize:12, fontWeight:700, color:CC.s700, marginBottom:6 }}>
+ نص الرسالة <span style={{color:CC.danger}}>*</span>
+ </label>
+ <textarea value={body} onChange={e=>setBody(e.target.value)} rows={7}
+ placeholder="اكتب نص الرسالة..."
+ style={{ ...iSt, resize:"vertical" }}/>
+ <div style={{ background:CC.s50, borderRadius:10, padding:"10px 12px", marginTop:8,
+ border:`1px solid ${CC.s100}` }}>
+ <p style={{ margin:"0 0 6px", fontSize:11, fontWeight:700, color:CC.s500 }}>المتغيرات المتاحة:</p>
+ <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+ {TEMPLATE_VARIABLES.map(v => (
+ <button key={v.key} onClick={()=>setBody(b=>b+v.key)} className="comm-btn" style={{
+ background:CC.e50, border:`1px solid ${CC.e100}`, borderRadius:6,
+ padding:"3px 8px", fontSize:10, color:CC.e700,
+ cursor:"pointer", fontFamily:"monospace", fontWeight:600,
+ }}>{v.key}</button>
+ ))}
+ </div>
+ </div>
+ </div>
 
-  if (loading) return (
-    <div style={{ minHeight:"50vh", display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <div style={{ textAlign:"center" }}>
-        <div style={{ width:40, height:40, borderRadius:"50%", border:"3px solid #D6EFE9", borderTopColor:"#006B54", animation:"spin 0.7s linear infinite", margin:"0 auto 12px" }}/>
-        <p style={{ color:"#64748B", fontSize:13, margin:0 }}>جاري التحميل...</p>
-      </div>
-    </div>
-  );
+ {error && <div style={{ background:CC.dangerBg, border:"1px solid #FECACA", borderRadius:12,
+ padding:"10px 14px", fontSize:13, color:CC.danger, marginBottom:12,
+ display:"flex", gap:8 }}><span></span>{error}</div>}
 
-  const STATE_FILTERS = ["الكل","منشورة","مسودة","موقوفة","مغلقة","مؤرشفة"];
-  const STATE_MAP = { "منشورة":"published","مسودة":"draft","موقوفة":"paused","مغلقة":"closed","مؤرشفة":"archived" };
-
-  const filtered = surveys.filter(s => {
-    const state = resolveState(s);
-    const stateOk = stateFilter==="الكل" || state===STATE_MAP[stateFilter];
-    const searchOk = !search.trim() || s.title.includes(search) || (s.description||"").includes(search);
-    return stateOk && searchOk;
-  });
-
-  function canShare(s) {
-    const endDate = s.end_date || s.expires_at;
-    const isExpired = endDate && new Date(endDate) < now;
-    return !isExpired && s.approval_status==="approved" && resolveState(s)==="published" && isAdmin;
-  }
-  function canApprove(s) {
-    return (s.approval_status==="pending_approval"||s.approval_status==="draft") && isAdmin;
-  }
-
-  async function toggleRespondents(s) {
-    const sid = s.id;
-    if (expanded[sid]) { setExpanded(p=>({...p,[sid]:false})); return; }
-    setExpanded(p=>({...p,[sid]:true}));
-    if (respondents[sid]) return;
-    setLoadingResp(p=>({...p,[sid]:true}));
-    // Load responses with correct join based on survey_type
-    const isSchoolSurvey = !s.survey_type || s.survey_type === "school";
-    const selectFields = isSchoolSurvey
-      ? "id,submitted_at,school_id,respondent_label,respondent_national_id,answers,survey_schools(name,stage,sector,principal)"
-      : "id,submitted_at,respondent_label,respondent_national_id,answers";
-    const { data } = await supabase
-      .from("survey_responses")
-      .select(selectFields)
-      .eq("survey_id", sid)
-      .order("submitted_at", { ascending:false })
-      .limit(100);
-    const targetCount = getTargetCount(s);
-    setRespondents(p=>({...p,[sid]:data||[]}));
-    setTargetCounts(p=>({...p,[sid]:targetCount}));
-    setLoadingResp(p=>({...p,[sid]:false}));
-  }
-
-  async function exportCard(s, format) {
-    const sid = s.id;
-    setExporting(p=>({...p,[sid]:format}));
-    try {
-      const [{ data:responses }, { data:questions }, { data:allSchools }] = await Promise.all([
-        supabase.from("survey_responses").select("*,survey_schools(name,stage,sector,district,principal)").eq("survey_id",sid),
-        supabase.from("survey_questions").select("*").eq("survey_id",sid).order("order_index"),
-        supabase.from("survey_schools").select("id,name,stage,sector,district,principal,phone"),
-      ]);
-      if (format === "excel") {
-        const XLSX = await ensureXLSX();
-        const wb   = XLSX.utils.book_new();
-        const respondedCount = (responses||[]).length;
-        const totalCount = (allSchools||[]).length;
-        const summaryData = [
-          ["الاستبيان", s.title],
-          ["عدد الردود", respondedCount],
-          ["إجمالي المستهدفين", totalCount],
-          ["نسبة الاستجابة", totalCount ? `${Math.round(respondedCount/totalCount*100)}%` : "—"],
-          ["تاريخ التقرير", new Date().toLocaleDateString("ar-SA")],
-          ["أعدّه", user?.email || "—"],
-        ];
-        const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
-        wsSummary["!cols"] = [{wch:24},{wch:40}];
-        XLSX.utils.book_append_sheet(wb, wsSummary, "ملخص");
-        if ((responses||[]).length && (questions||[]).length) {
-          const headers = ["المدرسة","المرحلة","القطاع","المدير","تاريخ الإجابة",...(questions||[]).map(q=>q.label)];
-          const rows = (responses||[]).map(r => [
-            r.survey_schools?.name || r.respondent_label || "—",
-            r.survey_schools?.stage || "—",
-            r.survey_schools?.sector || "—",
-            r.survey_schools?.principal || "—",
-            r.submitted_at ? new Date(r.submitted_at).toLocaleDateString("ar-SA") : "—",
-            ...(questions||[]).map(q => {
-              const ans = r.answers?.[q.id];
-              if (ans===undefined||ans===null) return "—";
-              if (typeof ans==="object") return ans.url||JSON.stringify(ans);
-              return String(ans);
-            }),
-          ]);
-          const wsResp = XLSX.utils.aoa_to_sheet([headers,...rows]);
-          wsResp["!cols"] = headers.map(()=>({wch:20}));
-          XLSX.utils.book_append_sheet(wb, wsResp, "الردود التفصيلية");
-        }
-        const respondedIds = new Set((responses||[]).map(r=>r.school_id).filter(Boolean));
-        const pending = (allSchools||[]).filter(sc=>!respondedIds.has(sc.id));
-        if (pending.length) {
-          const wsPending = XLSX.utils.json_to_sheet(pending.map(sc=>({
-            "اسم المدرسة":sc.name,"المرحلة":sc.stage||"—","القطاع":sc.sector||"—","الجوال":sc.phone||"—",
-          })));
-          wsPending["!cols"] = [{wch:30},{wch:14},{wch:16},{wch:14}];
-          XLSX.utils.book_append_sheet(wb, wsPending, "لم تستجب");
-        }
-        XLSX.writeFile(wb, `تقرير-${s.title}-${tsStamp()}.xlsx`);
-      } else if (format === "csv") {
-        const qs = questions||[];
-        const headers = ["المدرسة","المرحلة","تاريخ الإجابة",...qs.map(q=>q.label)];
-        const rows = (responses||[]).map(r=>[
-          r.survey_schools?.name||r.respondent_label||"",
-          r.survey_schools?.stage||"",
-          r.submitted_at?new Date(r.submitted_at).toLocaleDateString("ar-SA"):"",
-          ...qs.map(q=>{ const a=r.answers?.[q.id]; if(!a)return""; if(typeof a==="object")return a.url||""; return String(a).replace(/,/g,"،"); }),
-        ]);
-        const csv = [headers,...rows].map(row=>row.map(c=>`"${c}"`).join(",")).join("\n");
-        const blob = new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement("a");
-        a.href=url; a.download=`تقرير-${s.title}-${tsStamp()}.csv`; a.click();
-        URL.revokeObjectURL(url);
-      }
-      await logAction({ user, action:"export", table:"survey_responses", recordLabel:`تصدير: ${s.title}` });
-    } catch(e) { console.error("Export error:", e); }
-    setExporting(p=>({...p,[sid]:false}));
-  }
-
-  const closingSoon = surveys.filter(s=>{
-    const end = s.end_date||s.expires_at;
-    return end && (new Date(end)-now) < 3*24*60*60*1000 && new Date(end) > now && resolveState(s)==="published";
-  });
-
-  //  Shared action button 
-  function ActBtn({ icon, label, onClick, color="#64748B", bg="#F8FAFC", active, disabled: dis }) {
-    return (
-      <button onClick={onClick} disabled={dis} style={{
-        flex:1, padding:"9px 2px", border:"none",
-        background: active ? "#EBF7F4" : "transparent",
-        cursor: dis ? "not-allowed" : "pointer",
-        display:"flex", flexDirection:"column", alignItems:"center", gap:3,
-        fontFamily:"inherit", opacity:dis?0.45:1,
-        borderTop: active ? "2px solid #006B54" : "2px solid transparent",
-        transition:"background 0.12s, border-color 0.12s",
-      }}>
-        <MIcon d={MI[icon]} size={16} color={active?"#006B54":color}/>
-        <span style={{ fontSize:9.5, fontWeight:active?600:400, color:active?"#006B54":color, whiteSpace:"nowrap" }}>{label}</span>
-      </button>
-    );
-  }
-
-  return (
-    <div style={{ direction:"rtl" }}>
-      {/* Page header */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:18, flexWrap:"wrap", gap:10 }}>
-        <div>
-          <h1 style={{ margin:0, fontSize:20, color:"#0F172A", fontWeight:700, letterSpacing:"-0.01em" }}>الاستبيانات</h1>
-          <p style={{ margin:"3px 0 0", color:"#64748B", fontSize:12 }}>{surveys.length} استبيان · {schoolCount?.toLocaleString("ar-SA")} مدرسة مسجلة</p>
-        </div>
-        <button onClick={onNew} style={{
-          background:"#006B54", color:"#fff", border:"none",
-          borderRadius:8, padding:"9px 16px", fontSize:13, fontWeight:600,
-          cursor:"pointer", fontFamily:"inherit",
-          display:"flex", alignItems:"center", gap:7,
-          boxShadow:"0 2px 8px rgba(0,107,84,0.25)",
-        }}>
-          <MIcon d={MI.plus} size={15} color="#fff"/>
-          استبيان جديد
-        </button>
-      </div>
-
-      {/* Alert */}
-      {closingSoon.length > 0 && (
-        <div style={{ background:"#FFFBEB", border:"1px solid #FDE68A", borderRadius:8,
-          padding:"10px 14px", marginBottom:14, fontSize:12, color:"#92400E",
-          display:"flex", alignItems:"center", gap:8 }}>
-          <MIcon d={MI.warn} size={15} color="#D97706"/>
-          <span>{closingSoon.map(s=>s.title).join("، ")} — ينتهي خلال 3 أيام</span>
-        </div>
-      )}
-
-      {/* Search + filters */}
-      <div style={{ background:"#fff", borderRadius:10, border:"1px solid #E2E8F0",
-        padding:12, marginBottom:14, boxShadow:"0 1px 3px rgba(0,0,0,0.04)" }}>
-        <div style={{ position:"relative", marginBottom:10 }}>
-          <div style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}>
-            <MIcon d={MI.search} size={14} color="#94A3B8"/>
-          </div>
-          <input value={search} onChange={e=>setSearch(e.target.value)}
-            placeholder="بحث في الاستبيانات..."
-            style={{ width:"100%", padding:"9px 34px 9px 12px", border:"1.5px solid #E2E8F0",
-              borderRadius:8, fontSize:13, fontFamily:"inherit", direction:"rtl",
-              boxSizing:"border-box", background:"#F8FAFC", color:"#0F172A", outline:"none",
-              transition:"border-color 0.15s" }}
-            onFocus={e=>e.target.style.borderColor="#006B54"}
-            onBlur={e=>e.target.style.borderColor="#E2E8F0"}/>
-          {search && (
-            <button onClick={()=>setSearch("")} style={{
-              position:"absolute", left:8, top:"50%", transform:"translateY(-50%)",
-              background:"none", border:"none", cursor:"pointer", padding:2,
-            }}>
-              <MIcon d={MI.x} size={13} color="#94A3B8"/>
-            </button>
-          )}
-        </div>
-        <div style={{ display:"flex", gap:5, overflowX:"auto", paddingBottom:2 }}>
-          {STATE_FILTERS.map(f => (
-            <button key={f} onClick={()=>setStateFilter(f)} style={{
-              padding:"5px 13px", borderRadius:20, fontSize:11, fontFamily:"inherit",
-              cursor:"pointer", whiteSpace:"nowrap", fontWeight:stateFilter===f?600:400,
-              border:`1px solid ${stateFilter===f?"#006B54":"#E2E8F0"}`,
-              background:stateFilter===f?"#EBF7F4":"#fff",
-              color:stateFilter===f?"#006B54":"#64748B",
-              transition:"all 0.12s",
-            }}>{f}</button>
-          ))}
-        </div>
-      </div>
-
-      {/* Empty state */}
-      {filtered.length === 0 && (
-        <div style={{ textAlign:"center", padding:"48px 20px", background:"#fff",
-          borderRadius:12, border:"1px solid #E2E8F0" }}>
-          <div style={{ width:56, height:56, borderRadius:14, background:"#EBF7F4",
-            display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px" }}>
-            <MIcon d={MI.excel} size={26} color="#006B54"/>
-          </div>
-          <p style={{ margin:"0 0 5px", fontSize:14, fontWeight:600, color:"#0F172A" }}>
-            {surveys.length===0?"لا توجد استبيانات بعد":"لا توجد نتائج"}
-          </p>
-          <p style={{ margin:0, fontSize:12, color:"#64748B" }}>
-            {surveys.length===0?"اضغط على استبيان جديد للبدء":"جرب تغيير الفلاتر أو البحث"}
-          </p>
-        </div>
-      )}
-
-      {/* Survey Cards */}
-      {filtered.map((s, idx) => {
-        const sid         = s.id;
-        const endDate     = s.end_date || s.expires_at;
-        const isExpired   = endDate && new Date(endDate) < now;
-        const expiringSoon = endDate && !isExpired && (new Date(endDate)-now) < 3*24*60*60*1000;
-        const state       = resolveState(s);
-        const badge       = STATE_BADGE_MINISTRY[state] || STATE_BADGE_MINISTRY.draft;
-        const typeColor   = TYPE_COLOR[s.survey_type] || "#006B54";
-        const isOpen      = !!expanded[sid];
-        const respList    = respondents[sid] || [];
-        const expFmt      = exporting[sid];
-
-        const tc = targetCounts[sid] ?? getTargetCount(s);
-        const rc = respList.length || 0;
-        const pct = tc > 0 ? Math.min(100, Math.round(rc/tc*100)) : 0;
-
-        return (
-          <div key={sid} style={{
-            background:"#fff", borderRadius:10, border:"1px solid #E2E8F0",
-            marginBottom:8, overflow:"hidden", opacity:isExpired?0.65:1,
-            boxShadow:"0 1px 3px rgba(0,0,0,0.04)",
-            borderRight:`3px solid ${typeColor}`,
-            transition:"box-shadow 0.15s",
-          }}>
-
-            {/* Head */}
-            <div style={{ padding:"12px 14px 10px", display:"flex", alignItems:"flex-start", gap:10 }}>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4, flexWrap:"wrap" }}>
-                  <p style={{ margin:0, fontSize:13.5, fontWeight:600, color:"#0F172A", lineHeight:1.4 }}>{s.title}</p>
-                  {expiringSoon && (
-                    <span style={{ display:"flex", alignItems:"center", gap:3, fontSize:10, color:"#D97706", fontWeight:500 }}>
-                      <MIcon d={MI.warn} size={11} color="#D97706"/> ينتهي قريباً
-                    </span>
-                  )}
-                </div>
-                <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-                  <span style={{ fontSize:11, color:"#94A3B8" }}>
-                    {TYPE_LABEL_MINISTRY[s.survey_type]||"مدارس"}
-                    {endDate ? ` · ${new Date(endDate).toLocaleDateString("ar-SA")}` : ""}
-                  </span>
-                </div>
-              </div>
-              {/* Status badge */}
-              <span style={{
-                display:"inline-flex", alignItems:"center", gap:5,
-                background:badge.bg, color:badge.color,
-                border:`1px solid ${badge.border}`,
-                borderRadius:20, padding:"3px 10px", fontSize:10.5, fontWeight:600,
-                whiteSpace:"nowrap", flexShrink:0,
-              }}>
-                <span style={{ width:6, height:6, borderRadius:"50%", background:badge.dot, display:"inline-block" }}/>
-                {badge.label}
-              </span>
-            </div>
-
-            {/* Progress bar */}
-            {state==="published" && (
-              <div style={{ padding:"0 14px 10px", display:"flex", alignItems:"center", gap:8 }}>
-                <div style={{ flex:1, height:5, background:"#F1F5F9", borderRadius:6, overflow:"hidden" }}>
-                  <div style={{ height:"100%", background:"linear-gradient(90deg,#006B54,#008A6A)",
-                    borderRadius:6, width:`${pct}%`, transition:"width 0.6s ease" }}/>
-                </div>
-                <span style={{ fontSize:11, fontWeight:700, color:"#006B54", minWidth:30, textAlign:"left" }}>{pct}%</span>
-                <span style={{ fontSize:10, color:"#94A3B8" }}>{rc}{tc>0?` / ${tc}`:""}</span>
-              </div>
-            )}
-
-            {/* Respondents panel */}
-            {isOpen && (
-              <div style={{ background:"#F8FAFC", borderTop:"1px solid #E2E8F0", padding:"10px 14px" }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                  <p style={{ margin:0, fontSize:12, fontWeight:600, color:"#334155", display:"flex", alignItems:"center", gap:6 }}>
-                    <MIcon d={MI.users} size={13} color="#006B54"/>
-                    المستجيبون {respList.length>0?`(${respList.length})`:""}
-                  </p>
-                  <div style={{ display:"flex", gap:5 }}>
-                    {["excel","csv"].map(fmt=>(
-                      <button key={fmt} onClick={()=>exportCard(s,fmt)} disabled={!!expFmt}
-                        style={{ padding:"4px 10px", borderRadius:6, fontSize:10, fontWeight:600,
-                          border:`1px solid ${fmt==="excel"?"#D6EFE9":"#E0D4F0"}`,
-                          background:fmt==="excel"?"#EBF7F4":"#F5EEFA",
-                          color:fmt==="excel"?"#006B54":"#7B2D8B",
-                          cursor:expFmt?"not-allowed":"pointer",
-                          display:"flex", alignItems:"center", gap:4,
-                          opacity:expFmt?0.5:1 }}>
-                        <MIcon d={fmt==="excel"?MI.excel:MI.csv} size={11} color={fmt==="excel"?"#006B54":"#7B2D8B"}/>
-                        {expFmt===fmt ? "..." : fmt==="excel"?"Excel":"CSV"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {loadingResp[sid] ? (
-                  <div style={{ textAlign:"center", padding:12, color:"#94A3B8", fontSize:12 }}>جاري التحميل...</div>
-                ) : respList.length===0 ? (
-                  <div style={{ textAlign:"center", padding:12, color:"#94A3B8", fontSize:12 }}>لا توجد ردود بعد</div>
-                ) : (
-                  respList.slice(0,8).map((r,i)=>(
-                    <div key={r.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 0",
-                      borderBottom:i<Math.min(respList.length,8)-1?"1px solid #F1F5F9":"none" }}>
-                      <div style={{ width:20, height:20, borderRadius:"50%", background:"#EBF7F4",
-                        color:"#006B54", fontSize:9, fontWeight:700, display:"flex",
-                        alignItems:"center", justifyContent:"center", flexShrink:0 }}>{i+1}</div>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <p style={{ margin:0, fontSize:12, fontWeight:500, color:"#0F172A",
-                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                          {r.survey_schools?.name || r.respondent_label || r.respondent_national_id || "—"}
-                        </p>
-                      </div>
-                      <span style={{ fontSize:10, color:"#94A3B8", flexShrink:0 }}>{r.survey_schools?.stage||""}</span>
-                      <span style={{ fontSize:10, color:"#94A3B8", flexShrink:0 }}>
-                        {r.submitted_at?new Date(r.submitted_at).toLocaleDateString("ar-SA"):""}
-                      </span>
-                    </div>
-                  ))
-                )}
-                {respList.length > 8 && (
-                  <button onClick={()=>onTrack(s)} style={{
-                    width:"100%", padding:"7px", marginTop:6,
-                    background:"none", border:"1px solid #E2E8F0", borderRadius:7,
-                    fontSize:11, color:"#006B54", fontWeight:600, cursor:"pointer", fontFamily:"inherit",
-                  }}>
-                    عرض {respList.length-8} آخرين
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Action strip */}
-            <div style={{ display:"flex", borderTop:"1px solid #F1F5F9" }}>
-              <ActBtn icon="users" label="المستجيبون" onClick={()=>toggleRespondents(s)} active={isOpen}/>
-              <ActBtn icon="bell"  label="تذكير"       onClick={()=>onTrack(s)} color="#D97706"/>
-              <ActBtn icon="excel" label="Excel"       onClick={()=>exportCard(s,"excel")} dis={!!exporting[sid]} color="#7B2D8B"/>
-              {canShare(s) && <ActBtn icon="share" label="مشاركة" onClick={()=>onShare(s)} color="#0284C7"/>}
-              {isAdmin && <ActBtn icon="edit" label="تعديل" onClick={()=>onEdit(s)}/>}
-              {canApprove(s) && <ActBtn icon="check" label="اعتماد" onClick={()=>onApprove(s)} color="#006B54"/>}
-              {isAdmin && <ActBtn icon="trash" label="حذف" onClick={()=>onDelete(s)} color="#DC2626"/>}
-            </div>
-
-            {/* Lifecycle */}
-            {isAdmin && (
-              <div style={{ padding:"8px 14px 10px", borderTop:"1px solid #F8FAFC" }}>
-                <LifecycleActions survey={s} user={user} isAdmin={isAdmin} onRefresh={onLifecycleChange}/>
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function ActionBtn({ icon, label, onClick, color, bg }) {
-  return (
-    <button onClick={onClick} className="action-btn" title={!label ? icon : undefined} style={{
-      background: bg || "#F1F5F9",
-      color: color || "#334155",
-      border: `1px solid ${color ? color+"25" : "#E2E8F0"}`,
-      borderRadius:9, padding: label ? "7px 12px" : "7px 9px",
-      fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
-      display:"inline-flex", alignItems:"center", gap:5,
-    }}>
-      <span style={{ fontSize:13 }}>{icon}</span>
-      {label}
-    </button>
-  );
+ <button onClick={save} disabled={saving} style={{
+ width:"100%", padding:"14px",
+ background:saving?`${CC.e600}70`:`linear-gradient(135deg,${CC.e600},${CC.e800})`,
+ color:"#fff", border:"none", borderRadius:14, fontSize:14, fontWeight:800,
+ cursor:saving?"not-allowed":"pointer", fontFamily:"inherit",
+ boxShadow:saving?"none":`0 4px 14px ${CC.e600}40`,
+ }}>{saving?"جاري الحفظ...":"حفظ القالب"}</button>
+ </div>
+ </div>
+ </div>
+ );
 }
 
 // 
-// Question Toolbar / QuestionCard / NewSurveyPage — these are
-// no longer used directly (SurveyBuilderEngine.jsx is the active
-// builder, re-exported below), kept only because other exports
-// in this file reference shared constants below them. No logic
-// or markup here was touched in Phase 3.
+// TEMPLATES LIBRARY — logic unchanged
 // 
+function TemplatesLibrary({ user, isAdmin, onUseTemplate }) {
+ const [templates, setTemplates] = useState([]);
+ const [loading, setLoading] = useState(true);
+ const [formTarget, setFormTarget] = useState(null);
+ const [filterCat, setFilterCat] = useState("all");
 
-const Q_TYPES = [
-  {v:"text",      l:"نص قصير",              icon:""},
-  {v:"textarea",  l:"نص طويل",              icon:""},
-  {v:"number",    l:"رقم / إحصائية",        icon:""},
-  {v:"select",    l:"اختيار من قائمة",      icon:""},
-  {v:"rating",    l:"تقييم بالنجوم",        icon:""},
-  {v:"file",      l:"رفع ملف (PDF/Excel)",  icon:""},
-];
+ const load = useCallback(async () => {
+ setLoading(true);
+ const { data } = await fetchTemplates();
+ setTemplates(data);
+ setLoading(false);
+ }, []);
+ useEffect(() => { load(); }, [load]);
 
-function ShareSheet({ survey, onClose }) {
-  const [tab, setTab] = useState("link");
-  const [copied, setCopied] = useState(false);
-  const link = `${window.location.origin}${window.location.pathname}?survey=${survey.id}`;
-  const qr = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}`;
-  const wa = encodeURIComponent(`السلام عليكم ورحمة الله وبركاته،\n\nنرجو من سعادتكم التكرم بتعبئة الاستبيان التالي:\n*${survey.title}*\n\nالرابط: ${link}\n\nإدارة التعليم — جدة`);
+ const filtered = useMemo(() => {
+ if (filterCat === "all") return templates.filter(t=>t.status==="active");
+ if (filterCat === "archived") return templates.filter(t=>t.status==="archived");
+ return templates.filter(t=>t.status==="active" && t.category===filterCat);
+ }, [templates, filterCat]);
 
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:200, display:"flex", alignItems:"flex-end", direction:"rtl" }}
-      onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
-      <div style={{ width:"100%", background:C.white, borderRadius:"20px 20px 0 0", paddingBottom:32, maxHeight:"85vh", overflowY:"auto" }}>
-        <div style={{ display:"flex", justifyContent:"center", padding:"12px 0" }}>
-          <div style={{ width:40, height:4, background:C.border, borderRadius:4 }}/>
-        </div>
-        <div style={{ padding:"0 16px" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-            <h3 style={{ margin:0, fontSize:17, color:C.dark, fontWeight:800 }}>مشاركة الاستبيان</h3>
-            <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.muted }}></button>
-          </div>
-          <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:20 }}>
-            {[["link"," رابط"],["qr"," QR"],["whatsapp"," واتساب"]].map(([k,l]) => (
-              <button key={k} onClick={()=>setTab(k)} style={{ flex:1, padding:"10px 4px", border:"none", background:"none", cursor:"pointer",
-                fontSize:12, fontFamily:"inherit", fontWeight:tab===k?700:400, color:tab===k?C.primary:C.muted,
-                borderBottom:`2px solid ${tab===k?C.primary:"transparent"}`, marginBottom:-1 }}>{l}</button>
-            ))}
-          </div>
-          {tab==="link" && (
-            <div>
-              <div style={{ background:C.bg, borderRadius:10, padding:14, marginBottom:12, border:`1px solid ${C.border}`, wordBreak:"break-all", fontSize:13, color:C.muted }}>{link}</div>
-              <Btn full variant={copied?"secondary":"primary"} onClick={()=>{ navigator.clipboard.writeText(link).catch(()=>{}); setCopied(true); setTimeout(()=>setCopied(false),2000); }}>
-                {copied?" تم النسخ!":"نسخ الرابط"}
-              </Btn>
-            </div>
-          )}
-          {tab==="qr" && (
-            <div style={{ textAlign:"center", padding:"8px 0" }}>
-              <img src={qr} alt="QR" style={{ width:180, height:180, borderRadius:12, border:`1px solid ${C.border}` }}/>
-              <p style={{ color:C.muted, fontSize:13, marginTop:12 }}>امسح الرمز للوصول للاستبيان مباشرة</p>
-            </div>
-          )}
-          {tab==="whatsapp" && (
-            <a href={`https://wa.me/?text=${wa}`} target="_blank" rel="noopener noreferrer" style={{ display:"block", textDecoration:"none" }}>
-              <Btn full variant="green"> إرسال عبر واتساب</Btn>
-            </a>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+ async function handleArchive(t) { await archiveTemplate(t.id, user); load(); }
+ async function handleDuplicate(t) { await duplicateTemplate(t, user); load(); }
 
+ return (
+ <div>
+ <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, flexWrap:"wrap", gap:10 }}>
+ <div>
+ <p style={{ margin:0, fontSize:14, fontWeight:800, color:CC.s900 }}>قوالب الرسائل</p>
+ <p style={{ margin:"2px 0 0", fontSize:12, color:CC.s500 }}>{filtered.length} قالب</p>
+ </div>
+ {isAdmin && (
+ <button onClick={()=>setFormTarget({})} className="comm-btn" style={{
+ background:`linear-gradient(135deg,${CC.e600},${CC.e800})`,
+ color:"#fff", border:"none", borderRadius:10, padding:"8px 14px",
+ fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+ boxShadow:`0 3px 10px ${CC.e600}35`,
+ }}> قالب جديد</button>
+ )}
+ </div>
 
-const GREEN_API_INSTANCE = "7107658040";
-const GREEN_API_TOKEN = "5057056a62c9475db20433c433349df534e9ee32ba0b47c0a0";
+ <div style={{ display:"flex", gap:5, marginBottom:16, overflowX:"auto", paddingBottom:4 }}>
+ {[{id:"all",label:"الكل",icon:""},{id:"archived",label:"المؤرشفة",icon:""},
+ ...Object.values(TEMPLATE_CATEGORIES)].map(cat => (
+ <FilterChip key={cat.id} label={`${cat.icon} ${cat.label}`}
+ active={filterCat===cat.id} onClick={()=>setFilterCat(cat.id)}/>
+ ))}
+ </div>
 
-async function sendWhatsAppGreen(phone, message) {
-  const cleanPhone = phone.replace(/\D/g, "").replace(/^0/, "966").replace(/^(?!966)/, "966");
-  const url = `https://api.green-api.com/waInstance${GREEN_API_INSTANCE}/sendMessage/${GREEN_API_TOKEN}`;
-  const res = await fetch(url, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ chatId:`${cleanPhone}@c.us`, message }) });
-  return res.ok;
-}
+ {loading ? (
+ <div style={{ textAlign:"center", padding:"30px" }}>
+ <div style={{ width:32, height:32, borderRadius:"50%", border:`3px solid ${CC.e100}`,
+ borderTopColor:CC.e600, animation:"spin 0.7s linear infinite", margin:"0 auto" }}/>
+ </div>
+ ) : filtered.length === 0 ? (
+ <div style={{ textAlign:"center", padding:"36px 20px", background:CC.white,
+ borderRadius:16, border:`1px solid ${CC.s200}` }}>
+ <div style={{ fontSize:36, marginBottom:8 }}></div>
+ <p style={{ margin:0, color:CC.s500, fontSize:13 }}>لا توجد قوالب في هذه الفئة</p>
+ </div>
+ ) : (
+ <div className="comm-tmpl-grid">
+ {filtered.map((t, idx) => (
+ <div key={t.id} className="comm-card comm-in" style={{
+ background:CC.white, borderRadius:16, border:`1px solid ${CC.s200}`,
+ overflow:"hidden", opacity:t.status==="archived"?0.7:1,
+ boxShadow:"0 1px 3px rgba(0,0,0,0.04)",
+ animationDelay:`${idx*0.04}s`,
+ borderRight:`3px solid ${CC.e500}`,
+ display:"flex", flexDirection:"column",
+ }}>
+ <div style={{ padding:"14px 16px", flex:1, display:"flex", flexDirection:"column" }}>
+ <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+ <div style={{ flex:1 }}>
+ <p style={{ margin:0, fontSize:14, fontWeight:700, color:CC.s900 }}>{t.title}</p>
+ <p style={{ margin:"2px 0 0", fontSize:11, color:CC.s400 }}>
+ {TEMPLATE_CATEGORIES[t.category?.toUpperCase()]?.icon}{" "}
+ {TEMPLATE_CATEGORIES[t.category?.toUpperCase()]?.label || t.category}
+ </p>
+ </div>
+ <StatusBadge status={t.status}/>
+ </div>
+ <p style={{ margin:"0 0 12px", fontSize:12, color:CC.s500, lineHeight:1.6, flex:1 }}>
+ {t.body.slice(0,100)}{t.body.length>100?"...":""}
+ </p>
+ <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:"auto" }}>
+ {t.status==="active" && onUseTemplate && (
+ <button onClick={()=>onUseTemplate(t)} className="comm-btn" style={{
+ background:`linear-gradient(135deg,${CC.e600},${CC.e800})`,
+ color:"#fff", border:"none", borderRadius:9, padding:"7px 14px",
+ fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+ }}>استخدام</button>
+ )}
+ {isAdmin && t.status==="active" && (
+ <button onClick={()=>setFormTarget(t)} className="comm-btn" style={{
+ background:CC.s100, color:CC.s700, border:"none", borderRadius:9,
+ padding:"7px 12px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit",
+ }}>تعديل</button>
+ )}
+ {isAdmin && (
+ <button onClick={()=>handleDuplicate(t)} className="comm-btn" style={{
+ background:CC.s100, color:CC.s700, border:"none", borderRadius:9,
+ padding:"7px 12px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit",
+ }}>نسخ</button>
+ )}
+ {isAdmin && t.status==="active" && (
+ <button onClick={()=>handleArchive(t)} className="comm-btn" style={{
+ background:CC.dangerBg, color:CC.danger, border:"none", borderRadius:9,
+ padding:"7px 12px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit",
+ }}>أرشفة</button>
+ )}
+ </div>
+ </div>
+ </div>
+ ))}
+ </div>
+ )}
 
-function AnalyticsPage({ surveys, onNavigate }) {
-  const [stats, setStats] = useState({});
-  const [pendingSchools, setPendingSchools] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState({});
-  const [sentCount, setSentCount] = useState({});
-  const [activeTab, setActiveTab] = useState("dashboard");
-  const schoolCount = useSchoolCount();
-
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      const results = {}, pending = {};
-      for (const s of surveys) {
-        const { count } = await supabase.from("survey_responses").select("*", { count:"exact", head:true }).eq("survey_id", s.id);
-        results[s.id] = count || 0;
-        if (s.survey_type === "school" && s.approval_status === "approved") {
-          const { data: responses } = await supabase.from("survey_responses").select("school_id").eq("survey_id", s.id);
-          const respondedIds = new Set((responses||[]).map(r => r.school_id));
-          let allSchools = [], from = 0;
-          while (true) {
-            const { data } = await supabase.from("survey_schools").select("id,name,principal,phone,stage").range(from, from+999);
-            if (!data?.length) break;
-            allSchools = allSchools.concat(data);
-            if (data.length < 1000) break;
-            from += 1000;
-          }
-          pending[s.id] = allSchools.filter(sc => !respondedIds.has(sc.id));
-        }
-      }
-      setStats(results); setPendingSchools(pending); setLoading(false);
-    }
-    if (surveys.length) load(); else setLoading(false);
-  }, [surveys]);
-
-  const totalResponded = Object.values(stats).reduce((a,b)=>a+b,0);
-  const activeSurveys = surveys.filter(s => s.approval_status === "approved" && (!s.expires_at || new Date(s.expires_at) > new Date()));
-
-  async function sendReminders(survey) {
-    const schools = pendingSchools[survey.id] || [];
-    if (!schools.length) return;
-    setSending(p => ({...p, [survey.id]: true}));
-    const link = `${window.location.origin}?survey=${survey.id}`;
-    const expText = survey.expires_at ? `\n⏰ آخر موعد: ${new Date(survey.expires_at).toLocaleDateString("ar-SA")}` : "";
-    let sent = 0;
-    for (const school of schools) {
-      if (!school.phone) continue;
-      const ok = await sendWhatsAppGreen(school.phone, `السلام عليكم ${school.principal || ""},\n\nنرجو تعبئة استبيان:\n*${survey.title}*\n\n${link}${expText}\n\nإدارة التعليم — جدة`);
-      if (ok) sent++;
-      await new Promise(r => setTimeout(r, 500));
-    }
-    setSending(p => ({...p, [survey.id]: false}));
-    setSentCount(p => ({...p, [survey.id]: sent}));
-  }
-
-  async function exportAnalyticsExcel() {
-    const XLSX = await ensureXLSX();
-    const rows = surveys.map(s => { const count = stats[s.id]||0; const pct = schoolCount?Math.round(count/schoolCount*100):0; return {"الاستبيان":s.title,"الردود":count,"إجمالي المدارس":schoolCount,"نسبة الاستجابة":`${pct}%`}; });
-    const ws = XLSX.utils.json_to_sheet(rows); ws["!cols"]=Object.keys(rows[0]||{}).map(()=>({wch:24}));
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "إحصائيات");
-    XLSX.writeFile(wb, `إحصائيات-${tsStamp()}.xlsx`);
-  }
-
-  if (loading) return <div style={{ minHeight:"50vh", display:"flex", alignItems:"center", justifyContent:"center" }}><Spinner size={32}/></div>;
-
-  return (
-    <div style={{ padding:16, direction:"rtl" }}>
-      <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:16 }}>
-        {[["dashboard"," لوحة التحكم"],["whatsapp"," إشعارات واتس"],["details"," تفاصيل"]].map(([k,l]) => (
-          <button key={k} onClick={()=>setActiveTab(k)} style={{ flex:1, padding:"10px 4px", border:"none", background:"none", cursor:"pointer", fontSize:12, fontFamily:"inherit", fontWeight:activeTab===k?700:400, color:activeTab===k?C.primary:C.muted, borderBottom:`2px solid ${activeTab===k?C.primary:"transparent"}`, marginBottom:-1 }}>{l}</button>
-        ))}
-      </div>
-      {activeTab === "dashboard" && (
-        <>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:12, marginBottom:20 }}>
-            {[
-              {l:"إجمالي المدارس",v:schoolCount,i:"",c:C.primary,nav:"directory",sub:"اضغط للإدارة"},
-              {l:"استبيانات نشطة",v:activeSurveys.length,i:"",c:C.accent,nav:"surveys",sub:"اضغط للعرض"},
-              {l:"إجمالي الردود",v:totalResponded,i:"",c:C.success,nav:"surveys",sub:"اضغط للتفاصيل"},
-              {l:"متوسط الاستجابة",v:schoolCount&&activeSurveys.length?`${Math.round(totalResponded/activeSurveys.length/schoolCount*100)}%`:"—",i:"",c:"#7B2D8B",nav:null,sub:"من المدارس"},
-            ].map((x,i) => (
-              <div key={i} onClick={()=>x.nav&&onNavigate&&onNavigate(x.nav)} className={x.nav?"card-hover":undefined}
-                style={{ background:C.white, borderRadius:16, padding:16, border:`1px solid ${C.border}`, borderTop:`3px solid ${x.c}`, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", cursor:x.nav?"pointer":"default", textAlign:"center" }}>
-                <div style={{ fontSize:28, marginBottom:6 }}>{x.i}</div>
-                <div style={{ fontSize:26, fontWeight:800, color:x.c, lineHeight:1 }}>{x.v}</div>
-                <div style={{ fontSize:11, color:C.muted, marginTop:4, fontWeight:500 }}>{x.l}</div>
-                {x.nav && <div style={{ fontSize:10, color:x.c, marginTop:4, fontWeight:600 }}>{x.sub} ←</div>}
-              </div>
-            ))}
-          </div>
-          <h3 style={{ margin:"0 0 10px", fontSize:14, color:C.dark }}>الاستبيانات النشطة</h3>
-          {activeSurveys.length === 0 ? <Card style={{ textAlign:"center", padding:24 }}><p style={{ margin:0, color:C.muted, fontSize:13 }}>لا توجد استبيانات نشطة حالياً</p></Card>
-          : activeSurveys.map(s => {
-            const count = stats[s.id]||0, pct = schoolCount?Math.round(count/schoolCount*100):0, pending = pendingSchools[s.id]?.length||0;
-            const expiresTomorrow = s.expires_at && (new Date(s.expires_at)-new Date()) < 24*60*60*1000 && new Date(s.expires_at) > new Date();
-            return (
-              <Card key={s.id} style={{ marginBottom:12 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
-                  <p style={{ margin:0, fontSize:14, fontWeight:700, color:C.dark, flex:1 }}>{s.title}</p>
-                  <span style={{ fontSize:13, fontWeight:800, color:C.primary }}>{pct}%</span>
-                </div>
-                {expiresTomorrow && <div style={{ background:C.warnBg, borderRadius:8, padding:"5px 10px", marginBottom:8 }}><p style={{ margin:0, fontSize:11, color:C.warn, fontWeight:700 }}> ينتهي غداً</p></div>}
-                <div style={{ height:10, background:C.border, borderRadius:6, marginBottom:8 }}><div style={{ height:"100%", width:`${pct}%`, background:`linear-gradient(90deg,${C.primary},${C.primaryLight})`, borderRadius:6, transition:"width 0.5s" }}/></div>
-                <p style={{ margin:"0 0 4px", fontSize:12, color:C.muted }}> {count} استجابت · ⏳ {pending} لم تستجب</p>
-                {s.expires_at && <p style={{ margin:0, fontSize:11, color:C.muted }}> ينتهي: {new Date(s.expires_at).toLocaleDateString("ar-SA")}</p>}
-              </Card>
-            );
-          })}
-        </>
-      )}
-      {activeTab === "whatsapp" && (
-        <>
-          <div style={{ background:C.primaryBg, borderRadius:12, padding:14, marginBottom:16 }}>
-            <p style={{ margin:"0 0 4px", fontSize:13, fontWeight:700, color:C.primary }}> إرسال تذكيرات واتس</p>
-            <p style={{ margin:0, fontSize:12, color:C.muted, lineHeight:1.7 }}>ترسل رسالة واتس تلقائية لكل مدرسة لم تستجب بعد</p>
-          </div>
-          {activeSurveys.filter(s=>s.survey_type==="school").length === 0 ? <Card style={{ textAlign:"center", padding:24 }}><p style={{ margin:0, color:C.muted, fontSize:13 }}>لا توجد استبيانات مدرسية نشطة</p></Card>
-          : activeSurveys.filter(s=>s.survey_type==="school").map(s => {
-            const pending = pendingSchools[s.id]||[], withPhone = pending.filter(sc=>sc.phone), isSending = sending[s.id], sent = sentCount[s.id];
-            return (
-              <Card key={s.id} style={{ marginBottom:12 }}>
-                <p style={{ margin:"0 0 6px", fontSize:14, fontWeight:700, color:C.dark }}>{s.title}</p>
-                <p style={{ margin:"0 0 12px", fontSize:12, color:C.muted }}>⏳ {pending.length} مدرسة لم تستجب ·  {withPhone.length} لديها جوال</p>
-                {sent !== undefined && <div style={{ background:C.successBg, borderRadius:8, padding:"6px 10px", marginBottom:10 }}><p style={{ margin:0, fontSize:12, color:C.success }}> تم إرسال {sent} رسالة</p></div>}
-                {withPhone.length > 0 ? <Btn full loading={isSending} onClick={()=>sendReminders(s)}>{isSending?`جاري الإرسال...`:` إرسال تذكير لـ ${withPhone.length} مدرسة`}</Btn>
-                : <p style={{ margin:0, fontSize:12, color:C.muted, textAlign:"center" }}>لا توجد أرقام جوال للمدارس غير المستجيبة</p>}
-              </Card>
-            );
-          })}
-        </>
-      )}
-      {activeTab === "details" && (
-        <>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-            <p style={{ margin:0, fontSize:13, color:C.muted }}>{surveys.length} استبيان</p>
-            {surveys.length > 0 && <ExportMenu options={[{key:"xlsx",icon:"",label:"تصدير Excel",action:exportAnalyticsExcel}]}/>}
-          </div>
-          {surveys.map(s => {
-            const count = stats[s.id]||0, total = s.survey_type==="school"?schoolCount:count, pct = total?Math.round(count/total*100):0;
-            return (
-              <Card key={s.id} style={{ marginBottom:12 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-                  <p style={{ margin:0, fontSize:14, fontWeight:700, color:C.dark, flex:1 }}>{s.title}</p>
-                  <span style={{ fontSize:13, fontWeight:800, color:C.primary }}>{pct}%</span>
-                </div>
-                <p style={{ margin:"0 0 8px", fontSize:12, color:C.muted }}>{count} من {s.survey_type==="school"?schoolCount:"—"} مدرسة</p>
-                <div style={{ height:10, background:C.border, borderRadius:6 }}><div style={{ height:"100%", width:`${pct}%`, background:`linear-gradient(90deg,${C.primary},${C.primaryLight})`, borderRadius:6 }}/></div>
-              </Card>
-            );
-          })}
-        </>
-      )}
-    </div>
-  );
-}
-
-const STAGES = ["الابتدائية", "المتوسطة", "الثانوية"];
-
-function SchoolForm({ initial, onSaved, onCancel, user }) {
-  const isEdit = !!initial;
-  const [form, setForm] = useState(initial || { id:"", name:"", principal:"", phone:"", email:"", stage:"ابتدائية", supervisor:"", status:"مُسندة" });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  function set(k,v) { setForm(p=>({...p,[k]:v})); }
-
-  async function save() {
-    if (!form.id.trim()||!form.name.trim()) { setError("الرقم الوزاري واسم المدرسة حقول إلزامية"); return; }
-    setSaving(true); setError("");
-    const payload = { id:form.id.trim(), name:form.name.trim(), principal:form.principal.trim(), phone:form.phone.trim(), email:form.email.trim(), stage:form.stage, supervisor:form.supervisor.trim(), status:form.status };
-    let err;
-    if (isEdit) { ({error:err} = await supabase.from("survey_schools").update(payload).eq("id", initial.id)); }
-    else        { ({error:err} = await supabase.from("survey_schools").insert(payload)); }
-    setSaving(false);
-    if (err) { setError(err.code==="23505"?"هذا الرقم الوزاري مستخدم بالفعل":err.code==="42501"?"ليست لديك صلاحية تنفيذ هذا الإجراء":"حدث خطأ أثناء الحفظ"); return; }
-    if (isEdit) audit.schoolUpdate(user, payload.id, payload.name);
-    else        audit.schoolCreate(user, payload.id, payload.name);
-    onSaved();
-  }
-
-  const inputStyle = { width:"100%", padding:"10px 12px", border:`1.5px solid ${C.border}`, borderRadius:10, fontSize:14, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", outline:"none", marginBottom:10 };
-  const labelStyle = { fontSize:12, fontWeight:700, color:C.text, marginBottom:5, display:"block" };
-
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.4)", zIndex:50, display:"flex", alignItems:"flex-end" }}>
-      <div style={{ background:C.bg, width:"100%", maxHeight:"92vh", overflowY:"auto", borderRadius:"18px 18px 0 0", padding:18, direction:"rtl" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-          <h3 style={{ margin:0, fontSize:16, color:C.dark }}>{isEdit?"تعديل مدرسة":"إضافة مدرسة جديدة"}</h3>
-          <button onClick={onCancel} style={{ background:"none", border:"none", fontSize:20, color:C.muted, cursor:"pointer" }}></button>
-        </div>
-        <ErrorBanner message={error}/>
-        <label style={labelStyle}>الرقم الوزاري *</label>
-        <input value={form.id} onChange={e=>set("id",e.target.value)} disabled={isEdit} style={{ ...inputStyle, direction:"ltr", textAlign:"center", fontWeight:700, background:isEdit?"#f0f0f0":"#fff" }}/>
-        <label style={labelStyle}>اسم المدرسة *</label>
-        <input value={form.name} onChange={e=>set("name",e.target.value)} style={inputStyle}/>
-        <label style={labelStyle}>اسم المدير/ة</label>
-        <input value={form.principal} onChange={e=>set("principal",e.target.value)} style={inputStyle}/>
-        <label style={labelStyle}>المرحلة</label>
-        <div style={{ display:"flex", gap:8, marginBottom:10 }}>
-          {STAGES.map(s => <button key={s} onClick={()=>set("stage",s)} style={{ flex:1, padding:"9px 0", borderRadius:9, fontSize:12, fontFamily:"inherit", cursor:"pointer", border:`1.5px solid ${form.stage===s?C.primary:C.border}`, background:form.stage===s?C.primaryBg:"#fff", color:form.stage===s?C.primary:C.muted, fontWeight:form.stage===s?700:400 }}>{s}</button>)}
-        </div>
-        <label style={labelStyle}>جوال المدير/ة</label>
-        <input value={form.phone} onChange={e=>set("phone",e.target.value)} style={{...inputStyle,direction:"ltr"}}/>
-        <label style={labelStyle}>البريد الرسمي</label>
-        <input value={form.email} onChange={e=>set("email",e.target.value)} style={{...inputStyle,direction:"ltr"}}/>
-        <label style={labelStyle}>المشرف/ة</label>
-        <input value={form.supervisor} onChange={e=>set("supervisor",e.target.value)} style={inputStyle}/>
-        <label style={labelStyle}>الحالة</label>
-        <div style={{ display:"flex", gap:8, marginBottom:18 }}>
-          {["مُسندة","غير مُسندة"].map(s => <button key={s} onClick={()=>set("status",s)} style={{ flex:1, padding:"9px 0", borderRadius:9, fontSize:12, fontFamily:"inherit", cursor:"pointer", border:`1.5px solid ${form.status===s?C.primary:C.border}`, background:form.status===s?C.primaryBg:"#fff", color:form.status===s?C.primary:C.muted, fontWeight:form.status===s?700:400 }}>{s}</button>)}
-        </div>
-        <Btn full onClick={save} loading={saving}>{isEdit?"حفظ التعديلات":"إضافة المدرسة"}</Btn>
-      </div>
-    </div>
-  );
-}
-
-function CsvUploadSheet({ onDone, onCancel, user }) {
-  const [fileName, setFileName] = useState("");
-  const [rows, setRows] = useState([]);
-  const [parsing, setParsing] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState(null);
-
-  function parseCsv(text) {
-    const lines = text.split(/\r\n|\n/).filter(l=>l.trim().length>0);
-    if (lines.length<2) return [];
-    const headers = lines[0].split(",").map(h=>h.trim().replace(/^\uFEFF/,""));
-    const idx = { id:headers.indexOf("id"), name:headers.indexOf("name"), principal:headers.indexOf("principal"), phone:headers.indexOf("phone"), email:headers.indexOf("email"), stage:headers.indexOf("stage"), supervisor:headers.indexOf("supervisor"), status:headers.indexOf("status") };
-    const out = [];
-    for (let i=1;i<lines.length;i++) {
-      const cells=[]; let cur="",inQuotes=false; const line=lines[i];
-      for (let c=0;c<line.length;c++) { const ch=line[c]; if(ch==='"'){inQuotes=!inQuotes;} else if(ch===","&&!inQuotes){cells.push(cur);cur="";} else cur+=ch; } cells.push(cur);
-      const id=(cells[idx.id]||"").trim(), name=(cells[idx.name]||"").trim();
-      if (!id||!name) continue;
-      out.push({ id, name, principal:(cells[idx.principal]||"").trim(), phone:(cells[idx.phone]||"").trim(), email:(cells[idx.email]||"").trim(), stage:(cells[idx.stage]||"ابتدائية").trim(), supervisor:(cells[idx.supervisor]||"").trim(), status:(cells[idx.status]||"مُسندة").trim() });
-    }
-    return out;
-  }
-
-  function handleFile(e) {
-    const file=e.target.files[0]; if(!file) return;
-    setFileName(file.name); setError(""); setResult(null); setParsing(true);
-    const reader=new FileReader();
-    reader.onload=(ev)=>{ try { const parsed=parseCsv(ev.target.result); if(parsed.length===0) setError("لم يتم العثور على بيانات صالحة."); setRows(parsed); } catch(err){setError("تعذرت قراءة الملف: "+err.message);} setParsing(false); };
-    reader.onerror=()=>{setError("فشل قراءة الملف");setParsing(false);};
-    reader.readAsText(file,"UTF-8");
-  }
-
-  async function upload() {
-    if(rows.length===0) return;
-    setUploading(true); setProgress(0); setError("");
-    const BATCH=50; let success=0, failed=0;
-    for(let i=0;i<rows.length;i+=BATCH) {
-      const batch=rows.slice(i,i+BATCH);
-      const {error:err}=await supabase.from("survey_schools").upsert(batch,{onConflict:"id"});
-      if(err) failed+=batch.length; else success+=batch.length;
-      setProgress(Math.min(100,Math.round(((i+BATCH)/rows.length)*100)));
-    }
-    if(success>0) audit.schoolImport(user, success);
-    setUploading(false); setResult({success,failed});
-  }
-
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.4)", zIndex:50, display:"flex", alignItems:"flex-end" }}>
-      <div style={{ background:C.bg, width:"100%", maxHeight:"90vh", overflowY:"auto", borderRadius:"18px 18px 0 0", padding:18, direction:"rtl" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-          <h3 style={{ margin:0, fontSize:16, color:C.dark }}>رفع مدارس عبر CSV</h3>
-          <button onClick={onCancel} style={{ background:"none", border:"none", fontSize:20, color:C.muted, cursor:"pointer" }}></button>
-        </div>
-        {!result && (
-          <>
-            <Card style={{ marginBottom:14, background:C.primaryBg }}><p style={{ margin:0, fontSize:12, color:C.text, lineHeight:1.8 }}>الأعمدة المطلوبة: <strong>id, name</strong> (إلزامية)</p></Card>
-            <label style={{ display:"block", padding:"30px 16px", border:`2px dashed ${C.border}`, borderRadius:14, textAlign:"center", cursor:"pointer", background:"#fff", marginBottom:14 }}>
-              <input type="file" accept=".csv" onChange={handleFile} style={{ display:"none" }}/>
-              <div style={{ fontSize:30, marginBottom:6 }}></div>
-              <div style={{ fontSize:13, color:C.primary, fontWeight:700 }}>{fileName||"اضغط لاختيار ملف CSV"}</div>
-            </label>
-            <ErrorBanner message={error}/>
-            {parsing && <div style={{ textAlign:"center", padding:14 }}><Spinner/></div>}
-            {!parsing && rows.length>0 && <Card style={{ marginBottom:14 }}><p style={{ margin:"0 0 8px", fontSize:13, fontWeight:700, color:C.success }}> تم العثور على {rows.length} مدرسة</p><div style={{ maxHeight:160, overflowY:"auto" }}>{rows.slice(0,5).map((r,i)=><div key={i} style={{ fontSize:11, color:C.muted, padding:"4px 0", borderBottom:`1px solid ${C.border}` }}>{r.id} — {r.name}</div>)}{rows.length>5&&<p style={{ fontSize:11, color:C.muted, margin:"6px 0 0" }}>... و{rows.length-5} أخرى</p>}</div></Card>}
-            {uploading && <div style={{ marginBottom:14 }}><div style={{ height:8, background:C.border, borderRadius:6, overflow:"hidden" }}><div style={{ height:"100%", width:`${progress}%`, background:C.primary, transition:"width 0.3s" }}/></div><p style={{ fontSize:11, color:C.muted, textAlign:"center", marginTop:6 }}>{progress}%</p></div>}
-            <Btn full onClick={upload} disabled={rows.length===0} loading={uploading}>رفع {rows.length>0?`${rows.length} مدرسة`:"الملف"}</Btn>
-          </>
-        )}
-        {result && <div style={{ textAlign:"center", padding:20 }}><div style={{ fontSize:40, marginBottom:10 }}>{result.failed===0?"":""}</div><p style={{ fontWeight:700, color:C.dark, margin:"0 0 6px" }}>تم الانتهاء</p><p style={{ fontSize:13, color:C.success, margin:"0 0 4px" }}>نجح: {result.success}</p>{result.failed>0&&<p style={{ fontSize:13, color:C.danger, margin:0 }}>فشل: {result.failed}</p>}<div style={{ marginTop:18 }}><Btn full onClick={onDone}>تم</Btn></div></div>}
-      </div>
-    </div>
-  );
-}
-
-function DeleteConfirm({ school, onConfirm, onCancel, user }) {
-  const [deleting, setDeleting] = useState(false);
-  async function doDelete() {
-    setDeleting(true);
-    const {error:err} = await supabase.from("survey_schools").delete().eq("id", school.id);
-    setDeleting(false);
-    if (!err) audit.schoolDelete(user, school.id, school.name);
-    onConfirm();
-  }
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.4)", zIndex:50, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-      <div style={{ background:"#fff", borderRadius:16, padding:22, maxWidth:340, width:"100%", direction:"rtl" }}>
-        <div style={{ fontSize:32, textAlign:"center", marginBottom:10 }}></div>
-        <p style={{ textAlign:"center", fontWeight:700, color:C.dark, margin:"0 0 6px" }}>تأكيد الحذف</p>
-        <p style={{ textAlign:"center", fontSize:13, color:C.muted, margin:"0 0 18px" }}>هل أنت متأكد من حذف مدرسة<br/><strong style={{ color:C.text }}>{school.name}</strong>؟<br/>لا يمكن التراجع.</p>
-        <div style={{ display:"flex", gap:8 }}>
-          <Btn variant="secondary" full onClick={onCancel} disabled={deleting}>إلغاء</Btn>
-          <Btn variant="danger" full onClick={doDelete} loading={deleting}>حذف نهائياً</Btn>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SchoolsManagementPage({ isAdmin, user }) {
-  const [schools, setSchools] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [stageFilter, setStageFilter] = useState("الكل");
-  const [formTarget, setFormTarget] = useState(undefined);
-  const [csvOpen, setCsvOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [page, setPage] = useState(1);
-  const PAGE_SIZE = 30;
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    let all=[], from=0;
-    while(true) {
-      const {data,error}=await supabase.from("survey_schools").select("*").order("name").range(from,from+999);
-      if(error||!data||data.length===0) break;
-      all=all.concat(data); if(data.length<1000) break; from+=1000;
-    }
-    setSchools(all); setLoading(false);
-  }, []);
-
-  useEffect(()=>{load();},[load]);
-
-  const filtered = useMemo(()=>{
-    let list=schools;
-    if(stageFilter!=="الكل") list=list.filter(s=>s.stage===stageFilter);
-    if(search.trim()) { const q=search.trim().toLowerCase(); list=list.filter(s=>s.id.toLowerCase().includes(q)||(s.name||"").toLowerCase().includes(q)||(s.principal||"").toLowerCase().includes(q)); }
-    return list;
-  },[schools,search,stageFilter]);
-
-  const paged = filtered.slice(0, page*PAGE_SIZE);
-
-  async function exportSchoolsExcel() {
-    const XLSX=await ensureXLSX();
-    const rows=filtered.map(s=>({"الرقم الوزاري":s.id,"اسم المدرسة":s.name,"المدير/ة":s.principal||"","المرحلة":s.stage,"جوال المدير":s.phone||"","البريد الرسمي":s.email||"","المشرف/ة":s.supervisor||"","الحالة":s.status||""}));
-    const ws=XLSX.utils.json_to_sheet(rows); ws["!cols"]=Object.keys(rows[0]||{}).map(()=>({wch:24}));
-    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"المدارس");
-    XLSX.writeFile(wb,`قائمة-المدارس-${tsStamp()}.xlsx`);
-    audit.exportExcel(user, "قائمة المدارس");
-  }
-
-  async function exportSchoolsPdf() {
-    const jsPDF=await ensurePDF();
-    const doc=new jsPDF({orientation:"l",unit:"pt",format:"a4"});
-    const W=doc.internal.pageSize.getWidth();
-    doc.setFontSize(15); pdfRTLText(doc,"قائمة المدارس — إدارة التعليم جدة",W-40,40);
-    doc.setFontSize(9); doc.setTextColor(110,110,110); pdfRTLText(doc,`${filtered.length} مدرسة · ${new Date().toLocaleDateString("ar-SA")}`,W-40,58);
-    doc.autoTable({ startY:72, head:[["الرقم","المدرسة","المدير","المرحلة","المشرف","الحالة"]], body:filtered.map(s=>[s.id,s.name,s.principal||"-",s.stage,s.supervisor||"-",s.status]), styles:{font:"helvetica",fontSize:8,halign:"right"}, headStyles:{fillColor:[11,110,110],halign:"right"}, margin:{left:30,right:30} });
-    doc.save(`قائمة-المدارس-${tsStamp()}.pdf`);
-    audit.exportPdf(user, "قائمة المدارس");
-  }
-
-  return (
-    <div style={{ padding:16, direction:"rtl" }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-        <div><h2 style={{ margin:0, fontSize:17, color:C.dark }}>إدارة المدارس</h2><p style={{ margin:"2px 0 0", fontSize:12, color:C.muted }}>{schools.length} مدرسة مسجّلة</p></div>
-        <ExportMenu options={[{key:"xlsx",icon:"",label:"تصدير Excel",action:exportSchoolsExcel},{key:"pdf",icon:"",label:"تصدير PDF",action:exportSchoolsPdf}]}/>
-      </div>
-      {isAdmin ? <div style={{ display:"flex", gap:8, marginBottom:12 }}><Btn full onClick={()=>setFormTarget(null)}> إضافة مدرسة</Btn><Btn full variant="secondary" onClick={()=>setCsvOpen(true)}> رفع CSV</Btn></div>
-      : <ViewerNotice action="إضافة أو رفع المدارس"/>}
-      <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder="ابحث بالاسم أو الرقم الوزاري أو المدير..."
-        style={{ width:"100%", padding:"10px 14px", border:`1.5px solid ${C.border}`, borderRadius:10, fontSize:13, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", outline:"none", marginBottom:10 }}/>
-      <div style={{ display:"flex", gap:6, marginBottom:14, overflowX:"auto" }}>
-        {["الكل",...STAGES].map(s=><button key={s} onClick={()=>{setStageFilter(s);setPage(1);}} style={{ padding:"6px 14px", borderRadius:18, fontSize:12, fontFamily:"inherit", cursor:"pointer", whiteSpace:"nowrap", border:`1.5px solid ${stageFilter===s?C.primary:C.border}`, background:stageFilter===s?C.primaryBg:"#fff", color:stageFilter===s?C.primary:C.muted, fontWeight:stageFilter===s?700:400 }}>{s}</button>)}
-      </div>
-      {loading ? <div style={{ textAlign:"center", padding:40 }}><Spinner size={28}/></div>
-      : filtered.length===0 ? <p style={{ textAlign:"center", color:C.muted, fontSize:13, padding:30 }}>لا توجد نتائج مطابقة</p>
-      : (
-        <>
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-            {paged.map(s => (
-              <Card key={s.id} style={{ padding:12 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <p style={{ margin:0, fontSize:14, fontWeight:700, color:C.dark }}>{s.name}</p>
-                    <p style={{ margin:"3px 0 0", fontSize:12, color:C.muted }}>{s.principal||"—"} · رقم: {s.id}</p>
-                    <div style={{ display:"flex", gap:6, marginTop:6, flexWrap:"wrap" }}><Tag color={C.primary}>{s.stage}</Tag><Tag color={s.status==="مُسندة"?C.success:C.warn}>{s.status}</Tag></div>
-                  </div>
-                  {isAdmin && <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                    <button onClick={()=>setFormTarget(s)} style={{ background:C.primaryBg, border:"none", borderRadius:8, padding:"6px 10px", fontSize:11, color:C.primary, cursor:"pointer", fontFamily:"inherit" }}> تعديل</button>
-                    <button onClick={()=>setDeleteTarget(s)} style={{ background:"#fdf0ee", border:"none", borderRadius:8, padding:"6px 10px", fontSize:11, color:C.danger, cursor:"pointer", fontFamily:"inherit" }}> حذف</button>
-                  </div>}
-                </div>
-              </Card>
-            ))}
-          </div>
-          {paged.length<filtered.length && <Btn variant="secondary" full onClick={()=>setPage(p=>p+1)} style={{ marginTop:12 }}>عرض المزيد ({filtered.length-paged.length} متبقي)</Btn>}
-        </>
-      )}
-      {isAdmin&&formTarget!==undefined&&<SchoolForm initial={formTarget} onSaved={()=>{setFormTarget(undefined);load();}} onCancel={()=>setFormTarget(undefined)} user={user}/>}
-      {isAdmin&&csvOpen&&<CsvUploadSheet onDone={()=>{setCsvOpen(false);load();}} onCancel={()=>setCsvOpen(false)} user={user}/>}
-      {isAdmin&&deleteTarget&&<DeleteConfirm school={deleteTarget} onConfirm={()=>{setDeleteTarget(null);load();}} onCancel={()=>setDeleteTarget(null)} user={user}/>}
-    </div>
-  );
-}
-
-function UsersManagementPage({ currentUser }) {
-  const [roles, setRoles] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [info, setInfo] = useState("");
-
-  const load = useCallback(async()=>{ setLoading(true); const{data}=await supabase.from("user_roles").select("*").order("created_at"); setRoles(data||[]); setLoading(false); },[]);
-  useEffect(()=>{load();},[load]);
-
-  async function setRole(userId, role, displayName) {
-    setError(""); setInfo("");
-    const{error:err}=await supabase.from("user_roles").update({role,status:"approved"}).eq("user_id",userId);
-    if(err){setError("فشل تحديث الصلاحية");return;}
-    audit.userRoleChange(currentUser, userId, role==="admin"?"مدير عام":"مشرف");
-    load();
-  }
-
-  async function approve(userId, displayName) {
-    setError(""); setInfo("");
-    const{error:err}=await supabase.from("user_roles").update({status:"approved",role:"viewer"}).eq("user_id",userId);
-    if(err){setError("فشل قبول الطلب");return;}
-    audit.userApprove(currentUser, userId, displayName||"مستخدم");
-    setInfo(`تم قبول ${displayName||"المستخدم"} بصلاحية مشرف`); load();
-  }
-
-  async function reject(userId, displayName) {
-    setError(""); setInfo("");
-    const{error:err}=await supabase.from("user_roles").update({status:"rejected"}).eq("user_id",userId);
-    if(err){setError("فشل رفض الطلب");return;}
-    audit.userReject(currentUser, userId, displayName||"مستخدم");
-    load();
-  }
-
-  const pending=roles.filter(r=>r.status==="pending"), others=roles.filter(r=>r.status!=="pending");
-
-  return (
-    <div style={{ padding:16, direction:"rtl" }}>
-      <h2 style={{ margin:"0 0 4px", fontSize:17, color:C.dark }}>إدارة المستخدمين والصلاحيات</h2>
-      <p style={{ margin:"0 0 16px", fontSize:12, color:C.muted }}>تحكم في من يملك صلاحية التعديل الكاملة</p>
-      <ErrorBanner message={error}/>
-      {info&&<div style={{ background:C.successBg, border:`1px solid ${C.success}40`, borderRadius:10, padding:"10px 14px", fontSize:13, color:C.success, marginBottom:12 }}> {info}</div>}
-      {loading?<div style={{ textAlign:"center", padding:30 }}><Spinner/></div>:(
-        <>
-          {pending.length>0&&<div style={{ marginBottom:20 }}><p style={{ margin:"0 0 10px", fontSize:13, fontWeight:700, color:C.warn }}> طلبات تسجيل بانتظار الموافقة ({pending.length})</p><div style={{ display:"flex", flexDirection:"column", gap:8 }}>{pending.map(r=><Card key={r.user_id} style={{ padding:14, background:C.warnBg, border:`1px solid ${C.warn}40` }}><p style={{ margin:"0 0 2px", fontSize:13, fontWeight:700, color:C.dark }}>{r.display_name||"مستخدم"}</p><p style={{ margin:"0 0 10px", fontSize:11, color:C.muted }}>طلب التسجيل {new Date(r.created_at).toLocaleDateString("ar-SA")}</p><div style={{ display:"flex", gap:8 }}><Btn sm full variant="primary" onClick={()=>approve(r.user_id,r.display_name)}> قبول</Btn><Btn sm full variant="danger" onClick={()=>reject(r.user_id,r.display_name)}> رفض</Btn></div></Card>)}</div></div>}
-          {others.length===0?<Card style={{ textAlign:"center", padding:24 }}><p style={{ margin:0, color:C.muted, fontSize:13 }}>لا يوجد مستخدمون آخرون بعد</p></Card>
-          :<div style={{ display:"flex", flexDirection:"column", gap:8 }}>{others.map(r=><Card key={r.user_id} style={{ padding:14, opacity:r.status==="rejected"?0.6:1 }}><div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}><div><p style={{ margin:0, fontSize:13, fontWeight:700, color:C.dark }}>{r.display_name||"مستخدم"} {r.user_id===currentUser?.id&&<span style={{color:C.primary,fontSize:11}}>(أنت)</span>}</p><p style={{ margin:"2px 0 0", fontSize:11, color:C.muted, direction:"ltr", textAlign:"right" }}>{r.user_id.slice(0,8)}...</p></div><div style={{ display:"flex", gap:6, alignItems:"center" }}>{r.status==="rejected"&&<Tag color={C.danger}>مرفوض</Tag>}<RoleBadgeStatic role={r.role}/></div></div>{r.status!=="rejected"&&<div style={{ display:"flex", gap:8 }}><button onClick={()=>setRole(r.user_id,"admin",r.display_name)} disabled={r.role==="admin"} style={{ flex:1, padding:"7px 0", borderRadius:8, fontSize:11, fontFamily:"inherit", border:`1.5px solid ${r.role==="admin"?C.accent:C.border}`, background:r.role==="admin"?C.accentLight:"#fff", color:r.role==="admin"?C.accent:C.muted, cursor:r.role==="admin"?"default":"pointer", fontWeight:700 }}> مدير عام</button><button onClick={()=>setRole(r.user_id,"viewer",r.display_name)} disabled={r.role==="viewer"} style={{ flex:1, padding:"7px 0", borderRadius:8, fontSize:11, fontFamily:"inherit", border:`1.5px solid ${r.role==="viewer"?C.primary:C.border}`, background:r.role==="viewer"?C.primaryBg:"#fff", color:r.role==="viewer"?C.primary:C.muted, cursor:r.role==="viewer"?"default":"pointer", fontWeight:700 }}> مشرف (عرض فقط)</button></div>}{r.status==="rejected"&&<Btn sm full variant="secondary" onClick={()=>approve(r.user_id,r.display_name)}>إعادة القبول</Btn>}</Card>)}</div>}
-        </>
-      )}
-    </div>
-  );
-}
-
-function RoleBadgeStatic({ role }) {
-  const isAdmin=role==="admin";
-  return <span style={{ background:isAdmin?C.accentLight:C.primaryBg, color:isAdmin?C.accent:C.primary, border:`1px solid ${isAdmin?C.accent:C.primary}40`, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>{isAdmin?" مدير عام":" مشرف"}</span>;
-}
-
-const ACTION_LABELS = {
-  ...Object.fromEntries(Object.entries(AUDIT_ACTION_LABELS).map(([k,v])=>[k,v])),
-  create:{label:"إضافة",color:"#1A7A4A",icon:""},
-  update:{label:"تعديل",color:"#0B6E6E",icon:""},
-  delete:{label:"حذف",color:"#C0392B",icon:""},
-  bulk_upload:{label:"رفع جماعي",color:"#C49A28",icon:""},
-};
-
-const TABLE_LABELS = {
-  survey:"الاستبيانات", template:"القوالب", directory:"الدليل",
-  user:"المستخدمون", export:"التصدير", settings:"الإعدادات", system:"النظام",
-  survey_schools:"المدارس", surveys:"الاستبيانات", survey_questions:"أسئلة الاستبيان", user_roles:"صلاحيات المستخدمين",
-};
-
-function SupervisorsManagementPage({ user }) {
-  const [sups, setSups] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [form, setForm] = useState(null);
-  const [delTarget, setDelTarget] = useState(null);
-  const [csvOpen, setCsvOpen] = useState(false);
-  const [error, setError] = useState("");
-  const [info, setInfo] = useState("");
-  const [page, setPage] = useState(1);
-  const [previewRows, setPreviewRows] = useState(null);
-  const PER = 30;
-
-  const load = useCallback(async()=>{ setLoading(true); const{data}=await supabase.from("supervisors").select("*").order("name"); setSups(data||[]); setLoading(false); },[]);
-  useEffect(()=>{load();},[load]);
-
-  const filtered = sups.filter(s=>!search||s.name.includes(search)||s.national_id.includes(search)||(s.phone||"").includes(search));
-  const paged = filtered.slice((page-1)*PER, page*PER);
-
-  async function saveSup(data) {
-    setError("");
-    if (!data.name?.trim()||!data.national_id?.trim()) { setError("الاسم ورقم الهوية حقلان إلزاميان"); return; }
-    const payload={name:data.name.trim(),national_id:data.national_id.trim(),phone:data.phone?.trim()||"",email:data.email?.trim()||"",status:data.status||"مُسندة"};
-    let err;
-    if(data.id){({error:err}=await supabase.from("supervisors").update(payload).eq("id",data.id));}
-    else{({error:err}=await supabase.from("supervisors").insert(payload));}
-    if(err){setError(err.code==="23505"?"رقم الهوية مستخدم بالفعل":"حدث خطأ أثناء الحفظ");return;}
-    if(data.id) audit.supervisorUpdate(user, data.id, payload.name);
-    else        audit.supervisorCreate(user, null, payload.name);
-    setForm(null); load();
-  }
-
-  async function deleteSup(id, name) {
-    await supabase.from("supervisors").delete().eq("id",id);
-    audit.supervisorDelete(user, id, name);
-    setDelTarget(null); load();
-  }
-
-  async function loadPdfJs() {
-    if(window.pdfjsLib) return window.pdfjsLib;
-    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-    return window.pdfjsLib;
-  }
-
-  async function parseFile(file) {
-    setError(""); setPreviewRows(null);
-    const ext=file.name.split(".").pop().toLowerCase();
-    if(ext==="pdf") {
-      const pdfjsLib=await loadPdfJs(); const ab=await file.arrayBuffer(); const pdf=await pdfjsLib.getDocument({data:ab}).promise;
-      let allText="";
-      for(let p=1;p<=pdf.numPages;p++) { const page=await pdf.getPage(p); const content=await page.getTextContent(); allText+=content.items.map(i=>i.str).join(" ")+"\n"; }
-      const lines=allText.split(/[\n\r]+/).map(l=>l.trim()).filter(Boolean);
-      const idPattern=/\b[12]\d{9}\b/, phonePattern=/\b05\d{8}\b/, rows=[];
-      for(const line of lines) {
-        const idMatch=line.match(idPattern), phoneMatch=line.match(phonePattern);
-        if(idMatch) { let name=line.replace(idMatch[0],"").replace(phoneMatch?.[0]||"","").replace(/\d+/g,"").replace(/[#\-_|،,]/g," ").trim().replace(/\s+/g," "); if(name.length>2) rows.push({name,national_id:idMatch[0],phone:phoneMatch?.[0]||"",email:"",status:"مُسندة"}); }
-      }
-      if(!rows.length){setError("لم يتم التعرف على بيانات منظمة. يُنصح باستخدام Excel.");return;}
-      setPreviewRows(rows);
-    } else {
-      const XLSX=await ensureXLSX(); const ab=await file.arrayBuffer(); const wb=XLSX.read(ab); const ws=wb.Sheets[wb.SheetNames[0]]; const rows=XLSX.utils.sheet_to_json(ws);
-      const mapped=rows.map(r=>({name:String(r["الاسم"]||r["name"]||r["Name"]||"").trim(),national_id:String(r["رقم الهوية"]||r["national_id"]||r["الهوية"]||"").trim(),phone:String(r["الجوال"]||r["phone"]||r["Phone"]||"").trim(),email:String(r["البريد"]||r["email"]||"").trim(),status:String(r["الحالة"]||"مُسندة")})).filter(r=>r.name&&r.national_id);
-      if(!mapped.length){setError("لم يتم العثور على بيانات صحيحة.");return;}
-      setPreviewRows(mapped);
-    }
-  }
-
-  async function confirmImport() {
-    if(!previewRows?.length) return;
-    const{error:err}=await supabase.from("supervisors").upsert(previewRows,{onConflict:"national_id"});
-    if(err){setError("فشل الاستيراد: "+err.message);return;}
-    audit.supervisorImport(user, previewRows.length);
-    setInfo(`تم استيراد ${previewRows.length} مشرف بنجاح`);
-    setPreviewRows(null); setCsvOpen(false); load();
-  }
-
-  const inputStyle={width:"100%",padding:"10px 12px",border:`1.5px solid ${C.border}`,borderRadius:10,fontSize:13,fontFamily:"inherit",direction:"rtl",boxSizing:"border-box",outline:"none",marginBottom:10};
-
-  return (
-    <div style={{ padding:16, direction:"rtl" }}>
-      <h2 style={{ margin:"0 0 4px", fontSize:17, color:C.dark }}>إدارة المشرفين</h2>
-      <p style={{ margin:"0 0 12px", fontSize:12, color:C.muted }}>{sups.length} مشرف مسجّل</p>
-      <div style={{ display:"flex", gap:8, marginBottom:12 }}><Btn sm full onClick={()=>setForm({})}> إضافة مشرف</Btn><Btn sm full variant="secondary" onClick={()=>{setCsvOpen(true);setPreviewRows(null);}}> رفع Excel/PDF</Btn></div>
-      <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder=" ابحث بالاسم أو رقم الهوية أو الجوال..."
-        style={{ width:"100%", padding:"10px 12px", border:`1.5px solid ${C.border}`, borderRadius:10, fontSize:13, fontFamily:"inherit", direction:"rtl", boxSizing:"border-box", outline:"none", marginBottom:12 }}/>
-      <ErrorBanner message={error}/>
-      {info&&<div style={{ background:C.successBg, border:`1px solid ${C.success}40`, borderRadius:10, padding:"10px 14px", fontSize:12, color:C.success, marginBottom:12 }}> {info}</div>}
-      {loading?<div style={{ textAlign:"center", padding:30 }}><Spinner/></div>:(
-        <>
-          <p style={{ fontSize:11, color:C.muted, margin:"0 0 8px" }}>عرض {paged.length} من {filtered.length}</p>
-          <Card style={{ padding:0, overflow:"hidden" }}>
-            {paged.length===0?<p style={{ padding:20, textAlign:"center", color:C.muted, fontSize:13 }}>لا توجد نتائج</p>
-            :paged.map((s,i)=><div key={s.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", borderBottom:i<paged.length-1?`1px solid ${C.border}`:undefined }}><div style={{ flex:1, minWidth:0 }}><p style={{ margin:0, fontSize:13, fontWeight:700, color:C.dark }}>{s.name}</p><p style={{ margin:"2px 0 0", fontSize:11, color:C.muted }}>هوية: {s.national_id} {s.phone&&`·  ${s.phone}`}</p></div><Tag color={s.status==="مُسندة"?C.success:C.muted}>{s.status}</Tag><div style={{ display:"flex", gap:6, flexShrink:0 }}><button onClick={()=>setForm(s)} style={{ background:C.primaryBg, border:"none", borderRadius:8, padding:"5px 8px", fontSize:11, color:C.primary, cursor:"pointer", fontFamily:"inherit" }}></button><button onClick={()=>setDelTarget(s)} style={{ background:"#fdf0ee", border:"none", borderRadius:8, padding:"5px 8px", fontSize:11, color:C.danger, cursor:"pointer", fontFamily:"inherit" }}></button></div></div>)}
-          </Card>
-          {Math.ceil(filtered.length/PER)>1&&<div style={{ display:"flex", justifyContent:"center", gap:8, marginTop:12 }}><Btn sm variant="secondary" disabled={page===1} onClick={()=>setPage(p=>p-1)}>السابق</Btn><span style={{ padding:"8px 14px", fontSize:13, color:C.muted }}>{page}/{Math.ceil(filtered.length/PER)}</span><Btn sm variant="secondary" disabled={page>=Math.ceil(filtered.length/PER)} onClick={()=>setPage(p=>p+1)}>التالي</Btn></div>}
-        </>
-      )}
-      {form!==null&&<div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:100, display:"flex", alignItems:"flex-end", direction:"rtl" }}><div style={{ width:"100%", background:C.white, borderRadius:"20px 20px 0 0", padding:20, maxHeight:"80vh", overflowY:"auto" }}><h3 style={{ margin:"0 0 16px", fontSize:16, color:C.dark }}>{form.id?"تعديل بيانات المشرف":"إضافة مشرف جديد"}</h3>{[["الاسم","name","اسم المشرف"],["رقم الهوية","national_id","10 أرقام"],["رقم الجوال","phone","05xxxxxxxx"],["البريد الإلكتروني","email",""]].map(([l,k,ph])=><div key={k}><label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:4 }}>{l}</label><input value={form[k]||""} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} placeholder={ph} style={inputStyle}/></div>)}<label style={{ display:"block", fontSize:12, fontWeight:700, color:C.text, marginBottom:4 }}>الحالة</label><select value={form.status||"مُسندة"} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{ ...inputStyle, background:C.white }}><option>مُسندة</option><option>غير مُسندة</option></select><ErrorBanner message={error}/><div style={{ display:"flex", gap:8 }}><Btn full variant="secondary" onClick={()=>{setForm(null);setError("");}}>إلغاء</Btn><Btn full onClick={()=>saveSup(form)}>حفظ</Btn></div></div></div>}
-      {delTarget&&<div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}><div style={{ background:C.white, borderRadius:16, padding:20, width:"100%", maxWidth:340 }}><p style={{ textAlign:"center", fontWeight:700, color:C.dark, fontSize:15 }}>حذف {delTarget.name}؟</p><p style={{ textAlign:"center", color:C.muted, fontSize:12 }}>لا يمكن التراجع</p><div style={{ display:"flex", gap:8, marginTop:14 }}><Btn full variant="secondary" onClick={()=>setDelTarget(null)}>إلغاء</Btn><Btn full variant="danger" onClick={()=>deleteSup(delTarget.id,delTarget.name)}>حذف</Btn></div></div></div>}
-      {csvOpen&&<div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:100, display:"flex", alignItems:"flex-end", direction:"rtl" }}><div style={{ width:"100%", background:C.white, borderRadius:"20px 20px 0 0", padding:20, maxHeight:"85vh", overflowY:"auto" }}><h3 style={{ margin:"0 0 12px", fontSize:16 }}>رفع قائمة مشرفين</h3>{!previewRows?(<><Card style={{ marginBottom:12, background:C.primaryBg }}><p style={{ margin:"0 0 6px", fontSize:12, color:C.text, lineHeight:1.8 }}><strong>Excel/CSV:</strong> أعمدة: الاسم، رقم الهوية (إلزامي)</p><p style={{ margin:0, fontSize:12, color:C.warn, lineHeight:1.8 }}><strong>PDF:</strong> استخراج تلقائي قد يحتاج مراجعة</p></Card><ErrorBanner message={error}/><input type="file" accept=".xlsx,.xls,.csv,.pdf" onChange={e=>{if(e.target.files?.[0]) parseFile(e.target.files[0]);}} style={{ width:"100%", fontSize:13, marginBottom:12 }}/><Btn full variant="secondary" onClick={()=>{setCsvOpen(false);setError("");}}>إلغاء</Btn></>):(<><div style={{ background:C.successBg, border:`1px solid ${C.success}40`, borderRadius:10, padding:"10px 14px", fontSize:12, color:C.success, marginBottom:12 }}> تم قراءة <strong>{previewRows.length}</strong> سجل</div><div style={{ overflowX:"auto", marginBottom:14 }}><table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}><thead><tr style={{ background:C.primaryBg }}>{["الاسم","رقم الهوية","الجوال"].map(h=><th key={h} style={{ padding:"8px 10px", textAlign:"right", color:C.primary, borderBottom:`1px solid ${C.border}` }}>{h}</th>)}</tr></thead><tbody>{previewRows.slice(0,20).map((r,i)=><tr key={i} style={{ borderBottom:`1px solid ${C.border}` }}><td style={{ padding:"7px 10px", color:C.dark }}>{r.name||"—"}</td><td style={{ padding:"7px 10px", color:C.muted, direction:"ltr" }}>{r.national_id}</td><td style={{ padding:"7px 10px", color:C.muted }}>{r.phone||"—"}</td></tr>)}</tbody></table>{previewRows.length>20&&<p style={{ textAlign:"center", fontSize:11, color:C.muted, marginTop:6 }}>... و{previewRows.length-20} سجل آخر</p>}</div><div style={{ display:"flex", gap:8 }}><Btn full variant="secondary" onClick={()=>setPreviewRows(null)}>← رجوع</Btn><Btn full onClick={confirmImport}> حفظ الكل</Btn></div></>)}</div></div>}
-    </div>
-  );
+ {formTarget && (
+ <TemplateForm existing={formTarget.id?formTarget:null} user={user}
+ onSaved={()=>{ setFormTarget(null); load(); }} onCancel={()=>setFormTarget(null)}/>
+ )}
+ </div>
+ );
 }
 
 // 
-// APP SETTINGS PAGE — unchanged
+// SEND MESSAGE PANEL — logic unchanged
+// Phase 3 adds a two-column desktop layout (≥1280px): the
+// survey/recipients/message steps on the left, a live summary +
+// send action pinned in a sidebar card on the right — purely CSS
+// grid, no extra state.
 // 
-function AppSettingsPage({ onSaved }) {
-  const { settings, reload } = useAppSettings();
-  const [logoUrl,            setLogoUrl]            = useState("");
-  const [appName,            setAppName]            = useState("");
-  const [appSubtitle,        setAppSubtitle]        = useState("");
-  const [defaultSurveyType,  setDefaultSurveyType]  = useState("school");
-  const [defaultReminderMsg, setDefaultReminderMsg] = useState("");
-  const [reportHeader,       setReportHeader]       = useState("");
-  const [reportFooter,       setReportFooter]       = useState("");
-  const [uploading,          setUploading]          = useState(false);
-  const [saving,             setSaving]             = useState(false);
-  const [info,               setInfo]               = useState("");
-  const [error,              setError]              = useState("");
+function SendMessagePanel({ surveys, user, isAdmin }) {
+ // All state & logic unchanged 
+ const [selectedSurvey, setSelectedSurvey] = useState(null);
+ const [allSchools, setAllSchools] = useState([]);
+ const [nonRespondents, setNonRespondents] = useState([]);
+ const [recipients, setRecipients] = useState([]);
+ const [loadingSchools, setLoadingSchools] = useState(false);
+ const [messageBody, setMessageBody] = useState("");
+ const [templates, setTemplates] = useState([]);
+ const [selectedTemplate, setSelectedTemplate] = useState(null);
+ const [sending, setSending] = useState(false);
+ const [result, setResult] = useState(null);
+ const [error, setError] = useState("");
+ const [stageFilter, setStageFilter] = useState("الكل");
+ const [sectorFilter, setSectorFilter] = useState("الكل");
 
-  useEffect(() => {
-    setLogoUrl(settings.logo_url || "");
-    setAppName(settings.app_name || "منظومة الاستبيانات");
-    setAppSubtitle(settings.app_subtitle || "إدارة التعليم — جدة");
-    setDefaultSurveyType(settings.default_survey_type || "school");
-    setDefaultReminderMsg(settings.default_reminder_msg || "");
-    setReportHeader(settings.report_header || "");
-    setReportFooter(settings.report_footer || "");
-  }, [settings]);
+ useEffect(() => {
+ async function loadSchools() {
+ setLoadingSchools(true);
+ let all=[], from=0;
+ while(true) {
+ const{data}=await supabase.from("survey_schools").select("id,name,stage,sector,district,principal,phone").range(from,from+999);
+ if(!data?.length) break;
+ all=all.concat(data); if(data.length<1000) break; from+=1000;
+ }
+ setAllSchools(all); setLoadingSchools(false);
+ }
+ loadSchools();
+ fetchTemplates().then(({data})=>setTemplates(data.filter(t=>t.status==="active")));
+ }, []);
 
-  async function uploadLogo(file) {
-    if(!file) return;
-    setUploading(true); setError("");
-    const ext=file.name.split(".").pop(), path=`logo.${ext}`;
-    const{error:upErr}=await supabase.storage.from("logos").upload(path,file,{upsert:true});
-    if(upErr){setError("فشل رفع الصورة: "+upErr.message);setUploading(false);return;}
-    const{data}=supabase.storage.from("logos").getPublicUrl(path);
-    setLogoUrl(data.publicUrl+"?t="+Date.now()); setUploading(false);
-  }
+ useEffect(() => {
+ if (!selectedSurvey) return;
+ async function loadAudience() {
+   const sType = selectedSurvey.survey_type;
+   let audience = [];
 
-  async function save() {
-    setSaving(true); setError(""); setInfo("");
-    await saveSetting("logo_url", logoUrl);
-    await saveSetting("app_name", appName);
-    await saveSetting("app_subtitle", appSubtitle);
-    await saveSetting("default_survey_type", defaultSurveyType);
-    await saveSetting("default_reminder_msg", defaultReminderMsg);
-    await saveSetting("report_header", reportHeader);
-    await saveSetting("report_footer", reportFooter);
-    await reload();
-    setSaving(false);
-    setInfo("تم حفظ الإعدادات بنجاح");
-    if(onSaved) onSaved();
-  }
+   if (sType === "supervisor" || sType === "administrator") {
+     // Load all people of this type
+     let allPeople = [];
+     if (sType === "supervisor") {
+       const { data } = await supabase.from("supervisors")
+         .select("id,national_id,name,phone,department,section,status").eq("status","نشط");
+       allPeople = (data||[]).map(s=>({ ...s, _type:"supervisor" }));
+     } else {
+       const { data } = await supabase.from("administrators")
+         .select("id,national_id,full_name,phone,department,section,status").eq("status","نشط");
+       allPeople = (data||[]).map(s=>({ ...s, name:s.full_name, _type:"administrator" }));
+     }
 
-  const iSt = {
-    width:"100%", padding:"12px 14px",
-    border:`1.5px solid ${PT.s200}`, borderRadius:12,
-    fontSize:14, fontFamily:"inherit", direction:"rtl",
-    boxSizing:"border-box", outline:"none", background:PT.white,
-    color:PT.s900, transition:"border-color 0.2s",
-  };
-  const lSt = { display:"block", fontSize:12, fontWeight:700, color:PT.s700, marginBottom:6 };
+     // Load responded national IDs
+     const { data: responses } = await supabase
+       .from("survey_responses")
+       .select("respondent_national_id")
+       .eq("survey_id", selectedSurvey.id);
+     const respondedNIDs = new Set(
+       (responses||[]).map(r => r.respondent_national_id).filter(Boolean)
+     );
 
-  function SettingSection({ icon, title, children }) {
-    return (
-      <div style={{ background:PT.white, borderRadius:18, border:`1px solid ${PT.s200}`,
-        overflow:"hidden", marginBottom:14, boxShadow:"0 2px 8px rgba(0,0,0,0.04)" }}>
-        <div style={{ padding:"14px 16px 12px", borderBottom:`1px solid ${PT.s100}`,
-          display:"flex", alignItems:"center", gap:10 }}>
-          <span style={{ fontSize:18 }}>{icon}</span>
-          <p style={{ margin:0, fontSize:14, fontWeight:800, color:PT.s900 }}>{title}</p>
-        </div>
-        <div style={{ padding:"16px" }}>{children}</div>
-      </div>
-    );
-  }
+     // Filter non-respondents by national_id
+     audience = allPeople.filter(p => !respondedNIDs.has(p.national_id));
 
-  return (
-    <div style={{ padding:16, direction:"rtl" }}>
-      <div style={{ marginBottom:18 }}>
-        <h2 style={{ margin:0, fontSize:18, color:PT.s900, fontWeight:800 }}>إعدادات التطبيق</h2>
-        <p style={{ margin:"3px 0 0", fontSize:12, color:PT.s500 }}>تخصيص الهوية البصرية والإعدادات الافتراضية</p>
-      </div>
+   } else {
+     // Schools: use existing fetchNonRespondents
+     if (!allSchools.length) return;
+     audience = await fetchNonRespondents(selectedSurvey, allSchools);
+   }
 
-      <SettingSection icon="" title="الشعار الرسمي">
-        {logoUrl ? (
-          <div style={{ textAlign:"center", marginBottom:14, padding:"16px", background:PT.s50, borderRadius:12 }}>
-            <img src={logoUrl} alt="logo" style={{ maxHeight:80, maxWidth:"100%", borderRadius:10, objectFit:"contain" }}/>
-          </div>
-        ) : (
-          <div style={{ textAlign:"center", marginBottom:14, padding:"20px", background:PT.s50,
-            borderRadius:12, border:`2px dashed ${PT.s200}` }}>
-            <div style={{ fontSize:32, marginBottom:4 }}></div>
-            <p style={{ margin:0, fontSize:12, color:PT.s400 }}>لا يوجد شعار حالياً</p>
-          </div>
-        )}
-        <label style={lSt}>رفع شعار جديد:</label>
-        <label style={{ display:"block", padding:"14px 16px", border:`2px dashed ${PT.s200}`,
-          borderRadius:12, textAlign:"center", cursor:"pointer", background:PT.s50, marginBottom:10 }}>
-          <input type="file" accept="image/*" onChange={e=>uploadLogo(e.target.files?.[0])}
-            disabled={uploading} style={{ display:"none" }}/>
-          <span style={{ fontSize:13, color:PT.s500 }}>
-            {uploading ? "⏳ جاري الرفع..." : "اضغط لاختيار صورة"}
-          </span>
-        </label>
-        <label style={lSt}>أو رابط URL:</label>
-        <input value={logoUrl} onChange={e=>setLogoUrl(e.target.value)}
-          placeholder="https://example.com/logo.png"
-          style={{ ...iSt, direction:"ltr", marginBottom:8 }}/>
-        {logoUrl && (
-          <button onClick={()=>setLogoUrl("")} style={{ background:"none", border:"none",
-            color:PT.danger, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
-             إزالة الشعار
-          </button>
-        )}
-      </SettingSection>
+   setNonRespondents(audience);
+   setRecipients(audience);
+ }
+ loadAudience();
+ }, [selectedSurvey, allSchools]);
 
-      <SettingSection icon="" title="عناوين النظام">
-        <label style={lSt}>اسم النظام:</label>
-        <input value={appName} onChange={e=>setAppName(e.target.value)} style={{ ...iSt, marginBottom:12 }}/>
-        <label style={lSt}>العنوان الفرعي:</label>
-        <input value={appSubtitle} onChange={e=>setAppSubtitle(e.target.value)} style={iSt}/>
-      </SettingSection>
+ const filteredRecipients = useMemo(() => {
+ let list = nonRespondents;
+ if (stageFilter !== "الكل") list = list.filter(s=>s.stage===stageFilter);
+ if (sectorFilter !== "الكل") list = list.filter(s=>s.sector===sectorFilter);
+ return list;
+ }, [nonRespondents, stageFilter, sectorFilter]);
 
-      <SettingSection icon="" title="الإعدادات الافتراضية">
-        <label style={lSt}>نوع الاستبيان الافتراضي:</label>
-        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
-          {[["school"," مدارس"],["supervisor"," مشرفون"],["administrator"," إداريون"],["open"," مفتوح"]].map(([v,l])=>(
-            <button key={v} onClick={()=>setDefaultSurveyType(v)} style={{
-              padding:"8px 14px", borderRadius:10, fontSize:12, fontFamily:"inherit", cursor:"pointer",
-              border:`1.5px solid ${defaultSurveyType===v?PT.e600:PT.s200}`,
-              background:defaultSurveyType===v?PT.e50:PT.white,
-              color:defaultSurveyType===v?PT.e700:PT.s500,
-              fontWeight:defaultSurveyType===v?700:400,
-            }}>{l}</button>
-          ))}
-        </div>
-        <label style={lSt}>رسالة التذكير الافتراضية:</label>
-        <textarea value={defaultReminderMsg} onChange={e=>setDefaultReminderMsg(e.target.value)} rows={3}
-          placeholder="مثال: نرجو تعبئة الاستبيان في أقرب وقت ممكن"
-          style={{ ...iSt, resize:"vertical" }}/>
-      </SettingSection>
+ const stages = useMemo(()=>[...new Set(nonRespondents.map(s=>s.stage).filter(Boolean))].sort(), [nonRespondents]);
+ const sectors = useMemo(()=>[...new Set(nonRespondents.map(s=>s.sector).filter(Boolean))].sort(), [nonRespondents]);
 
-      <SettingSection icon="" title="هوية التقارير">
-        <label style={lSt}>ترويسة التقارير:</label>
-        <input value={reportHeader} onChange={e=>setReportHeader(e.target.value)}
-          placeholder="مثال: إدارة التعليم بجدة — قسم الاستبيانات"
-          style={{ ...iSt, marginBottom:12 }}/>
-        <label style={lSt}>تذييل التقارير:</label>
-        <input value={reportFooter} onChange={e=>setReportFooter(e.target.value)}
-          placeholder="مثال: سري وخاص — لا يُعاد توزيعه"
-          style={iSt}/>
-      </SettingSection>
+ function applyTemplate(template) {
+ if (!selectedSurvey) return;
+ const vars = buildTemplateVariables(selectedSurvey);
+ setMessageBody(resolveTemplate(template.body, vars));
+ setSelectedTemplate(template);
+ }
 
-      {error && <div style={{ background:PT.dangerBg, border:"1px solid #FECACA", borderRadius:12,
-        padding:"10px 14px", fontSize:13, color:PT.danger, marginBottom:12,
-        display:"flex", gap:8 }}><span></span>{error}</div>}
-      {info && <div style={{ background:PT.successBg, border:`1px solid ${PT.success}30`, borderRadius:12,
-        padding:"10px 14px", fontSize:13, color:PT.success, marginBottom:12,
-        display:"flex", gap:8 }}><span></span>{info}</div>}
+ async function handleSend() {
+ if (!selectedSurvey) { setError("اختر استبياناً أولاً"); return; }
+ if (!recipients.length) { setError("لا يوجد مستلمون محددون"); return; }
+ if (!messageBody.trim()){ setError("اكتب نص الرسالة"); return; }
+ setSending(true); setError(""); setResult(null);
+ const res = await sendCommunication({
+ survey: selectedSurvey, recipients: recipients.filter(r=>r.phone),
+ messageBody: messageBody.trim(), channel: NOTIFICATION_CHANNELS.WHATSAPP,
+ user, templateId: selectedTemplate?.id || null,
+ });
+ setSending(false); setResult(res);
+ }
+ // End unchanged logic 
 
-      <button onClick={save} disabled={saving} style={{
-        width:"100%", padding:"14px",
-        background:saving?`${PT.e600}70`:`linear-gradient(135deg,${PT.e600},${PT.e800})`,
-        color:"#fff", border:"none", borderRadius:14, fontSize:14, fontWeight:800,
-        cursor:saving?"not-allowed":"pointer", fontFamily:"inherit",
-        boxShadow:saving?"none":`0 4px 16px ${PT.e600}40`,
-      }}>{saving?"جاري الحفظ...":" حفظ الإعدادات"}</button>
-    </div>
-  );
+ const phoneCount = recipients.filter(r=>r.phone).length;
+ const canSend = !sending && messageBody.trim() && recipients.length;
+
+ // Shared "send" action — rendered inline on mobile, in the sidebar on desktop
+ const sendAction = (
+ <>
+ {error && <div style={{ background:CC.dangerBg, border:"1px solid #FECACA", borderRadius:12,
+ padding:"10px 14px", fontSize:13, color:CC.danger, marginBottom:12,
+ display:"flex", gap:8 }}><span></span>{error}</div>}
+
+ {result && (
+ <div style={{ background:result.sent>0?CC.successBg:CC.dangerBg,
+ border:`1px solid ${result.sent>0?CC.success+"40":"#FECACA"}`,
+ borderRadius:14, padding:16, marginBottom:14 }}>
+ <p style={{ margin:"0 0 4px", fontSize:14, fontWeight:800,
+ color:result.sent>0?CC.success:CC.danger }}>
+ {result.sent>0 ? "تم الإرسال بنجاح" : "فشل الإرسال"}
+ </p>
+ <p style={{ margin:0, fontSize:12, color:CC.s500 }}>
+ أُرسل: {result.sent} · فشل: {result.failed} · تجاوز: {result.skipped}
+ </p>
+ </div>
+ )}
+
+ {selectedSurvey && (
+ <button onClick={handleSend} disabled={!canSend}
+ style={{
+ width:"100%", padding:"14px",
+ background: canSend ? `linear-gradient(135deg,${CC.e600},${CC.e800})` : `${CC.e600}50`,
+ color:"#fff", border:"none", borderRadius:14, fontSize:14, fontWeight:800,
+ cursor: canSend ? "pointer" : "not-allowed",
+ fontFamily:"inherit",
+ boxShadow: canSend ? `0 4px 16px ${CC.e600}40` : "none",
+ display:"flex", alignItems:"center", justifyContent:"center", gap:10,
+ }}>
+ {sending ? (
+ <><div style={{ width:18, height:18, borderRadius:"50%",
+ border:"2px solid rgba(255,255,255,0.3)", borderTopColor:"#fff",
+ animation:"spin 0.7s linear infinite" }}/>جاري الإرسال...</>
+ ) : `إرسال لـ ${phoneCount} مدرسة`}
+ </button>
+ )}
+ </>
+ );
+
+ return (
+ <div className="comm-send-layout">
+ {/* Left / main column */}
+ <div>
+ <SectionCard title="اختر الاستبيان" step="1">
+ <select value={selectedSurvey?.id||""} onChange={e=>{
+ const s=surveys.find(sv=>sv.id===e.target.value)||null;
+ setSelectedSurvey(s); setResult(null); setStageFilter("الكل"); setSectorFilter("الكل");
+ }} style={{ ...iSt, background:CC.white }}>
+ <option value="">— اختر استبياناً —</option>
+ {surveys.filter(s=>s.approval_status==="approved").map(s=>(
+ <option key={s.id} value={s.id}>{s.title}</option>
+ ))}
+ </select>
+ </SectionCard>
+
+ {selectedSurvey && (
+ <SectionCard step="2" title={
+ `المستلمون غير المستجيبين · ${filteredRecipients.length} بجوال من ${nonRespondents.length}`
+ }>
+ {loadingSchools ? (
+ <div style={{ textAlign:"center", padding:16 }}>
+ <div style={{ width:28, height:28, borderRadius:"50%", border:`3px solid ${CC.e100}`,
+ borderTopColor:CC.e600, animation:"spin 0.7s linear infinite", margin:"0 auto" }}/>
+ </div>
+ ) : (
+ <>
+ {stages.length > 0 && (
+ <div style={{ marginBottom:10 }}>
+ <p style={{ margin:"0 0 6px", fontSize:11, fontWeight:700, color:CC.s500 }}>المرحلة:</p>
+ <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+ {["الكل",...stages].map(s=>(
+ <FilterChip key={s} label={s} active={stageFilter===s}
+ onClick={()=>{ setStageFilter(s); setRecipients([]); }}/>
+ ))}
+ </div>
+ </div>
+ )}
+ {sectors.length > 0 && (
+ <div style={{ marginBottom:10 }}>
+ <p style={{ margin:"0 0 6px", fontSize:11, fontWeight:700, color:CC.s500 }}>القطاع:</p>
+ <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+ {["الكل",...sectors].map(s=>(
+ <FilterChip key={s} label={s} active={sectorFilter===s}
+ color={CC.purple} onClick={()=>{ setSectorFilter(s); setRecipients([]); }}/>
+ ))}
+ </div>
+ </div>
+ )}
+ <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+ <button onClick={()=>setRecipients(filteredRecipients)} className="comm-btn" style={{
+ background:CC.e50, color:CC.e700, border:`1px solid ${CC.e100}`,
+ borderRadius:10, padding:"8px 14px", fontSize:12, fontWeight:700,
+ cursor:"pointer", fontFamily:"inherit",
+ }}>تحديد الكل ({filteredRecipients.length})</button>
+ <button onClick={()=>setRecipients([])} className="comm-btn" style={{
+ background:CC.s100, color:CC.s700, border:"none",
+ borderRadius:10, padding:"8px 14px", fontSize:12, fontWeight:600,
+ cursor:"pointer", fontFamily:"inherit",
+ }}>إلغاء الكل</button>
+ </div>
+ <div style={{ background:CC.e50, borderRadius:10, padding:"10px 14px",
+ border:`1px solid ${CC.e100}` }}>
+ <p style={{ margin:0, fontSize:12, color:CC.e700, fontWeight:700 }}>
+ سيتم الإرسال لـ <strong>{phoneCount}</strong> مدرسة لديها رقم جوال
+ </p>
+ </div>
+ </>
+ )}
+ </SectionCard>
+ )}
+
+ {selectedSurvey && (
+ <SectionCard step="3" title="اختر قالباً أو اكتب رسالة">
+ {templates.length > 0 && (
+ <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:12 }}>
+ {templates.map(t=>(
+ <button key={t.id} onClick={()=>applyTemplate(t)} className="comm-chip" style={{
+ padding:"6px 12px", borderRadius:20, fontSize:11, fontFamily:"inherit",
+ cursor:"pointer",
+ border:`1.5px solid ${selectedTemplate?.id===t.id?CC.e600:CC.s200}`,
+ background:selectedTemplate?.id===t.id?CC.e50:CC.white,
+ color:selectedTemplate?.id===t.id?CC.e700:CC.s500,
+ fontWeight:selectedTemplate?.id===t.id?700:400,
+ }}>
+ {TEMPLATE_CATEGORIES[t.category?.toUpperCase()]?.icon||""} {t.title}
+ </button>
+ ))}
+ </div>
+ )}
+ <textarea value={messageBody} onChange={e=>setMessageBody(e.target.value)} rows={6}
+ placeholder="اكتب نص الرسالة هنا..."
+ style={{ ...iSt, resize:"vertical" }}
+ onFocus={e=>{e.target.style.borderColor=CC.e600;e.target.style.boxShadow=`0 0 0 3px rgba(5,150,105,0.12)`;}}
+ onBlur={e=>{e.target.style.borderColor=CC.s200;e.target.style.boxShadow="none";}}/>
+ </SectionCard>
+ )}
+
+ {/* On mobile/tablet the send action sits inline after step 3 */}
+ <div className="comm-send-mobile-action" style={{ display:"block" }}>
+ {sendAction}
+ </div>
+ </div>
+
+ {/* Right sidebar — desktop only (≥1280px), shows a live summary + same send action */}
+ <div style={{ display: "none" }} className="comm-send-sidebar">
+ <div style={{ position:"sticky", top:80 }}>
+ <SectionCard title="ملخص الإرسال">
+ <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:14 }}>
+ <div style={{ display:"flex", justifyContent:"space-between" }}>
+ <span style={{ fontSize:12, color:CC.s500 }}>الاستبيان</span>
+ <span style={{ fontSize:12, fontWeight:700, color:CC.s900, maxWidth:180, textAlign:"left", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+ {selectedSurvey?.title || "—"}
+ </span>
+ </div>
+ <div style={{ display:"flex", justifyContent:"space-between" }}>
+ <span style={{ fontSize:12, color:CC.s500 }}>المستلمون</span>
+ <span style={{ fontSize:12, fontWeight:700, color:CC.e700 }}>{phoneCount}</span>
+ </div>
+ <div style={{ display:"flex", justifyContent:"space-between" }}>
+ <span style={{ fontSize:12, color:CC.s500 }}>طول الرسالة</span>
+ <span style={{ fontSize:12, fontWeight:700, color:CC.s900 }}>{messageBody.length} حرف</span>
+ </div>
+ </div>
+ {sendAction}
+ </SectionCard>
+ </div>
+ </div>
+
+ <style>{`
+ @media (min-width: 1280px) {
+ .comm-send-sidebar { display: block !important; }
+ .comm-send-mobile-action { display: none !important; }
+ }
+ `}</style>
+ </div>
+ );
 }
 
 // 
-// AUDIT LOG PAGE — unchanged (one pre-existing typo fixed below:
-// exportLogExcel's map callback was missing its arrow `=>`)
+// COMMUNICATION HISTORY — logic unchanged
 // 
-function AuditLogPage() {
-  const [logs, setLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [actionFilter, setActionFilter] = useState("الكل");
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const PAGE_SIZE = 40;
+function CommunicationHistory({ surveys }) {
+ const [logs, setLogs] = useState([]);
+ const [loading, setLoading] = useState(true);
+ const [search, setSearch] = useState("");
 
-  useEffect(() => {
-    setLoading(true);
-    supabase.from("audit_log").select("*").order("created_at", { ascending: false }).limit(500)
-      .then(({ data }) => { setLogs(data || []); setLoading(false); });
-  }, []);
+ useEffect(() => {
+ setLoading(true);
+ fetchCommunicationLog({ limit:200 }).then(({data})=>{ setLogs(data); setLoading(false); });
+ }, []);
 
-  const filtered = logs.filter(l => {
-    if (actionFilter !== "الكل" && l.action !== actionFilter) return false;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      if (!(l.record_label||"").toLowerCase().includes(q) &&
-          !(l.user_email||"").toLowerCase().includes(q) &&
-          !(l.action||"").toLowerCase().includes(q)) return false;
-    }
-    return true;
-  });
-  const paged = filtered.slice(0, page * PAGE_SIZE);
+ const filtered = useMemo(() => {
+ if (!search.trim()) return logs;
+ const q = search.toLowerCase();
+ return logs.filter(l =>
+ (l.surveys?.title||"").toLowerCase().includes(q) ||
+ (l.sent_by_email||"").toLowerCase().includes(q)
+ );
+ }, [logs, search]);
 
-  async function exportLogExcel() {
-    const XLSX = await ensureXLSX();
-    const rows = filtered.map(l => ({
-      "التاريخ والوقت": new Date(l.created_at).toLocaleString("ar-SA"),
-      "المستخدم": l.user_email || "—",
-      "الإجراء": (ACTION_LABELS[l.action]?.label || l.action),
-      "التصنيف": TABLE_LABELS[l.category||l.table_name] || l.table_name || "—",
-      "العنصر": l.record_label || l.record_id || "",
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws["!cols"] = Object.keys(rows[0] || {}).map(() => ({ wch: 26 }));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "سجل التدقيق");
-    XLSX.writeFile(wb, `سجل-التدقيق-${tsStamp()}.xlsx`);
-  }
+ const CHANNEL_LABELS = {
+ whatsapp:"واتساب", email:"بريد", sms:"رسالة نصية", in_app:"إشعار"
+ };
 
-  const QUICK_FILTERS = [
-    {v:"الكل",l:"الكل"},{v:"survey_publish",l:" نشر"},
-    {v:"survey_pause",l:"⏸ إيقاف"},{v:"survey_close",l:" إغلاق"},
-    {v:"survey_archive",l:" أرشفة"},{v:"survey_duplicate",l:" نسخ"},
-    {v:"create",l:" إضافة"},{v:"update",l:" تعديل"},{v:"delete",l:" حذف"},
-  ];
+ return (
+ <div>
+ <div style={{ position:"relative", marginBottom:16 }}>
+ <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:15, pointerEvents:"none" }}></span>
+ <input className="comm-search" value={search} onChange={e=>setSearch(e.target.value)}
+ placeholder="ابحث بعنوان الاستبيان أو المرسل..."
+ style={{ ...iSt, padding:"10px 40px 10px 14px", background:CC.s50 }}/>
+ </div>
 
-  function dateLabel(dateStr) {
-    const d = new Date(dateStr);
-    const today = new Date();
-    const yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
-    if (d.toDateString()===today.toDateString()) return "اليوم";
-    if (d.toDateString()===yesterday.toDateString()) return "أمس";
-    return d.toLocaleDateString("ar-SA", { weekday:"long", day:"numeric", month:"long" });
-  }
-
-  return (
-    <div style={{ padding:16, direction:"rtl" }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-        <div>
-          <h2 style={{ margin:0, fontSize:18, color:PT.s900, fontWeight:800 }}>سجل التدقيق</h2>
-          <p style={{ margin:"2px 0 0", fontSize:12, color:PT.s500 }}>{filtered.length} سجل</p>
-        </div>
-        {logs.length > 0 && (
-          <button onClick={exportLogExcel} style={{
-            background:PT.e50, color:PT.e700, border:`1px solid ${PT.e100}`,
-            borderRadius:10, padding:"8px 14px", fontSize:12, fontWeight:700,
-            cursor:"pointer", fontFamily:"inherit",
-          }}> تصدير</button>
-        )}
-      </div>
-
-      <div style={{ position:"relative", marginBottom:10 }}>
-        <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:15, pointerEvents:"none" }}></span>
-        <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}
-          placeholder="ابحث بالمستخدم أو الإجراء أو العنصر..."
-          style={{ width:"100%", padding:"11px 42px 11px 14px", border:`1.5px solid ${PT.s200}`,
-            borderRadius:12, fontSize:13, fontFamily:"inherit", direction:"rtl",
-            boxSizing:"border-box", background:PT.white, color:PT.s900 }}
-          onFocus={e=>{e.target.style.borderColor=PT.e600;e.target.style.boxShadow=`0 0 0 3px rgba(5,150,105,0.12)`;}}
-          onBlur={e=>{e.target.style.borderColor=PT.s200;e.target.style.boxShadow="none";}}/>
-        {search && <button onClick={()=>setSearch("")} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:PT.s400, cursor:"pointer", fontSize:16 }}></button>}
-      </div>
-
-      <div style={{ display:"flex", gap:5, marginBottom:14, overflowX:"auto", paddingBottom:4 }}>
-        {QUICK_FILTERS.map(f => (
-          <button key={f.v} onClick={()=>{ setActionFilter(f.v); setPage(1); }} style={{
-            padding:"6px 12px", borderRadius:18, fontSize:11, fontFamily:"inherit",
-            cursor:"pointer", whiteSpace:"nowrap", fontWeight:actionFilter===f.v?700:500,
-            border:`1.5px solid ${actionFilter===f.v?PT.e600:PT.s200}`,
-            background:actionFilter===f.v?PT.e50:PT.white,
-            color:actionFilter===f.v?PT.e700:PT.s500,
-            transition:"all 0.15s",
-          }}>{f.l}</button>
-        ))}
-      </div>
-
-      {loading ? (
-        <div style={{ textAlign:"center", padding:"50px 20px" }}>
-          <div style={{ width:40, height:40, borderRadius:"50%", border:`3px solid ${PT.e100}`,
-            borderTopColor:PT.e600, animation:"spin 0.7s linear infinite", margin:"0 auto 12px" }}/>
-          <p style={{ margin:0, color:PT.s500, fontSize:13 }}>جاري التحميل...</p>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div style={{ textAlign:"center", padding:"40px 20px", background:PT.white,
-          borderRadius:18, border:`1px solid ${PT.s200}` }}>
-          <div style={{ fontSize:40, marginBottom:10 }}></div>
-          <p style={{ margin:0, color:PT.s500, fontSize:13 }}>لا توجد سجلات مطابقة</p>
-        </div>
-      ) : (
-        <>
-          <div style={{ background:PT.white, borderRadius:18, border:`1px solid ${PT.s200}`,
-            overflow:"hidden", boxShadow:"0 2px 8px rgba(0,0,0,0.05)" }}>
-            {paged.map((l, i) => {
-              const a = ACTION_LABELS[l.action] || {label:l.action, color:PT.s400, icon:"•"};
-              const showDateLabel = i===0 || dateLabel(l.created_at) !== dateLabel(paged[i-1].created_at);
-              return (
-                <div key={l.id}>
-                  {showDateLabel && (
-                    <div style={{ padding:"8px 16px", background:PT.s50,
-                      borderBottom:`1px solid ${PT.s100}`,
-                      borderTop:i>0?`1px solid ${PT.s100}`:"none" }}>
-                      <span style={{ fontSize:11, fontWeight:700, color:PT.s400 }}>
-                        {dateLabel(l.created_at)}
-                      </span>
-                    </div>
-                  )}
-                  <div style={{ display:"flex", alignItems:"flex-start", gap:12, padding:"12px 16px",
-                    borderBottom:i<paged.length-1?`1px solid ${PT.s100}`:"none",
-                    transition:"background 0.1s" }}
-                    onMouseEnter={e=>e.currentTarget.style.background=PT.s50}
-                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                    <div style={{
-                      width:34, height:34, borderRadius:10, flexShrink:0,
-                      background:`${a.color}15`,
-                      display:"flex", alignItems:"center", justifyContent:"center",
-                      fontSize:16,
-                    }}>{a.icon}</div>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <p style={{ margin:0, fontSize:13, color:PT.s900, fontWeight:600 }}>
-                        <span style={{ color:a.color, fontWeight:700 }}>{a.label}</span>
-                        {l.record_label && <span style={{ color:PT.s700 }}> — {l.record_label}</span>}
-                      </p>
-                      <p style={{ margin:"3px 0 0", fontSize:11, color:PT.s400 }}>
-                        {l.user_email||"غير معروف"} ·{" "}
-                        {new Date(l.created_at).toLocaleTimeString("ar-SA", {hour:"2-digit",minute:"2-digit"})}
-                      </p>
-                    </div>
-                    <span style={{ fontSize:10, color:PT.s300, flexShrink:0, marginTop:2 }}>
-                      {new Date(l.created_at).toLocaleDateString("ar-SA")}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {paged.length < filtered.length && (
-            <button onClick={()=>setPage(p=>p+1)} style={{
-              width:"100%", marginTop:12, padding:"11px",
-              background:PT.s100, color:PT.s700, border:"none", borderRadius:12,
-              fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
-            }}>
-              عرض المزيد ({filtered.length-paged.length} متبقي)
-            </button>
-          )}
-        </>
-      )}
-    </div>
-  );
+ {loading ? (
+ <div style={{ textAlign:"center", padding:"30px" }}>
+ <div style={{ width:32, height:32, borderRadius:"50%", border:`3px solid ${CC.e100}`,
+ borderTopColor:CC.e600, animation:"spin 0.7s linear infinite", margin:"0 auto" }}/>
+ </div>
+ ) : filtered.length === 0 ? (
+ <div style={{ textAlign:"center", padding:"36px 20px", background:CC.white,
+ borderRadius:16, border:`1px solid ${CC.s200}` }}>
+ <div style={{ fontSize:36, marginBottom:8 }}></div>
+ <p style={{ margin:0, color:CC.s500, fontSize:13 }}>لا يوجد سجل اتصالات بعد</p>
+ </div>
+ ) : (
+ <div style={{ background:CC.white, borderRadius:16, border:`1px solid ${CC.s200}`,
+ overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,0.04)" }}>
+ {filtered.map((l, i) => (
+ <div key={l.id} style={{ padding:"13px 16px",
+ borderBottom:i<filtered.length-1?`1px solid ${CC.s100}`:"none",
+ transition:"background 0.1s" }}
+ onMouseEnter={e=>e.currentTarget.style.background=CC.s50}
+ onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+ <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4, gap:10 }}>
+ <p style={{ margin:0, fontSize:13, fontWeight:700, color:CC.s900, flex:1 }}>
+ {l.surveys?.title || "استبيان محذوف"}
+ </p>
+ <StatusBadge status={l.status}/>
+ </div>
+ <p style={{ margin:"3px 0 2px", fontSize:11, color:CC.s500 }}>
+ {CHANNEL_LABELS[l.delivery_method]||l.delivery_method} ·{" "}
+ {l.recipient_count} مستلم ·{" "}
+ {l.sent_by_email||"غير معروف"}
+ </p>
+ <p style={{ margin:0, fontSize:10, color:CC.s400 }}>
+ {new Date(l.sent_at).toLocaleString("ar-SA")}
+ </p>
+ </div>
+ ))}
+ </div>
+ )}
+ </div>
+ );
 }
 
-// SurveyBuilderEngine replaces NewSurveyPage as the default builder
-export { default as NewSurveyPage } from "./SurveyBuilderEngine.jsx";
-export { SurveysList, ShareSheet, LoginPage, AnalyticsPage,
-  SchoolForm, CsvUploadSheet, DeleteConfirm, SchoolsManagementPage,
-  UsersManagementPage, RoleBadgeStatic, SupervisorsManagementPage,
-  AppSettingsPage, AuditLogPage, SystemIdentityCenter };
+// 
+// MAIN — Phase 3 enterprise tab bar, logic unchanged
+// 
+export default function CommunicationCenter({ surveys, user, isAdmin }) {
+ const [activeTab, setActiveTab] = useState("send");
 
+ const TABS = [
+ { id:"send", label:"إرسال", icon:"" },
+ { id:"templates", label:"القوالب", icon:"" },
+ { id:"history", label:"السجل", icon:"" },
+ ];
 
+ return (
+ <div style={{ direction:"rtl" }}>
+ {/* Header */}
+ <div style={{ marginBottom:18 }}>
+ <h1 style={{ margin:0, fontSize:22, color:CC.s900, fontWeight:800, letterSpacing:"-0.02em" }}>مركز الاتصالات</h1>
+ <p style={{ margin:"4px 0 0", fontSize:13, color:CC.s500 }}>إدارة الرسائل والتذكيرات</p>
+ </div>
 
+ {/* Pill tab bar — matches Dashboard/SurveysList/Directory/Templates */}
+ <div style={{
+ display: "inline-flex", background: CC.white, borderRadius: 12,
+ padding: 4, marginBottom: 20, border: `1px solid ${CC.s200}`, gap: 2,
+ boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+ }}>
+ {TABS.map(tab => {
+ const isActive = activeTab===tab.id;
+ return (
+ <button key={tab.id} onClick={()=>setActiveTab(tab.id)} style={{
+ padding: "8px 16px", border: "none", borderRadius: 9,
+ background: isActive ? CC.e50 : "transparent",
+ cursor: "pointer", fontSize: 12, fontFamily: "inherit",
+ fontWeight: isActive ? 700 : 500,
+ color: isActive ? CC.e700 : CC.s500,
+ display: "flex", alignItems: "center", gap: 6,
+ }}>
+ <span>{tab.icon}</span>{tab.label}
+ </button>
+ );
+ })}
+ </div>
+
+ {activeTab==="send" && <SendMessagePanel surveys={surveys} user={user} isAdmin={isAdmin}/>}
+ {activeTab==="templates" && <TemplatesLibrary user={user} isAdmin={isAdmin} onUseTemplate={null}/>}
+ {activeTab==="history" && <CommunicationHistory surveys={surveys}/>}
+ </div>
+ );
+}
 
 
 
