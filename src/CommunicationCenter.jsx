@@ -398,11 +398,26 @@ function SendMessagePanel({ surveys, user, isAdmin }) {
  }, []);
 
  useEffect(() => {
- if (!selectedSurvey || !allSchools.length) return;
- fetchNonRespondents(selectedSurvey, allSchools).then(nr => {
- setNonRespondents(nr);
- setRecipients(nr);
- });
+ if (!selectedSurvey) return;
+ async function loadAudience() {
+   const sType = selectedSurvey.survey_type;
+   let audience = [];
+   if (sType === "supervisor") {
+     const { data } = await supabase.from("supervisors")
+       .select("id,name,phone,department,section,status").eq("status","نشط");
+     audience = (data||[]).map(s=>({ ...s, _type:"supervisor" }));
+   } else if (sType === "administrator") {
+     const { data } = await supabase.from("administrators")
+       .select("id,full_name,phone,department,section,status").eq("status","نشط");
+     audience = (data||[]).map(s=>({ ...s, name:s.full_name, _type:"administrator" }));
+   } else {
+     if (!allSchools.length) return;
+     audience = await fetchNonRespondents(selectedSurvey, allSchools);
+   }
+   setNonRespondents(audience);
+   setRecipients(audience);
+ }
+ loadAudience();
  }, [selectedSurvey, allSchools]);
 
  const filteredRecipients = useMemo(() => {
