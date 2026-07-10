@@ -239,7 +239,7 @@ export default function App() {
   // ══════════════════════════════════════════════════════
   function handleSidebarNavigate(item) {
     if (item.action === "new") {
-      setTab("surveys");
+      setTab("dashboard");
       setModal({ type:"new" });
       return;
     }
@@ -270,8 +270,18 @@ export default function App() {
         <PWAInstallBanner />
         <PWAUpdateBanner />
 
+        {tab==="dashboard" && <InstallAppBanner/>}
         {tab==="dashboard" && (
-          <ExecutiveDashboard surveys={surveys} schoolCount={schoolCount} onNavigate={setTab} user={user}/>
+          <SurveysList surveys={surveys} loading={loadingSurveys} schoolCount={schoolCount} isAdmin={isAdmin}
+            onNew={()=>setModal({type:"new"})}
+            onShare={s=>setModal({type:"share",data:s})}
+            onTrack={s=>setModal({type:"tracking",data:s})}
+            onEdit={s=>setModal({type:"edit",data:s})}
+            onDelete={s=>setDeleteSurveyTarget(s)}
+            onApprove={approveSurvey}
+            onSaveAsTemplate={s=>setSaveAsTemplateTarget(s)}
+            onLifecycleChange={refetch}
+            user={user}/>
         )}
         {tab==="surveys" && <InstallAppBanner/>}
         {tab==="surveys" && (
@@ -286,6 +296,9 @@ export default function App() {
             onLifecycleChange={refetch}
             user={user}/>
         )}
+        {tab==="overview" && (
+          <ExecutiveDashboard surveys={surveys} schoolCount={schoolCount} onNavigate={setTab} user={user}/>
+        )}
         {tab==="directory"     && <DirectoryPage user={user} isAdmin={isAdmin}/>}
         {tab==="templates"     && (
           <TemplatesPage user={user} isAdmin={isAdmin}
@@ -297,7 +310,6 @@ export default function App() {
         {tab==="library"       && <ContentLibrary user={user}/>}
         {tab==="review"        && <ReviewCenter surveys={surveys} user={user}/>}
         {tab==="identity" && isAdmin && <SystemIdentityCenter user={user} isAdmin={isAdmin}/>}
-)}
 
         {/* "more" landing page — kept for direct tab access (e.g. if
             a future deep-link sets tab="more"); the sidebar's admin
@@ -314,8 +326,9 @@ export default function App() {
               { icon:"👤", title:"إدارة المشرفين",   sub:"إضافة وإرسال الاستبيانات",   type:"supervisors", accent:"#7B2D8B" },
               { icon:"📜", title:"سجل التدقيق",      sub:"كل عمليات النظام",            type:"auditlog",    accent:T.gold },
               { icon:"🎨", title:"إعدادات التطبيق",  sub:"اللوغو والعناوين والإعدادات", type:"settings",    accent:"#0284C7" },
+              { icon:"🏛️", title:"هوية النظام",       sub:"الشعار والألوان والبيانات",    type:"identity",    accent:"#047857" },
             ].map(item => (
-              <SettingsItem key={item.type} {...item} onClick={()=>setModal({type:item.type})}/>
+              <SettingsItem key={item.type} {...item} onClick={()=>{ if(item.type==="identity"){setModal(null);setTab("identity");} else setModal({type:item.type}); }}/>
             ))}
           </div>
         )}
