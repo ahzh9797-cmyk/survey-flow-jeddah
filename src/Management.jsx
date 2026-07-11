@@ -554,6 +554,20 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
                       <span style={{ fontSize:10, color:"#94A3B8", flexShrink:0 }}>
                         {r.submitted_at?new Date(r.submitted_at).toLocaleDateString("ar-SA"):""}
                       </span>
+                      {isAdmin && (
+                        <button onClick={async()=>{
+                          if(!window.confirm("حذف هذا الرد نهائياً؟")) return;
+                          const{error}=await supabase.from("survey_responses").delete().eq("id",r.id);
+                          if(!error){
+                            setRespondents(p=>({...p,[sid]:p[sid].filter(x=>x.id!==r.id)}));
+                            await logAction({user,action:"delete_response",table:"survey_responses",recordLabel:r.survey_schools?.name||r.respondent_label||r.id});
+                          }
+                        }} style={{ background:"none", border:"1px solid #FECACA", borderRadius:6,
+                          color:"#DC2626", cursor:"pointer", padding:"2px 7px",
+                          fontSize:10, fontWeight:600, flexShrink:0 }}>
+                          حذف
+                        </button>
+                      )}
                     </div>
                   ))
                 )}
@@ -1602,33 +1616,4 @@ function AuditLogPage() {
                       </p>
                     </div>
                     <span style={{ fontSize:10, color:PT.s300, flexShrink:0, marginTop:2 }}>
-                      {new Date(l.created_at).toLocaleDateString("ar-SA")}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {paged.length < filtered.length && (
-            <button onClick={()=>setPage(p=>p+1)} style={{
-              width:"100%", marginTop:12, padding:"11px",
-              background:PT.s100, color:PT.s700, border:"none", borderRadius:12,
-              fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
-            }}>
-              عرض المزيد ({filtered.length-paged.length} متبقي)
-            </button>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-// SurveyBuilderEngine replaces NewSurveyPage as the default builder
-export { default as NewSurveyPage } from "./SurveyBuilderEngine.jsx";
-export { SurveysList, ShareSheet, LoginPage, AnalyticsPage,
-  SchoolForm, CsvUploadSheet, DeleteConfirm, SchoolsManagementPage,
-  UsersManagementPage, RoleBadgeStatic, SupervisorsManagementPage,
-  AppSettingsPage, AuditLogPage, SystemIdentityCenter };
-
+                      {n
