@@ -1629,4 +1629,6 @@ function AuditLogPage() {
 export { default as NewSurveyPage } from "./SurveyBuilderEngine.jsx";
 export { SurveysList, ShareSheet, LoginPage, AnalyticsPage,
   SchoolForm, CsvUploadSheet, DeleteConfirm, SchoolsManagementPage,
-  Use
+  UsersManagementPage, RoleBadgeStatic, SupervisorsManagementPage,
+  AppSettingsPage, AuditLogPage, SystemIdentityCenter };
+
