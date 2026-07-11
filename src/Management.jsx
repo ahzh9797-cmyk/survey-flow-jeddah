@@ -273,14 +273,42 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
           wsResp["!cols"] = headers.map(()=>({wch:20}));
           XLSX.utils.book_append_sheet(wb, wsResp, "الردود التفصيلية");
         }
-        const respondedIds = new Set((responses||[]).map(r=>r.school_id).filter(Boolean));
-        const pending = (allSchools||[]).filter(sc=>!respondedIds.has(sc.id));
-        if (pending.length) {
-          const wsPending = XLSX.utils.json_to_sheet(pending.map(sc=>({
-            "اسم المدرسة":sc.name,"المرحلة":sc.stage||"—","القطاع":sc.sector||"—","الجوال":sc.phone||"—",
-          })));
-          wsPending["!cols"] = [{wch:30},{wch:14},{wch:16},{wch:14}];
-          XLSX.utils.book_append_sheet(wb, wsPending, "لم تستجب");
+        // Load snapshot for correct pending list per survey_type
+        const { data: snapshot } = await supabase
+          .from("survey_target_snapshot")
+          .select("target_id,target_name,target_phone,respondent_type")
+          .eq("survey_id", sid);
+
+        let pendingList = [];
+        if (snapshot && snapshot.length > 0) {
+          const sType = s.survey_type;
+          // Determine responded key
+          const respondedKeys = new Set(
+            (responses||[]).map(r =>
+              sType === "school" ? r.school_id : r.respondent_national_id
+            ).filter(Boolean)
+          );
+          pendingList = snapshot.filter(t => !respondedKeys.has(t.target_id));
+          if (pendingList.length) {
+            const label = sType === "supervisor" ? "المشرف" : sType === "administrator" ? "المدير" : "المدرسة";
+            const wsPending = XLSX.utils.json_to_sheet(pendingList.map(t=>({
+              [label]: t.target_name || t.target_id,
+              "الجوال": t.target_phone || "—",
+            })));
+            wsPending["!cols"] = [{wch:36},{wch:16}];
+            XLSX.utils.book_append_sheet(wb, wsPending, "لم تستجب");
+          }
+        } else {
+          // Fallback to schools
+          const respondedIds = new Set((responses||[]).map(r=>r.school_id).filter(Boolean));
+          const pending = (allSchools||[]).filter(sc=>!respondedIds.has(sc.id));
+          if (pending.length) {
+            const wsPending = XLSX.utils.json_to_sheet(pending.map(sc=>({
+              "اسم المدرسة":sc.name,"المرحلة":sc.stage||"—","القطاع":sc.sector||"—","الجوال":sc.phone||"—",
+            })));
+            wsPending["!cols"] = [{wch:30},{wch:14},{wch:16},{wch:14}];
+            XLSX.utils.book_append_sheet(wb, wsPending, "لم تستجب");
+          }
         }
         XLSX.writeFile(wb, `تقرير-${s.title}-${tsStamp()}.xlsx`);
       } else if (format === "csv") {
@@ -1601,10 +1629,4 @@ function AuditLogPage() {
 export { default as NewSurveyPage } from "./SurveyBuilderEngine.jsx";
 export { SurveysList, ShareSheet, LoginPage, AnalyticsPage,
   SchoolForm, CsvUploadSheet, DeleteConfirm, SchoolsManagementPage,
-  UsersManagementPage, RoleBadgeStatic, SupervisorsManagementPage,
-  AppSettingsPage, AuditLogPage, SystemIdentityCenter };
-
-
-
-
-
+  Use
