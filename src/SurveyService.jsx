@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { supabase, C, Btn, Card, ErrorBanner, Spinner } from "./lib.jsx";
 
-// ═══════════════════════════════════════════════════════
+// 
 // SURVEY TYPE CONSTANTS
 // Internal stable values — never use Arabic in logic
-// ═══════════════════════════════════════════════════════
+// 
 export const SURVEY_TYPES = {
   SCHOOL:         "school",
   SUPERVISOR:     "supervisor",
@@ -13,17 +13,17 @@ export const SURVEY_TYPES = {
 };
 
 export const SURVEY_TYPE_LABELS = {
-  school:        "🏫 مدارس",
-  supervisor:    "👤 مشرفون",
-  administrator: "🎓 الإداريون",
-  open:          "🌐 مفتوح",
+  school:        " مدارس",
+  supervisor:    " مشرفون",
+  administrator: " الإداريون",
+  open:          " مفتوح",
 };
 
 export const SURVEY_STATUS_LABELS = {
-  draft:     "📝 مسودة",
-  published: "✅ منشور",
-  closed:    "🔒 مغلق",
-  archived:  "📦 مؤرشف",
+  draft:     " مسودة",
+  published: " منشور",
+  closed:    " مغلق",
+  archived:  " مؤرشف",
 };
 
 export const RESPONSE_LIMIT_LABELS = {
@@ -31,10 +31,10 @@ export const RESPONSE_LIMIT_LABELS = {
   unlimited:      "ردود غير محدودة",
 };
 
-// ═══════════════════════════════════════════════════════
+// 
 // VERIFICATION SERVICE
 // Single reusable service for all entity types
-// ═══════════════════════════════════════════════════════
+// 
 
 /*
   verifyEntity(surveyType, identifier) → { entity, error }
@@ -108,8 +108,9 @@ export async function checkDuplicateResponse(surveyId, surveyType, entity, respo
 
   let query = supabase
     .from("survey_responses")
-    .select("submitted_at, answers")
-    .eq("survey_id", surveyId);
+    .select("id, submitted_at, answers")
+    .eq("survey_id", surveyId)
+    .order("submitted_at", { ascending: false });
 
   if (surveyType === SURVEY_TYPES.SCHOOL) {
     query = query.eq("school_id", entity.id);
@@ -120,8 +121,9 @@ export async function checkDuplicateResponse(surveyId, surveyType, entity, respo
     query = query.eq("respondent_national_id", nationalId);
   }
 
-  const { data } = await query.maybeSingle();
-  return { isDuplicate: !!data, existingResponse: data || null };
+  const { data } = await query.limit(1);
+  const existing = data?.[0] || null;
+  return { isDuplicate: !!existing, existingResponse: existing };
 }
 
 /*
@@ -154,10 +156,10 @@ export function buildResponsePayload(surveyType, entity, respondentLabel, answer
   }
 }
 
-// ═══════════════════════════════════════════════════════
+// 
 // VERIFICATION UI COMPONENT
 // Reusable identity verification screen
-// ═══════════════════════════════════════════════════════
+// 
 export function VerificationStep({ survey, onVerified }) {
   const [identifier, setIdentifier] = useState("");
   const [loading, setLoading] = useState(false);
@@ -168,7 +170,7 @@ export function VerificationStep({ survey, onVerified }) {
 
   const config = {
     school: {
-      icon: "🏫",
+      icon: "",
       title: "تحقق من هوية المدرسة",
       label: "الرقم الوزاري",
       placeholder: "أدخل الرقم الوزاري",
@@ -176,7 +178,7 @@ export function VerificationStep({ survey, onVerified }) {
       inputMode: "numeric",
     },
     supervisor: {
-      icon: "👤",
+      icon: "",
       title: "تحقق من هوية المشرف",
       label: "رقم الهوية الوطنية",
       placeholder: "10 أرقام",
@@ -184,7 +186,7 @@ export function VerificationStep({ survey, onVerified }) {
       inputMode: "numeric",
     },
     administrator: {
-      icon: "🎓",
+      icon: "",
       title: "تحقق من هوية المدير",
       label: "رقم الهوية الوطنية",
       placeholder: "10 أرقام",
@@ -249,11 +251,11 @@ export function VerificationStep({ survey, onVerified }) {
           return (
             <div style={{ background:C.successBg, border:`1.5px solid ${C.success}`, borderRadius:12,
               padding:16, marginTop:12 }}>
-              <p style={{ margin:"0 0 4px", fontSize:12, color:C.success, fontWeight:700 }}>✅ تم التحقق بنجاح</p>
+              <p style={{ margin:"0 0 4px", fontSize:12, color:C.success, fontWeight:700 }}> تم التحقق بنجاح</p>
               <p style={{ margin:"0 0 4px", fontSize:17, fontWeight:800, color:C.dark }}>{display.name}</p>
               {display.sub && <p style={{ margin:"0 0 4px", fontSize:13, color:C.muted }}>{display.sub}</p>}
               <p style={{ margin:"0 0 14px", fontSize:12, color:C.muted }}>المعرّف: {display.id}</p>
-              <Btn full onClick={()=>onVerified(entity)}>✓ تأكيد والمتابعة للاستبيان</Btn>
+              <Btn full onClick={()=>onVerified(entity)}> تأكيد والمتابعة للاستبيان</Btn>
             </div>
           );
         })()}
@@ -262,21 +264,21 @@ export function VerificationStep({ survey, onVerified }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════
+// 
 // TARGET TYPE SELECTOR (for NewSurveyPage)
-// ═══════════════════════════════════════════════════════
+// 
 export function SurveyTypeSelector({ value, onChange }) {
   const types = [
-    { v:"school",        i:"🏫", l:"مدارس",    s:"رقم وزاري",    c:C.primary,    bg:C.primaryBg },
-    { v:"supervisor",    i:"👤", l:"مشرفون",   s:"رقم هوية",     c:"#7B2D8B",    bg:"#f5eefa" },
-    { v:"administrator", i:"🎓", l:"الإداريون", s:"رقم هوية",     c:"#B7791F",    bg:"#FFFBEB" },
-    { v:"open",          i:"🌐", l:"مفتوح",    s:"بدون تحقق",    c:C.accent,     bg:C.accentLight },
+    { v:"school",        i:"", l:"مدارس",    s:"رقم وزاري",    c:C.primary,    bg:C.primaryBg },
+    { v:"supervisor",    i:"", l:"مشرفون",   s:"رقم هوية",     c:"#7B2D8B",    bg:"#f5eefa" },
+    { v:"administrator", i:"", l:"الإداريون", s:"رقم هوية",     c:"#B7791F",    bg:"#FFFBEB" },
+    { v:"open",          i:"", l:"مفتوح",    s:"بدون تحقق",    c:C.accent,     bg:C.accentLight },
   ];
 
   return (
     <div style={{ marginBottom:14 }}>
       <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:8 }}>
-        🎯 الجهة المستهدفة
+         الجهة المستهدفة
       </label>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:8 }}>
         {types.map(t => (
@@ -297,10 +299,10 @@ export function SurveyTypeSelector({ value, onChange }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════
+// 
 // SURVEY SETTINGS PANEL (for NewSurveyPage)
 // response_limit, start_date, end_date, survey_status
-// ═══════════════════════════════════════════════════════
+// 
 export function SurveySettingsPanel({ settings, onChange }) {
   function set(k,v) { onChange({ ...settings, [k]:v }); }
 
@@ -314,7 +316,7 @@ export function SurveySettingsPanel({ settings, onChange }) {
   return (
     <div>
       <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:6 }}>
-        🔁 حد الردود
+         حد الردود
       </label>
       <div style={{ display:"flex", gap:8, marginBottom:14 }}>
         {[["one_per_entity","رد واحد لكل جهة"],["unlimited","غير محدود"]].map(([v,l]) => (
@@ -329,21 +331,21 @@ export function SurveySettingsPanel({ settings, onChange }) {
       </div>
 
       <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:6 }}>
-        📅 تاريخ البداية <span style={{fontWeight:400, color:C.muted, fontSize:11}}>(اختياري)</span>
+         تاريخ البداية <span style={{fontWeight:400, color:C.muted, fontSize:11}}>(اختياري)</span>
       </label>
       <input type="datetime-local" value={settings.start_date||""}
         onChange={e=>set("start_date",e.target.value)}
         style={{ ...inputStyle, direction:"ltr" }}/>
 
       <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:6 }}>
-        📅 تاريخ الانتهاء <span style={{fontWeight:400, color:C.muted, fontSize:11}}>(اختياري)</span>
+         تاريخ الانتهاء <span style={{fontWeight:400, color:C.muted, fontSize:11}}>(اختياري)</span>
       </label>
       <input type="datetime-local" value={settings.end_date||""}
         onChange={e=>set("end_date",e.target.value)}
         style={{ ...inputStyle, direction:"ltr" }}/>
 
       <label style={{ display:"block", fontSize:13, fontWeight:700, color:C.text, marginBottom:6 }}>
-        📊 حالة الاستبيان
+         حالة الاستبيان
       </label>
       <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:10 }}>
         {[["draft","مسودة"],["published","منشور"],["closed","مغلق"],["archived","مؤرشف"]].map(([v,l]) => (
@@ -360,10 +362,10 @@ export function SurveySettingsPanel({ settings, onChange }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════
+// 
 // SURVEY STATUS GATE (used in PublicFill)
 // Checks if survey is currently accessible
-// ═══════════════════════════════════════════════════════
+// 
 export function checkSurveyAccess(survey) {
   const now = new Date();
 
@@ -392,4 +394,5 @@ export function checkSurveyAccess(survey) {
 
   return { allowed:true, reason:null };
 }
+
 
