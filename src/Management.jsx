@@ -1616,4 +1616,33 @@ function AuditLogPage() {
                       </p>
                     </div>
                     <span style={{ fontSize:10, color:PT.s300, flexShrink:0, marginTop:2 }}>
-                      {n
+                      new Date(l.created_at).toLocaleDateString("ar-SA")}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {paged.length < filtered.length && (
+            <button onClick={()=>setPage(p=>p+1)} style={{
+              width:"100%", marginTop:12, padding:"11px",
+              background:PT.s100, color:PT.s700, border:"none", borderRadius:12,
+              fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+            }}>
+              عرض المزيد ({filtered.length-paged.length} متبقي)
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// SurveyBuilderEngine replaces NewSurveyPage as the default builder
+export { default as NewSurveyPage } from "./SurveyBuilderEngine.jsx";
+export { SurveysList, ShareSheet, LoginPage, AnalyticsPage,
+  SchoolForm, CsvUploadSheet, DeleteConfirm, SchoolsManagementPage,
+  UsersManagementPage, RoleBadgeStatic, SupervisorsManagementPage,
+  AppSettingsPage, AuditLogPage, SystemIdentityCenter };
+
