@@ -9,16 +9,16 @@ import { evaluateSurvey, getVisibleQuestions, validateAllAnswers } from "./Condi
 import { flattenItems } from "./LogicUtils.js";
 import { adaptLegacySurvey, isLegacySurvey } from "./LegacyGateAdapter.js";
 
-// ══════════════════════════════════════════════════════
+// 
 // TEMPORARY DEBUG LOGGING — Conditional Logic audit
 // Remove this block once verified in production
-// ══════════════════════════════════════════════════════
+// 
 const CL_DEBUG = true;
 function clLog(...args) {
   if (CL_DEBUG) console.log("%c[ConditionalLogic]", "color:#059669;font-weight:bold", ...args);
 }
 
-// ── Premium styles ──────────────────────────────────────
+//  Premium styles 
 if (typeof document !== "undefined" && !document.getElementById("publicfill-premium-styles")) {
   const _s = document.createElement("style");
   _s.id = "publicfill-premium-styles";
@@ -46,7 +46,7 @@ const F = {
   success:"#059669",successBg:"#ECFDF5",purple:"#7B2D8B",amber:"#B7791F",
 };
 
-// ── ACCESS GATE — logic unchanged ──────────────────────
+//  ACCESS GATE — logic unchanged 
 function SurveyAccessGate({ survey, children }) {
   const { allowed, reason } = checkSurveyAccess(survey);
   if (!allowed) return (
@@ -55,7 +55,7 @@ function SurveyAccessGate({ survey, children }) {
       display:"flex", flexDirection:"column", alignItems:"center",
       justifyContent:"center", padding:24, direction:"rtl", textAlign:"center" }}>
       <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:24, padding:40, maxWidth:360, width:"100%" }}>
-        <div style={{ fontSize:64, marginBottom:16 }}>⛔</div>
+        <div style={{ fontSize:64, marginBottom:16 }}></div>
         <h2 style={{ color:"#fff", margin:"0 0 12px", fontSize:22, fontWeight:800 }}>الاستبيان غير متاح</h2>
         <p style={{ color:"rgba(255,255,255,0.65)", fontSize:14, lineHeight:1.8, margin:0 }}>{reason}</p>
       </div>
@@ -64,11 +64,11 @@ function SurveyAccessGate({ survey, children }) {
   return children;
 }
 
-// ── ENTITY CARD — logic unchanged, premium UI ──────────
+//  ENTITY CARD — logic unchanged, premium UI 
 function EntityCard({ surveyType, entity }) {
   const configs = {
     school: {
-      color:F.e700, bg:F.e50, border:`1px solid ${F.e100}`, icon:"🏫",
+      color:F.e700, bg:F.e50, border:`1px solid ${F.e100}`, icon:"",
       lines:[
         {label:"اسم المدرسة",value:entity.name},
         {label:"المرحلة",value:entity.stage},
@@ -78,7 +78,7 @@ function EntityCard({ surveyType, entity }) {
       ]
     },
     supervisor: {
-      color:F.purple, bg:"#F5EEFA", border:`1px solid #C4B5FD40`, icon:"👤",
+      color:F.purple, bg:"#F5EEFA", border:`1px solid #C4B5FD40`, icon:"",
       lines:[
         {label:"الاسم",value:entity.name},
         {label:"الإدارة",value:entity.department},
@@ -86,7 +86,7 @@ function EntityCard({ surveyType, entity }) {
       ]
     },
     administrator: {
-      color:F.amber, bg:F.warnBg, border:`1px solid ${F.warn}30`, icon:"🎓",
+      color:F.amber, bg:F.warnBg, border:`1px solid ${F.warn}30`, icon:"",
       lines:[
         {label:"الاسم",value:entity.full_name},
         {label:"الإدارة",value:entity.department},
@@ -101,7 +101,7 @@ function EntityCard({ surveyType, entity }) {
     <div style={{ background:cfg.bg, border:cfg.border, borderRadius:16, padding:16, marginBottom:16 }}>
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
         <span style={{ fontSize:20 }}>{cfg.icon}</span>
-        <span style={{ fontSize:12, color:cfg.color, fontWeight:700 }}>✅ تم التحقق من هويتك</span>
+        <span style={{ fontSize:12, color:cfg.color, fontWeight:700 }}> تم التحقق من هويتك</span>
       </div>
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
         {cfg.lines.filter(l=>l.value).map(l=>(
@@ -115,7 +115,7 @@ function EntityCard({ surveyType, entity }) {
   );
 }
 
-// ── QUESTION INPUT COMPONENTS ───────────────────────────
+//  QUESTION INPUT COMPONENTS 
 
 function QuestionText({ value, onChange, hasError, disabled }) {
   return (
@@ -200,14 +200,14 @@ function QuestionFile({ questionId, value, onChange, allowedTypes, uploading, on
           </div>
         ) : value?.url ? (
           <div>
-            <div style={{ fontSize:24, marginBottom:4 }}>✅</div>
+            <div style={{ fontSize:24, marginBottom:4 }}></div>
             <p style={{ margin:0, fontSize:13, fontWeight:700, color:F.e700 }}>{value.name}</p>
             <a href={value.url} target="_blank" rel="noopener noreferrer"
               style={{ fontSize:11, color:F.e600 }}>عرض الملف ↗</a>
           </div>
         ) : (
           <div>
-            <div style={{ fontSize:28, marginBottom:6 }}>📎</div>
+            <div style={{ fontSize:28, marginBottom:6 }}></div>
             <p style={{ margin:"0 0 2px", fontSize:13, fontWeight:600, color:F.s700 }}>اضغط لرفع ملف</p>
             <p style={{ margin:0, fontSize:11, color:F.s400 }}>
               {allowedTypes.toUpperCase().replace(",","، ")}
@@ -219,11 +219,11 @@ function QuestionFile({ questionId, value, onChange, allowedTypes, uploading, on
   );
 }
 
-// ── MAIN PUBLIC FILL ────────────────────────────────────
+//  MAIN PUBLIC FILL 
 function PublicFill({ survey, onBack }) {
   const isOpen = survey.survey_type === SURVEY_TYPES.PUBLIC;
 
-  // ── All state & logic unchanged ──
+  //  All state & logic unchanged 
   const [entity,          setEntity]          = useState(null);
   const [respondentLabel, setRespondentLabel] = useState("");
   const [ans,             setAns]             = useState({});
@@ -237,9 +237,9 @@ function PublicFill({ survey, onBack }) {
 
   const setA = (id,v) => { setAns(p=>({...p,[id]:v})); setErrs(p=>({...p,[id]:null})); };
 
-  // ══════════════════════════════════════════════════════
+  // 
   // CONDITIONAL LOGIC ENGINE — actually wired in now
-  // ══════════════════════════════════════════════════════
+  // 
 
   // 1. Build the flat question list, adapting legacy gate surveys
   //    into the new per-question conditions model on the fly.
@@ -301,9 +301,9 @@ function PublicFill({ survey, onBack }) {
     if (!hasAnyConditions) return survey.questions; // unchanged behaviour, zero conditions
     return engineVisibleQuestions;
   }
-  // ══════════════════════════════════════════════════════
+  // 
   // END Conditional Logic Engine wiring
-  // ══════════════════════════════════════════════════════
+  // 
 
   async function handleVerified(verifiedEntity) {
     const responseLimit = survey.response_limit || "one_per_entity";
@@ -348,7 +348,10 @@ function PublicFill({ survey, onBack }) {
     if (survey.survey_type===SURVEY_TYPES.SCHOOL && responseLimit==="one_per_entity") {
       const{error:e}=await supabase.from("survey_responses").upsert(payload,{onConflict:"survey_id,school_id"}); submitErr=e;
     } else if ((survey.survey_type===SURVEY_TYPES.SUPERVISOR||survey.survey_type===SURVEY_TYPES.ADMINISTRATOR) && responseLimit==="one_per_entity" && payload.respondent_national_id) {
-      await supabase.from("survey_responses").delete().eq("survey_id",survey.id).eq("respondent_national_id",payload.respondent_national_id);
+      // Delete existing then insert to enforce one response per entity
+      await supabase.from("survey_responses").delete()
+        .eq("survey_id",survey.id)
+        .eq("respondent_national_id",payload.respondent_national_id);
       const{error:e}=await supabase.from("survey_responses").insert(payload); submitErr=e;
     } else {
       const{error:e}=await supabase.from("survey_responses").insert(payload); submitErr=e;
@@ -358,9 +361,9 @@ function PublicFill({ survey, onBack }) {
     if (stoppedAtGate || (hasAnyConditions && evalState.endAt)) setGateStopped(true);
     setStep("done");
   }
-  // ── End unchanged business logic ──
+  //  End unchanged business logic 
 
-  // ── Done Screen ──
+  //  Done Screen 
   if (step==="done") return (
     <div style={{ minHeight:"100vh",
       background:`linear-gradient(135deg, ${F.e900} 0%, ${F.e800} 100%)`,
@@ -369,7 +372,7 @@ function PublicFill({ survey, onBack }) {
       <div style={{ background:"rgba(255,255,255,0.95)", borderRadius:24, padding:36,
         maxWidth:360, width:"100%", boxShadow:"0 24px 64px rgba(0,0,0,0.25)" }}>
         <div className="pf-done-icon" style={{ fontSize:72, marginBottom:16 }}>
-          {gateStopped ? "🔔" : "✅"}
+          {gateStopped ? "" : ""}
         </div>
         <h2 style={{ color:F.s900, margin:"0 0 8px", fontSize:20, fontWeight:800 }}>
           {gateStopped ? "شكراً لإجابتك" : "تم إرسال إجاباتك بنجاح"}
@@ -387,7 +390,7 @@ function PublicFill({ survey, onBack }) {
           <button onClick={()=>setStep("fill")} style={{ marginTop:20, background:F.s100,
             border:"none", borderRadius:12, padding:"11px 24px",
             fontSize:13, color:F.s700, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
-            ✏️ تعديل إجاباتي
+             تعديل إجاباتي
           </button>
         )}
       </div>
@@ -426,7 +429,7 @@ function PublicFill({ survey, onBack }) {
             <div style={{ background:F.warnBg, border:`1px solid ${F.warn}30`,
               borderRadius:14, padding:14, marginBottom:16,
               display:"flex", gap:10, alignItems:"flex-start" }}>
-              <span style={{ fontSize:18, flexShrink:0 }}>⚠️</span>
+              <span style={{ fontSize:18, flexShrink:0 }}></span>
               <p style={{ margin:0, fontSize:13, color:F.warn, fontWeight:700, lineHeight:1.5 }}>
                 لديك إجابة سابقة — إجابتك الجديدة ستحل محلها
               </p>
@@ -486,7 +489,7 @@ function PublicFill({ survey, onBack }) {
                       <p style={{ margin:0, fontWeight:700, color:F.s900, fontSize:14, lineHeight:1.5, flex:1 }}>
                         {q.label}
                         {isRequired && <span style={{ color:F.danger, marginRight:4 }}>*</span>}
-                        {isDisabled && <span style={{ fontSize:10, color:F.s400, marginRight:6 }}>🔒 معطّل</span>}
+                        {isDisabled && <span style={{ fontSize:10, color:F.s400, marginRight:6 }}> معطّل</span>}
                       </p>
                     </div>
 
@@ -509,7 +512,7 @@ function PublicFill({ survey, onBack }) {
                     {errs[q.id] && (
                       <p style={{ color:F.danger, fontSize:12, margin:"10px 0 0",
                         display:"flex", alignItems:"center", gap:4 }}>
-                        <span>⚠️</span>{errs[q.id]}
+                        <span></span>{errs[q.id]}
                       </p>
                     )}
 
@@ -517,7 +520,7 @@ function PublicFill({ survey, onBack }) {
                     {message && (
                       <div style={{ background:F.warnBg, borderRadius:10, padding:"10px 12px", marginTop:12,
                         border:`1px solid ${F.warn}30` }}>
-                        <p style={{ margin:0, fontSize:12, color:F.warn, lineHeight:1.6 }}>💬 {message}</p>
+                        <p style={{ margin:0, fontSize:12, color:F.warn, lineHeight:1.6 }}> {message}</p>
                       </div>
                     )}
 
@@ -526,7 +529,7 @@ function PublicFill({ survey, onBack }) {
                       <div style={{ background:F.s50, borderRadius:10, padding:"10px 12px", marginTop:12,
                         border:`1px solid ${F.s200}` }}>
                         <p style={{ margin:0, fontSize:12, color:F.s500, lineHeight:1.6 }}>
-                          ℹ️ بناءً على إجابتك سينتهي الاستبيان هنا عند الإرسال.
+                          ℹ بناءً على إجابتك سينتهي الاستبيان هنا عند الإرسال.
                         </p>
                       </div>
                     )}
@@ -539,7 +542,7 @@ function PublicFill({ survey, onBack }) {
                 <div style={{ background:F.dangerBg, border:"1px solid #FECACA", borderRadius:14,
                   padding:"12px 16px", marginBottom:12, textAlign:"center" }}>
                   <p style={{ margin:0, fontSize:12, color:F.danger, fontWeight:700 }}>
-                    🔚 بناءً على إجاباتك سينتهي الاستبيان هنا عند الإرسال
+                     بناءً على إجاباتك سينتهي الاستبيان هنا عند الإرسال
                   </p>
                 </div>
               )}
@@ -549,7 +552,7 @@ function PublicFill({ survey, onBack }) {
                 <div style={{ background:F.dangerBg, border:"1px solid #FECACA", borderRadius:14,
                   padding:"12px 16px", fontSize:13, color:F.danger, marginBottom:12,
                   display:"flex", gap:8 }}>
-                  <span>⚠️</span>{submitError}
+                  <span></span>{submitError}
                 </div>
               )}
 
@@ -571,7 +574,7 @@ function PublicFill({ survey, onBack }) {
                       animation:"spin 0.7s linear infinite" }}/>
                     جاري الإرسال...
                   </>
-                ) : "إرسال الإجابات ✓"}
+                ) : "إرسال الإجابات "}
               </button>
             </>
           )}
@@ -581,7 +584,7 @@ function PublicFill({ survey, onBack }) {
   );
 }
 
-// ── Wrap with access gate ───────────────────────────────
+//  Wrap with access gate 
 function PublicFillWithGate({ survey, onBack }) {
   return (
     <SurveyAccessGate survey={survey}>
