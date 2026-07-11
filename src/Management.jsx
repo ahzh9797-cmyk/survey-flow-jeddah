@@ -151,12 +151,31 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
     loadTypeCounts();
   }, []);
 
-  // Compute correct target count per survey
+  // snapshot counts per survey — loaded from survey_target_snapshot
+  const [snapshotCounts, setSnapshotCounts] = useState({});
+
+  useEffect(() => {
+    async function loadSnapshotCounts() {
+      const { data } = await supabase
+        .from("survey_target_snapshot")
+        .select("survey_id");
+      if (!data) return;
+      const counts = {};
+      data.forEach(r => { counts[r.survey_id] = (counts[r.survey_id]||0) + 1; });
+      setSnapshotCounts(counts);
+    }
+    loadSnapshotCounts();
+  }, []);
+
+  // Compute correct target count per survey from snapshot
   function getTargetCount(s) {
+    if (s.survey_type === "open") return 0;
+    // Use snapshot if available
+    if (snapshotCounts[s.id]) return snapshotCounts[s.id];
+    // Fallback
     if (s.survey_type === "supervisor")    return typeCounts.supervisors;
     if (s.survey_type === "administrator") return typeCounts.administrators;
-    if (s.survey_type === "open")         return 0;
-    return schoolCount; // default: schools
+    return schoolCount;
   }
 
   if (loading) return (
