@@ -265,8 +265,13 @@ function useDashboardData(surveys, allSchools, filters) {
  const totalResponses = Object.values(responseStats).reduce((a, b) => a + b, 0);
  const schoolTotal = filteredSchools.length || 1;
  const activeCount = published.length;
+ // avgRate uses snapshot count per survey if available
  const avgRate = activeCount
- ? Math.round(published.reduce((sum, s) => sum + ((responseStats[s.id] || 0) / schoolTotal * 100), 0) / activeCount)
+ ? Math.round(published.reduce((sum, s) => {
+     const target = snapshotCounts[s.id] || (s.survey_type === "open" ? null : schoolTotal);
+     if (!target) return sum;
+     return sum + Math.min(100, (responseStats[s.id] || 0) / target * 100);
+   }, 0) / activeCount)
  : 0;
 
  const topSurveys = [...filteredSurveys]
@@ -289,7 +294,21 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
  const [filters, setFilters] = useState({});
  const [allSchools, setAllSchools] = useState([]);
  const [loadSch, setLoadSch] = useState(true);
- const [activeView, setActiveView] = useState("overview");
+ const [activeView,     setActiveView]     = useState("overview");
+ const [snapshotCounts, setSnapshotCounts] = useState({});
+
+ useEffect(() => {
+   async function loadSnapshots() {
+     const { data } = await supabase
+       .from("survey_target_snapshot")
+       .select("survey_id");
+     if (!data) return;
+     const counts = {};
+     data.forEach(r => { counts[r.survey_id] = (counts[r.survey_id]||0) + 1; });
+     setSnapshotCounts(counts);
+   }
+   loadSnapshots();
+ }, []);
 
  useEffect(() => {
  async function load() {
@@ -337,7 +356,7 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
  const topRows = derived.topSurveys.map(s => ({
  "الاستبيان": s.title,
  "الردود": responseStats[s.id] || 0,
- "نسبة الاستجابة": `${Math.round((responseStats[s.id] || 0) / filteredSchools.length * 100)}%`,
+ "نسبة الاستجابة": (() => { const t = snapshotCounts[s.id]||filteredSchools.length; return t ? `${Math.min(100,Math.round((responseStats[s.id]||0)/t*100))}%` : "—"; })(),
  }));
  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(topRows), "أفضل الاستبيانات");
  }
@@ -457,7 +476,8 @@ export default function ExecutiveDashboard({ surveys, schoolCount, onNavigate, u
  <div style={{ display: "grid", gap: 10 }}>
  {derived.topSurveys.map((s, idx) => {
  const count = responseStats[s.id] || 0;
- const pct = filteredSchools.length ? Math.round(count / filteredSchools.length * 100) : 0;
+ const snapTarget = snapshotCounts[s.id] || (s.survey_type === "open" ? null : filteredSchools.length);
+ const pct = snapTarget ? Math.min(100, Math.round(count / snapTarget * 100)) : 0;
  return (
  <div key={s.id} className="dash-in" style={{
  background: D.white, borderRadius: 14, border: `1px solid ${D.s200}`,
