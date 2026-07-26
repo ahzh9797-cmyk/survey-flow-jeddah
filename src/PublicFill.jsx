@@ -9,6 +9,14 @@ import { evaluateSurvey, getVisibleQuestions, validateAllAnswers } from "./Condi
 import { flattenItems } from "./LogicUtils.js";
 import { adaptLegacySurvey, isLegacySurvey } from "./LegacyGateAdapter.js";
 
+// خدمة المستفيد — كل باركود (استبانة open) يُنسب تلقائيًا لجهة ثابتة بدون سؤال الزائر
+const BENEFICIARY_ENTITY_LABELS = {
+  "ee9a7397-4dc0-4767-bdf1-b8ba63c43540": "الإدارة المدرسية",
+  "39fcfb07-75a7-4adf-aefc-68df8fcc1683": "المرحلة الابتدائية",
+  "58af339f-53f4-4623-910d-a546b34f3497": "المرحلة المتوسطة",
+  "ccc6ba07-d34c-4968-8126-2513c88eea60": "المرحلة الثانوية",
+};
+
 // 
 // TEMPORARY DEBUG LOGGING — Conditional Logic audit
 // Remove this block once verified in production
@@ -225,7 +233,7 @@ function PublicFill({ survey, onBack }) {
 
   //  All state & logic unchanged 
   const [entity,          setEntity]          = useState(null);
-  const [respondentLabel, setRespondentLabel] = useState(isOpen ? "الإدارة المدرسية" : "");
+  const [respondentLabel, setRespondentLabel] = useState(isOpen ? (BENEFICIARY_ENTITY_LABELS[survey.id] || "الإدارة المدرسية") : "");
   const [ans,             setAns]             = useState({});
   const [errs,            setErrs]            = useState({});
   const [step,            setStep]            = useState(isOpen?"fill":"identify");
@@ -596,3 +604,4 @@ function PublicFillWithGate({ survey, onBack }) {
 }
 
 export default PublicFillWithGate;
+
