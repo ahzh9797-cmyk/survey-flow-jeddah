@@ -40,6 +40,7 @@ const ICONS = {
   chevronRight: "M9 18l6-6-6-6",
   overview:     "M3 3h7v7H3zM13 3h8v7h-8zM3 13h8v8H3zM13 13h7v3h-7zM13 18h7v3h-7z",
   menu:         "M3 12h18M3 6h18M3 18h18",
+  heart:        "M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z",
 };
 
 const SvgIcon = ({ name, size=16, color="currentColor" }) => {
@@ -54,6 +55,7 @@ export const NAV_SECTIONS = [
     items: [
       { id:"dashboard", label:"الاستبيانات",  icon:"surveys",  tabId:"dashboard" },
       { id:"overview",  label:"لوحة التحكم", icon:"overview", tabId:"overview"  },
+      { id:"beneficiary", label:"رضا المستفيد", icon:"heart", tabId:"beneficiary" },
     ],
   },
   {
