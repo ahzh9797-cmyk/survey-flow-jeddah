@@ -225,7 +225,7 @@ function PublicFill({ survey, onBack }) {
 
   //  All state & logic unchanged 
   const [entity,          setEntity]          = useState(null);
-  const [respondentLabel, setRespondentLabel] = useState("");
+  const [respondentLabel, setRespondentLabel] = useState(isOpen ? "الإدارة المدرسية" : "");
   const [ans,             setAns]             = useState({});
   const [errs,            setErrs]            = useState({});
   const [step,            setStep]            = useState(isOpen?"fill":"identify");
@@ -341,6 +341,25 @@ function PublicFill({ survey, onBack }) {
     const stoppedAtGate = survey.gate_question_id && ans[survey.gate_question_id]!==undefined && ans[survey.gate_question_id]!==survey.gate_required_value;
 
     setSubmitting(true); setSubmitError("");
+
+    // حماية بسيطة من التكرار: نفس رقم الجوال لا يرسل ردًا ثانيًا لنفس الاستبانة العامة في نفس اليوم
+    if (isOpen) {
+      const phoneQuestion = survey.questions.find(q => q.label.includes("جوال"));
+      const phoneVal = phoneQuestion ? String(ans[phoneQuestion.id]||"").trim() : "";
+      if (phoneQuestion && phoneVal) {
+        const { data: alreadyResponded } = await supabase.rpc("check_phone_responded_today", {
+          p_survey_id: survey.id,
+          p_question_id: phoneQuestion.id,
+          p_phone: phoneVal,
+        });
+        if (alreadyResponded) {
+          setSubmitting(false);
+          setSubmitError("تم إرسال رد بهذا الرقم لهذه الاستبانة اليوم بالفعل. يمكنك المحاولة غدًا.");
+          return;
+        }
+      }
+    }
+
     const answers = stoppedAtGate ? { [survey.gate_question_id]: ans[survey.gate_question_id] } : ans;
     const payload = { survey_id:survey.id, submitted_at:new Date().toISOString(), ...buildResponsePayload(survey.survey_type,entity,respondentLabel,answers,stoppedAtGate,survey.gate_question_id) };
     const responseLimit = survey.response_limit || "one_per_entity";
@@ -448,23 +467,6 @@ function PublicFill({ survey, onBack }) {
           {step==="fill" && (
             <>
               {entity && <EntityCard surveyType={survey.survey_type} entity={entity}/>}
-
-              {/* Open survey name */}
-              {isOpen && (
-                <div style={{ background:F.white, borderRadius:16, padding:16, marginBottom:14,
-                  border:`1px solid ${F.s200}`, boxShadow:"0 2px 6px rgba(0,0,0,0.04)" }}>
-                  <label style={{ display:"block", fontSize:13, fontWeight:700, color:F.s700, marginBottom:8 }}>
-                    الاسم أو الجهة
-                    <span style={{ fontSize:11, fontWeight:400, color:F.s400, marginRight:6 }}>(اختياري)</span>
-                  </label>
-                  <input value={respondentLabel} onChange={e=>setRespondentLabel(e.target.value)}
-                    className="pf-input"
-                    placeholder="مثال: إدارة المدرسة، أو اسمك"
-                    style={{ width:"100%", padding:"12px 14px", border:`1.5px solid ${F.s200}`,
-                      borderRadius:12, fontSize:14, fontFamily:"inherit", direction:"rtl",
-                      boxSizing:"border-box", background:F.white, color:F.s900, transition:"all 0.2s" }}/>
-                </div>
-              )}
 
               {/* Questions */}
               {qsToShow.map((q, i) => {
