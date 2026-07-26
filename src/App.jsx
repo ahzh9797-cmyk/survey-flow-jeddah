@@ -3,6 +3,8 @@ import { supabase, C, Btn, Card, Spinner, InstallAppBanner, RoleBadge,
  useSurveys, useSchoolCount, useUserRole, useAppSettings, usePendingCount,
  logAction } from "./lib.jsx";
 import PublicFill from "./PublicFill.jsx";
+import BeneficiaryPublic from "./BeneficiaryPublic.jsx";
+import BeneficiaryAdmin from "./BeneficiaryAdmin.jsx";
 import TrackingPage, { OpenSurveyTracking } from "./TrackingPage.jsx";
 import { SurveysList, NewSurveyPage, ShareSheet, LoginPage, AnalyticsPage,
  SchoolsManagementPage, UsersManagementPage, SupervisorsManagementPage,
@@ -104,68 +106,6 @@ function ModalPage({ title, onClose, children }) {
  );
 }
 
-// رضا المستفيد — صفحة مخصصة لاستبانات خدمة المستفيد الأربع (إدارة + 3 مراحل) 
-const BENEFICIARY_SURVEYS = [
-  { id:"ee9a7397-4dc0-4767-bdf1-b8ba63c43540", label:"الإدارة المدرسية"   },
-  { id:"39fcfb07-75a7-4adf-aefc-68df8fcc1683", label:"المرحلة الابتدائية" },
-  { id:"58af339f-53f4-4623-910d-a546b34f3497", label:"المرحلة المتوسطة"  },
-  { id:"ccc6ba07-d34c-4968-8126-2513c88eea60", label:"المرحلة الثانوية"  },
-];
-
-function BeneficiaryCard({ label, survey, onEdit, onTrack }) {
-  const publicUrl = survey ? `${window.location.origin}/?survey=${survey.id}` : "";
-  return (
-    <div style={{
-      background:T.white, borderRadius:16, border:`1px solid ${T.slate200}`,
-      padding:"14px 16px", marginBottom:12,
-      boxShadow:"0 2px 8px rgba(0,0,0,0.05)", borderRight:`4px solid ${T.emerald700}`,
-    }}>
-      <p style={{ margin:"0 0 10px", fontSize:14, fontWeight:800, color:T.slate900 }}>{label}</p>
-      {!survey ? (
-        <p style={{ margin:0, fontSize:12, color:T.slate500 }}>تعذر العثور على هذه الاستبانة.</p>
-      ) : (
-        <>
-          <div style={{ display:"flex", gap:8, marginBottom:10 }}>
-            <button onClick={onEdit} className="modal-action-card" style={{
-              flex:1, background:T.slate100, border:"none", borderRadius:10,
-              padding:"9px 10px", fontSize:12, fontWeight:700, color:T.slate700,
-              cursor:"pointer", fontFamily:"inherit",
-            }}>تعديل الأسئلة</button>
-            <button onClick={onTrack} className="modal-action-card" style={{
-              flex:1, background:"#0284C715", border:"none", borderRadius:10,
-              padding:"9px 10px", fontSize:12, fontWeight:700, color:"#0284C7",
-              cursor:"pointer", fontFamily:"inherit",
-            }}>الردود والتصدير</button>
-          </div>
-          <p style={{ margin:0, fontSize:11, color:T.slate500, wordBreak:"break-all", direction:"ltr", textAlign:"left" }}>{publicUrl}</p>
-          <button onClick={()=>navigator.clipboard?.writeText(publicUrl)} style={{
-            marginTop:8, background:"none", border:"none", padding:0,
-            fontSize:11, fontWeight:700, color:T.emerald700, cursor:"pointer", fontFamily:"inherit",
-          }}>نسخ الرابط</button>
-        </>
-      )}
-    </div>
-  );
-}
-
-function BeneficiarySatisfactionPage({ surveys, onEdit, onTrack }) {
-  return (
-    <div style={{ direction:"rtl" }}>
-      <div style={{ marginBottom:20 }}>
-        <h2 style={{ margin:0, fontSize:18, color:T.slate900, fontWeight:800 }}>رضا المستفيد</h2>
-        <p style={{ margin:"4px 0 0", fontSize:12, color:T.slate500 }}>باركود مستقل لكل مرحلة، بالإضافة للإدارة المدرسية</p>
-      </div>
-      {BENEFICIARY_SURVEYS.map(b => {
-        const survey = surveys.find(s => s.id === b.id);
-        return (
-          <BeneficiaryCard key={b.id} label={b.label} survey={survey}
-            onEdit={()=>onEdit(survey)} onTrack={()=>onTrack(survey)}/>
-        );
-      })}
-    </div>
-  );
-}
-
 // Main App 
 export default function App() {
  const [user, setUser] = useState(null);
@@ -198,6 +138,7 @@ export default function App() {
 
  const params = new URLSearchParams(window.location.search);
  const publicSurveyId = params.get("survey");
+ const beneficiaryId = params.get("beneficiary");
  const reviewToken = params.get("review");
 
  useEffect(() => {
@@ -208,6 +149,10 @@ export default function App() {
  // 
 
  // Standalone routes (unchanged — no shell, no nav) 
+ if (beneficiaryId) {
+ return <BeneficiaryPublic departmentId={beneficiaryId}/>;
+ }
+
  if (reviewToken) {
  return <ReviewPreviewPage token={reviewToken} surveys={surveys}/>;
  }
@@ -361,13 +306,7 @@ export default function App() {
  {tab==="overview" && (
  <ExecutiveDashboard surveys={surveys} schoolCount={schoolCount} onNavigate={setTab} user={user}/>
  )}
- {tab==="beneficiary" && (
- <BeneficiarySatisfactionPage
- surveys={surveys}
- onEdit={s=>s && setModal({type:"edit", data:s})}
- onTrack={s=>s && setModal({type:"tracking", data:s})}
- />
- )}
+ {tab==="beneficiary" && <BeneficiaryAdmin/>}
  {tab==="directory" && <DirectoryPage user={user} isAdmin={isAdmin}/>}
  {tab==="templates" && (
  <TemplatesPage user={user} isAdmin={isAdmin}
