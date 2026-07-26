@@ -9,6 +9,15 @@ import { supabase, ensureXLSX, ensurePDF, pdfRTLText, tsStamp } from "./lib.jsx"
 import { resolveTargetedSchools } from "./TargetingService.jsx";
 import { audit } from "./AuditService.js";
 
+// اليوم + التاريخ + الوقت بصيغة عربية كاملة، تُستخدم في كل أعمدة "تاريخ الإجابة"
+function formatFullDateTime(value) {
+  if (!value) return "—";
+  const d = new Date(value);
+  const dayDate = d.toLocaleDateString("ar-SA", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+  const time = d.toLocaleTimeString("ar-SA", { hour:"2-digit", minute:"2-digit" });
+  return `${dayDate} - ${time}`;
+}
+
 // ═══════════════════════════════════════════════════════
 // جلب بيانات التقرير
 // ═══════════════════════════════════════════════════════
@@ -136,14 +145,14 @@ export async function exportSurveyExcel({ survey, responses, questions, allSchoo
 
   // ورقة 2 — الردود التفصيلية
   if (responses.length && questions.length) {
-    const headers = ["المدرسة","المرحلة","القطاع","المدير","تاريخ الإجابة",
+    const headers = ["المدرسة","المرحلة","القطاع","المدير","اليوم والتاريخ والوقت",
       ...questions.map(q=>q.label)];
     const rows = responses.map(r => [
       r.survey_schools?.name || r.respondent_label || "—",
       r.survey_schools?.stage || "—",
       r.survey_schools?.sector || "—",
       r.survey_schools?.principal || "—",
-      r.submitted_at ? new Date(r.submitted_at).toLocaleDateString("ar-SA") : "—",
+      formatFullDateTime(r.submitted_at),
       ...questions.map(q => {
         const ans = r.answers?.[q.id];
         if (ans === undefined || ans === null) return "—";
@@ -190,11 +199,11 @@ export async function exportSurveyExcel({ survey, responses, questions, allSchoo
 // تصدير CSV
 // ═══════════════════════════════════════════════════════
 export async function exportSurveyCSV({ survey, responses, questions, user }) {
-  const headers = ["المدرسة","المرحلة","تاريخ الإجابة",...questions.map(q=>q.label)];
+  const headers = ["المدرسة","المرحلة","اليوم والتاريخ والوقت",...questions.map(q=>q.label)];
   const rows = responses.map(r => [
     r.survey_schools?.name || r.respondent_label || "",
     r.survey_schools?.stage || "",
-    r.submitted_at ? new Date(r.submitted_at).toLocaleDateString("ar-SA") : "",
+    formatFullDateTime(r.submitted_at),
     ...questions.map(q => {
       const ans = r.answers?.[q.id];
       if (!ans) return "";
@@ -373,4 +382,5 @@ export async function exportExecutiveExcel({ surveys, stats, schoolCount, user }
   XLSX.writeFile(wb, `التقرير-التنفيذي-${tsStamp()}.xlsx`);
   await audit.exportExcel(user, "التقرير التنفيذي");
 }
+
 
