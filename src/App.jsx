@@ -104,6 +104,70 @@ function ModalPage({ title, onClose, children }) {
  );
 }
 
+// رضا المستفيد — صفحة مخصصة لاستبانة خدمة المستفيد فقط 
+const BENEFICIARY_SURVEY_ID = "ee9a7397-4dc0-4767-bdf1-b8ba63c43540";
+
+function BeneficiarySatisfactionPage({ survey, onEdit, onTrack }) {
+ if (!survey) {
+ return (
+ <div style={{ padding:24, textAlign:"center", direction:"rtl" }}>
+ <p style={{ color:T.slate500, fontSize:13 }}>تعذر العثور على استبانة رضا المستفيد.</p>
+ </div>
+ );
+ }
+ const publicUrl = `${window.location.origin}/?survey=${survey.id}`;
+ return (
+ <div style={{ direction:"rtl" }}>
+ <div style={{ marginBottom:20 }}>
+ <h2 style={{ margin:0, fontSize:18, color:T.slate900, fontWeight:800 }}>رضا المستفيد</h2>
+ <p style={{ margin:"4px 0 0", fontSize:12, color:T.slate500 }}>{survey.title}</p>
+ </div>
+
+ <div onClick={onEdit} className="modal-action-card" style={{
+ background:T.white, borderRadius:16, border:`1px solid ${T.slate200}`,
+ padding:"16px", marginBottom:12, cursor:"pointer",
+ display:"flex", alignItems:"center", gap:14,
+ boxShadow:"0 2px 8px rgba(0,0,0,0.05)", borderRight:`4px solid ${T.emerald700}`,
+ }}>
+ <div style={{ width:46, height:46, background:`${T.emerald700}15`, borderRadius:13,
+ display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}></div>
+ <div style={{ flex:1 }}>
+ <p style={{ margin:0, fontSize:14, fontWeight:700, color:T.slate900 }}>تعديل الأسئلة</p>
+ <p style={{ margin:"2px 0 0", fontSize:12, color:T.slate500 }}>إضافة أو تعديل أو حذف أسئلة الاستبانة</p>
+ </div>
+ <span style={{ color:T.slate400, fontSize:16, flexShrink:0 }}>‹</span>
+ </div>
+
+ <div onClick={onTrack} className="modal-action-card" style={{
+ background:T.white, borderRadius:16, border:`1px solid ${T.slate200}`,
+ padding:"16px", marginBottom:12, cursor:"pointer",
+ display:"flex", alignItems:"center", gap:14,
+ boxShadow:"0 2px 8px rgba(0,0,0,0.05)", borderRight:"4px solid #0284C7",
+ }}>
+ <div style={{ width:46, height:46, background:"#0284C715", borderRadius:13,
+ display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}></div>
+ <div style={{ flex:1 }}>
+ <p style={{ margin:0, fontSize:14, fontWeight:700, color:T.slate900 }}>الردود والتصدير</p>
+ <p style={{ margin:"2px 0 0", fontSize:12, color:T.slate500 }}>عرض جميع الردود وتصديرها Excel</p>
+ </div>
+ <span style={{ color:T.slate400, fontSize:16, flexShrink:0 }}>‹</span>
+ </div>
+
+ <div style={{
+ background:T.white, borderRadius:16, border:`1px solid ${T.slate200}`,
+ padding:"16px", boxShadow:"0 2px 8px rgba(0,0,0,0.05)",
+ }}>
+ <p style={{ margin:"0 0 8px", fontSize:12, fontWeight:700, color:T.slate700 }}>رابط الاستبانة العام (لتوليد الباركود)</p>
+ <p style={{ margin:0, fontSize:12, color:T.slate500, wordBreak:"break-all", direction:"ltr", textAlign:"left" }}>{publicUrl}</p>
+ <button onClick={()=>navigator.clipboard?.writeText(publicUrl)} style={{
+ marginTop:10, background:T.slate100, border:"none", borderRadius:10,
+ padding:"8px 14px", fontSize:12, fontWeight:700, color:T.slate700, cursor:"pointer", fontFamily:"inherit",
+ }}>نسخ الرابط</button>
+ </div>
+ </div>
+ );
+}
+
 // Main App 
 export default function App() {
  const [user, setUser] = useState(null);
@@ -299,6 +363,13 @@ export default function App() {
  {tab==="overview" && (
  <ExecutiveDashboard surveys={surveys} schoolCount={schoolCount} onNavigate={setTab} user={user}/>
  )}
+ {tab==="beneficiary" && (
+ <BeneficiarySatisfactionPage
+ survey={surveys.find(s=>s.id===BENEFICIARY_SURVEY_ID)}
+ onEdit={()=>setModal({type:"edit", data:surveys.find(s=>s.id===BENEFICIARY_SURVEY_ID)})}
+ onTrack={()=>setModal({type:"tracking", data:surveys.find(s=>s.id===BENEFICIARY_SURVEY_ID)})}
+ />
+ )}
  {tab==="directory" && <DirectoryPage user={user} isAdmin={isAdmin}/>}
  {tab==="templates" && (
  <TemplatesPage user={user} isAdmin={isAdmin}
@@ -390,5 +461,6 @@ export default function App() {
  </AppShell>
  );
 }
+
 
 
