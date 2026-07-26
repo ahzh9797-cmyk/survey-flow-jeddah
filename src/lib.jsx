@@ -124,7 +124,7 @@ export function Stars({value,onChange}){
  color:n<=(h||value)?C.accent:"#E2E8F0",
  lineHeight:1, transition:"color 0.1s, transform 0.1s",
  transform: n<=(h||value) ? "scale(1.1)" : "scale(1)"
- }}></span>
+ }}>★</span>
  ))}
  </div>
  );
@@ -589,6 +589,7 @@ export function MinistryLookup({ onConfirm }) {
 // 
 // PUBLIC SURVEY FILL (writes to Supabase)
 // 
+
 
 
 
