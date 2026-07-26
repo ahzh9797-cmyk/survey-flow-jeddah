@@ -9,14 +9,6 @@ import { evaluateSurvey, getVisibleQuestions, validateAllAnswers } from "./Condi
 import { flattenItems } from "./LogicUtils.js";
 import { adaptLegacySurvey, isLegacySurvey } from "./LegacyGateAdapter.js";
 
-// خدمة المستفيد — كل باركود (استبانة open) يُنسب تلقائيًا لجهة ثابتة بدون سؤال الزائر
-const BENEFICIARY_ENTITY_LABELS = {
-  "ee9a7397-4dc0-4767-bdf1-b8ba63c43540": "الإدارة المدرسية",
-  "39fcfb07-75a7-4adf-aefc-68df8fcc1683": "المرحلة الابتدائية",
-  "58af339f-53f4-4623-910d-a546b34f3497": "المرحلة المتوسطة",
-  "ccc6ba07-d34c-4968-8126-2513c88eea60": "المرحلة الثانوية",
-};
-
 // 
 // TEMPORARY DEBUG LOGGING — Conditional Logic audit
 // Remove this block once verified in production
@@ -233,7 +225,7 @@ function PublicFill({ survey, onBack }) {
 
   //  All state & logic unchanged 
   const [entity,          setEntity]          = useState(null);
-  const [respondentLabel, setRespondentLabel] = useState(isOpen ? (BENEFICIARY_ENTITY_LABELS[survey.id] || "الإدارة المدرسية") : "");
+  const [respondentLabel, setRespondentLabel] = useState("");
   const [ans,             setAns]             = useState({});
   const [errs,            setErrs]            = useState({});
   const [step,            setStep]            = useState(isOpen?"fill":"identify");
@@ -475,6 +467,23 @@ function PublicFill({ survey, onBack }) {
           {step==="fill" && (
             <>
               {entity && <EntityCard surveyType={survey.survey_type} entity={entity}/>}
+
+              {/* Open survey name */}
+              {isOpen && (
+                <div style={{ background:F.white, borderRadius:16, padding:16, marginBottom:14,
+                  border:`1px solid ${F.s200}`, boxShadow:"0 2px 6px rgba(0,0,0,0.04)" }}>
+                  <label style={{ display:"block", fontSize:13, fontWeight:700, color:F.s700, marginBottom:8 }}>
+                    الاسم أو الجهة
+                    <span style={{ fontSize:11, fontWeight:400, color:F.s400, marginRight:6 }}>(اختياري)</span>
+                  </label>
+                  <input value={respondentLabel} onChange={e=>setRespondentLabel(e.target.value)}
+                    className="pf-input"
+                    placeholder="مثال: إدارة المدرسة، أو اسمك"
+                    style={{ width:"100%", padding:"12px 14px", border:`1.5px solid ${F.s200}`,
+                      borderRadius:12, fontSize:14, fontFamily:"inherit", direction:"rtl",
+                      boxSizing:"border-box", background:F.white, color:F.s900, transition:"all 0.2s" }}/>
+                </div>
+              )}
 
               {/* Questions */}
               {qsToShow.map((q, i) => {
