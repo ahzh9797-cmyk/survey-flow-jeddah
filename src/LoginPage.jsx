@@ -368,16 +368,21 @@ export default function LoginPage({ onLogin }) {
  if (!displayName.trim()) { setErr("الرجاء إدخال الاسم"); return; }
  if (pass.length < 6) { setErr("كلمة المرور يجب أن تكون 6 أحرف على الأقل"); return; }
  setLoading(true);
- const { data, error } = await supabase.auth.signUp({ email, password: pass });
+ const { data, error } = await supabase.auth.signUp({
+ email, password: pass,
+ options: { data: { display_name: displayName.trim() } },
+ });
  if (error) {
  setLoading(false);
  setErr(error.message.includes("already") ? "هذا البريد مسجّل مسبقاً" : "فشل إنشاء الحساب: " + error.message);
  return;
  }
+ // A database trigger creates the pending user_roles row automatically on signup.
+ // This client-side insert is kept only as a best-effort fallback; its result is not trusted.
  if (data.user) {
- await supabase.from("user_roles").insert({
+ await supabase.from("user_roles").upsert({
  user_id: data.user.id, role:"viewer", status:"pending", display_name: displayName.trim(),
- });
+ }, { onConflict: "user_id", ignoreDuplicates: true });
  }
  setLoading(false);
  setInfo("تم إنشاء حسابك بنجاح. هو الآن بانتظار موافقة المدير العام، وستتمكن من الدخول فور القبول.");
