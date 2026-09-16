@@ -55,7 +55,7 @@ export const NAV_SECTIONS = [
     items: [
       { id:"dashboard", label:"الاستبيانات",  icon:"surveys",  tabId:"dashboard" },
       { id:"overview",  label:"لوحة التحكم", icon:"overview", tabId:"overview"  },
-      { id:"beneficiary", label:"رضا المستفيد", icon:"heart", tabId:"beneficiary" },
+      { id:"beneficiary", label:"رضا المستفيد", icon:"heart", tabId:"beneficiary", adminOnly:true },
     ],
   },
   {
@@ -229,6 +229,7 @@ function SidebarContent({ collapsed, isMobile, activeTabId, activeAction, onItem
               )}
               <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
                 {section.items.map(item => {
+                  if (item.adminOnly && !isAdmin) return null;
                   const isActive = activeTabId===item.tabId &&
                     (item.action ? activeAction===item.action : !item.action || item.tabId===activeTabId);
                   return (

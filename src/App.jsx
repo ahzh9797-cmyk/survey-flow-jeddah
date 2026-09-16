@@ -306,7 +306,7 @@ export default function App() {
  {tab==="overview" && (
  <ExecutiveDashboard surveys={surveys} schoolCount={schoolCount} onNavigate={setTab} user={user}/>
  )}
- {tab==="beneficiary" && <BeneficiaryAdmin/>}
+ {tab==="beneficiary" && isAdmin && <BeneficiaryAdmin/>}
  {tab==="directory" && <DirectoryPage user={user} isAdmin={isAdmin}/>}
  {tab==="templates" && (
  <TemplatesPage user={user} isAdmin={isAdmin}
