@@ -85,8 +85,10 @@ export async function verifyEntity(surveyType, identifier) {
     return { entity: null, error: errorMsg };
   }
 
-  // Check active status (only for directory entities with status field)
-  if (data.status && data.status !== "نشط") {
+  // Check active status — supervisors/administrators only.
+  // survey_schools.status holds the supervisor-assignment state
+  // ("مُسندة" / "غير مُسندة"), not an active flag, so schools are skipped.
+  if (surveyType !== SURVEY_TYPES.SCHOOL && data.status && data.status !== "نشط") {
     return { entity: null, error: "هذا السجل غير نشط حالياً. تواصل مع المسؤول." };
   }
 
