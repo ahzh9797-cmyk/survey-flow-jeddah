@@ -6,7 +6,7 @@ import {
   VerificationStep
 } from "./SurveyService.jsx";
 import { evaluateSurvey, getVisibleQuestions, validateAllAnswers } from "./ConditionEngine.js";
-import { flattenItems } from "./LogicUtils.js";
+import { flattenItems, isAnswerEmpty } from "./LogicUtils.js";
 import { adaptLegacySurvey, isLegacySurvey } from "./LegacyGateAdapter.js";
 
 // 
@@ -146,6 +146,40 @@ function QuestionNumber({ value, onChange, hasError, disabled }) {
         fontSize:18, fontFamily:"inherit", boxSizing:"border-box",
         background:disabled?F.s50:F.white, color:F.s900, fontWeight:700, transition:"all 0.2s",
         opacity:disabled?0.6:1, cursor:disabled?"not-allowed":"text" }}/>
+  );
+}
+
+function QuestionMultiSelect({ options, value, onChange, disabled }) {
+  const cur = Array.isArray(value) ? value : [];
+  const toggle = opt => onChange(cur.includes(opt) ? cur.filter(x=>x!==opt) : [...cur, opt]);
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:8, opacity:disabled?0.6:1, pointerEvents:disabled?"none":"auto" }}>
+      <p style={{ margin:0, fontSize:12, color:F.s500 }}>يمكن اختيار أكثر من خيار</p>
+      {(options||[]).map(opt=>{
+        const on = cur.includes(opt);
+        return (
+          <button key={opt} type="button" onClick={()=>toggle(opt)} className="pf-option" style={{
+            width:"100%", padding:"14px 16px", borderRadius:14,
+            border:`2px solid ${on?F.e600:F.s200}`,
+            background:on?F.e50:F.white,
+            color:on?F.e700:F.s700,
+            cursor:"pointer", fontSize:14, fontFamily:"inherit",
+            fontWeight:on?700:400, textAlign:"right",
+            display:"flex", alignItems:"center", gap:12,
+            boxShadow:on?`0 0 0 1px ${F.e500}20`:"none",
+          }}>
+            <span style={{
+              width:22, height:22, borderRadius:6, flexShrink:0,
+              border:`2px solid ${on?F.e600:F.s300}`,
+              background:on?F.e600:F.white, color:"#fff", fontSize:14, fontWeight:900,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              transition:"all 0.15s",
+            }}>{on ? "✓" : ""}</span>
+            {opt}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -333,7 +367,7 @@ function PublicFill({ survey, onBack }) {
     qsToValidate.forEach(q => {
       const isRequired = hasAnyConditions ? evalState.required.has(q.id) : q.required;
       const isDisabled = hasAnyConditions && evalState.disabled.has(q.id);
-      if (isRequired && !isDisabled && !ans[q.id]) e[q.id] = "هذا الحقل مطلوب";
+      if (isRequired && !isDisabled && isAnswerEmpty(ans[q.id])) e[q.id] = "هذا الحقل مطلوب";
     });
     if (Object.keys(e).length) { setErrs(e); clLog("Validation failed:", e); return; }
 
@@ -517,6 +551,7 @@ function PublicFill({ survey, onBack }) {
                     {q.type==="textarea" && <QuestionTextarea value={ans[q.id]} onChange={v=>setA(q.id,v)} disabled={isDisabled}/>}
                     {q.type==="number"   && <QuestionNumber   value={ans[q.id]} onChange={v=>setA(q.id,v)} hasError={!!errs[q.id]} disabled={isDisabled}/>}
                     {q.type==="select"   && <QuestionSelect   options={q.options} value={ans[q.id]} onChange={v=>setA(q.id,v)} disabled={isDisabled}/>}
+                    {q.type==="multiselect" && <QuestionMultiSelect options={q.options} value={ans[q.id]} onChange={v=>setA(q.id,v)} disabled={isDisabled}/>}
                     {q.type==="rating"   && <Stars value={ans[q.id]||0} onChange={v=>!isDisabled && setA(q.id,v)}/>}
                     {q.type==="file"     && (
                       <QuestionFile questionId={q.id} value={ans[q.id]}

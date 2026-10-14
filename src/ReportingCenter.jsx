@@ -364,7 +364,7 @@ function SurveyReportTab({ surveys, user, settings }) {
  </div>
  </div>
 
- {q.type==="select" && q.distribution && (
+ {(q.type==="select"||q.type==="multiselect") && q.distribution && (
  <div>
  {Object.entries(q.distribution)
  .sort((a,b)=>b[1]-a[1])
@@ -499,7 +499,8 @@ function SurveyReportTab({ surveys, user, settings }) {
  const ans = r.answers?.[q.id];
  let display = "—";
  if(ans!==undefined&&ans!==null&&ans!=="") {
- if(typeof ans==="object") display = ans.url?"ملف":"—";
+ if(Array.isArray(ans)) display = ans.join("، ").slice(0,30) || "—";
+ else if(typeof ans==="object") display = ans.url?"ملف":"—";
  else display = String(ans).slice(0,30);
  }
  return (

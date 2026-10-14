@@ -24,18 +24,18 @@ export function uid() {
 
 // ── Operators ────────────────────────────────────────
 export const OPERATORS = [
-  { v:"eq",          l:"يساوي",           sym:"=",   types:["text","number","select","rating"] },
-  { v:"neq",         l:"لا يساوي",        sym:"≠",   types:["text","number","select","rating"] },
+  { v:"eq",          l:"يساوي",           sym:"=",   types:["text","number","select","multiselect","rating"] },
+  { v:"neq",         l:"لا يساوي",        sym:"≠",   types:["text","number","select","multiselect","rating"] },
   { v:"gt",          l:"أكبر من",         sym:">",   types:["number","rating"] },
   { v:"lt",          l:"أصغر من",         sym:"<",   types:["number","rating"] },
   { v:"gte",         l:"أكبر من أو يساوي",sym:"≥",   types:["number","rating"] },
   { v:"lte",         l:"أصغر من أو يساوي",sym:"≤",  types:["number","rating"] },
-  { v:"contains",    l:"يحتوي على",       sym:"∋",   types:["text","textarea"] },
-  { v:"notContains", l:"لا يحتوي",        sym:"∌",   types:["text","textarea"] },
+  { v:"contains",    l:"يحتوي على",       sym:"∋",   types:["text","textarea","multiselect"] },
+  { v:"notContains", l:"لا يحتوي",        sym:"∌",   types:["text","textarea","multiselect"] },
   { v:"startsWith",  l:"يبدأ بـ",         sym:"^",   types:["text","textarea"] },
   { v:"endsWith",    l:"ينتهي بـ",        sym:"$",   types:["text","textarea"] },
-  { v:"isEmpty",     l:"فارغ",            sym:"∅",   types:["text","textarea","number","select","file"] },
-  { v:"isNotEmpty",  l:"غير فارغ",        sym:"!∅",  types:["text","textarea","number","select","file"] },
+  { v:"isEmpty",     l:"فارغ",            sym:"∅",   types:["text","textarea","number","select","multiselect","file"] },
+  { v:"isNotEmpty",  l:"غير فارغ",        sym:"!∅",  types:["text","textarea","number","select","multiselect","file"] },
   { v:"between",     l:"بين",             sym:"↔",   types:["number","rating"] },
 ];
 
@@ -166,7 +166,8 @@ export const Q_TYPES = [
   { v:"text",     l:"نص قصير",              icon:"✏️" },
   { v:"textarea", l:"نص طويل",              icon:"📝" },
   { v:"number",   l:"رقم / إحصائية",        icon:"🔢" },
-  { v:"select",   l:"اختيار من قائمة",      icon:"☑️" },
+  { v:"select",   l:"اختيار من قائمة",      icon:"🔘" },
+  { v:"multiselect", l:"اختيار متعدد",      icon:"☑️" },
   { v:"rating",   l:"تقييم بالنجوم",        icon:"⭐" },
   { v:"file",     l:"رفع ملف (PDF/Excel)",  icon:"📎" },
 ];
@@ -178,3 +179,15 @@ export function qTypeIcon(type) {
   return Q_TYPES.find(t => t.v === type)?.icon || "❓";
 }
 
+
+// ── Answer helpers (multiselect answers are stored as string arrays) ──
+export function isAnswerEmpty(value) {
+  if (Array.isArray(value)) return value.length === 0;
+  return value === undefined || value === null || value === "";
+}
+export function answerToText(value, sep = "، ") {
+  if (value === undefined || value === null) return "";
+  if (Array.isArray(value)) return value.join(sep);
+  if (typeof value === "object") return value.url || JSON.stringify(value);
+  return String(value);
+}

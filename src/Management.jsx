@@ -265,6 +265,7 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
             ...(questions||[]).map(q => {
               const ans = r.answers?.[q.id];
               if (ans===undefined||ans===null) return "—";
+              if (Array.isArray(ans)) return ans.join("، ")||"—";
               if (typeof ans==="object") return ans.url||JSON.stringify(ans);
               return String(ans);
             }),
@@ -318,7 +319,7 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
           r.survey_schools?.name||r.respondent_label||"",
           r.survey_schools?.stage||"",
           r.submitted_at?new Date(r.submitted_at).toLocaleDateString("ar-SA"):"",
-          ...qs.map(q=>{ const a=r.answers?.[q.id]; if(!a)return""; if(typeof a==="object")return a.url||""; return String(a).replace(/,/g,"،"); }),
+          ...qs.map(q=>{ const a=r.answers?.[q.id]; if(!a)return""; if(Array.isArray(a))return a.join("، "); if(typeof a==="object")return a.url||""; return String(a).replace(/,/g,"،"); }),
         ]);
         const csv = [headers,...rows].map(row=>row.map(c=>`"${c}"`).join(",")).join("\n");
         const blob = new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});

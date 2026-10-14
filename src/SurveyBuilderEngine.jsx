@@ -297,7 +297,7 @@ function QuestionCard({
  </label>
  </div>
 
- {q.type==="select" && (
+ {(q.type==="select"||q.type==="multiselect") && (
  <OptionsEditor
  options={q.options||[]}
  onChange={next=>upd("options", next)}
@@ -357,6 +357,16 @@ function LivePreview({ items, answers, setAnswers }) {
  {opt}
  </button>
  ))}
+ {q.type==="multiselect" && (q.options||[]).map(opt=>{
+ const cur=Array.isArray(answers[q.id])?answers[q.id]:[];
+ const on=cur.includes(opt);
+ return (
+ <button key={opt} onClick={()=>setAnswers(p=>({...p,[q.id]:on?cur.filter(x=>x!==opt):[...cur,opt]}))}
+ style={{ display:"block",width:"100%",textAlign:"right",padding:"8px 10px",marginBottom:4,borderRadius:8,border:`1.5px solid ${on?B.e600:B.s200}`,background:on?B.e50:B.white,cursor:"pointer",fontSize:12,fontFamily:"inherit" }}>
+ {on?"☑":"☐"} {opt}
+ </button>
+ );
+ })}
  {q.type==="number" && (
  <input type="number" value={answers[q.id]||""} onChange={e=>setAnswers(p=>({...p,[q.id]:e.target.value}))}
  style={{ ...iSt({marginBottom:0,fontSize:12}) }}/>

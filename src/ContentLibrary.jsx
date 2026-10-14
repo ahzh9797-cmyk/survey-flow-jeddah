@@ -132,7 +132,7 @@ function Modal({ title, onClose, children, wide }) {
 
 const Q_TYPES = [
  {v:"text",l:"نص قصير",icon:""},{v:"textarea",l:"نص طويل",icon:""},
- {v:"number",l:"رقم",icon:""},{v:"select",l:"اختيار",icon:""},
+ {v:"number",l:"رقم",icon:""},{v:"select",l:"اختيار",icon:""},{v:"multiselect",l:"اختيار متعدد",icon:""},
  {v:"rating",l:"تقييم",icon:""},{v:"file",l:"رفع ملف",icon:""},
 ];
 
@@ -192,7 +192,7 @@ function QuestionFormModal({ initial, categories, user, onSaved, onClose }) {
  <input type="checkbox" checked={!!qData.required} onChange={e=>setQData(p=>({...p,required:e.target.checked}))} style={{width:14,height:14}}/>مطلوب
  </label>
  </div>
- {qData.type==="select" && (
+ {(qData.type==="select"||qData.type==="multiselect") && (
  <textarea value={(qData.options||[]).join("\n")} rows={3}
  onChange={e=>setQData(p=>({...p,options:e.target.value.split("\n").filter(Boolean)}))}
  placeholder="خيار 1\nخيار 2" style={{ ...iSt(), resize:"none" }}/>
@@ -490,7 +490,7 @@ function SectionFormModal({ initial, categories, user, onSaved, onClose }) {
  <input type="checkbox" checked={!!q.required} onChange={e=>updQ(q.id,"required",e.target.checked)} style={{width:13,height:13}}/>مطلوب
  </label>
  </div>
- {q.type==="select" && (
+ {(q.type==="select"||q.type==="multiselect") && (
  <textarea value={(q.options||[]).join("\n")} rows={2}
  onChange={e=>updQ(q.id,"options",e.target.value.split("\n").filter(Boolean))}
  placeholder="خيار 1\nخيار 2" style={{ ...iSt({marginTop:6}), resize:"none", fontSize:11 }}/>

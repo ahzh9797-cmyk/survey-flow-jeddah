@@ -431,7 +431,7 @@ function TemplateFormPage({ existing, user, isAdmin, onSaved, onCancel }) {
  const upd=(id,f,v)=>setQs(p=>p.map(q=>q.id===id?{...q,[f]:v}:q));
  const removeQ=id=>setQs(p=>p.filter(q=>q.id!==id));
  const addQ=()=>setQs(p=>[...p,{id:genId(),type:"text",label:"",required:false,options:[],allowedFileTypes:"pdf,xlsx"}]);
- const types=[{v:"text",l:"نص قصير"},{v:"textarea",l:"نص طويل"},{v:"number",l:"رقم"},{v:"select",l:"اختيار"},{v:"rating",l:"تقييم"},{v:"file",l:"ملف"}];
+ const types=[{v:"text",l:"نص قصير"},{v:"textarea",l:"نص طويل"},{v:"number",l:"رقم"},{v:"select",l:"اختيار"},{v:"multiselect",l:"اختيار متعدد"},{v:"rating",l:"تقييم"},{v:"file",l:"ملف"}];
 
  async function save() {
  if(!title.trim()){setError("اسم القالب مطلوب");return;}
@@ -512,7 +512,7 @@ function TemplateFormPage({ existing, user, isAdmin, onSaved, onCancel }) {
  <input type="checkbox" checked={q.required} onChange={e=>upd(q.id,"required",e.target.checked)} style={{width:16,height:16}}/> مطلوب
  </label>
  </div>
- {q.type==="select" && (
+ {(q.type==="select"||q.type==="multiselect") && (
  <textarea value={(q.options||[]).join("\n")} onChange={e=>upd(q.id,"options",e.target.value.split("\n").filter(Boolean))} rows={3} placeholder={"خيار 1\nخيار 2\nخيار 3"}
  style={{ width:"100%", padding:"9px 12px", border:`1.5px solid ${TT.s200}`, borderRadius:10, fontSize:13, fontFamily:"inherit", direction:"rtl", resize:"none", boxSizing:"border-box", outline:"none", marginTop:8, background:TT.s50 }}/>
  )}

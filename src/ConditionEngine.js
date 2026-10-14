@@ -16,8 +16,20 @@
 function evalRule(rule, answers) {
   const { sourceId, operator, value, value2 } = rule;
   const raw = answers[sourceId];
-  const ans = raw === undefined || raw === null ? "" : String(raw).trim();
   const val = String(value || "").trim();
+
+  // Multi-select answers (arrays): eq/contains = option selected
+  if (Array.isArray(raw)) {
+    const has = raw.map(x => String(x).trim()).includes(val);
+    switch (operator) {
+      case "eq": case "contains":     return has;
+      case "neq": case "notContains": return !has;
+      case "isEmpty":                 return raw.length === 0;
+      case "isNotEmpty":              return raw.length > 0;
+      default:                        return false;
+    }
+  }
+  const ans = raw === undefined || raw === null ? "" : String(raw).trim();
 
   switch (operator) {
     case "eq":          return ans === val;
@@ -146,7 +158,7 @@ export function getVisibleQuestions(flatQuestions, evalState) {
 export function validateAnswer(q, value, evalState) {
   if (!evalState.visible.has(q.id)) return null;       // hidden = no validation
   if (evalState.disabled.has(q.id)) return null;       // disabled = no validation
-  if (evalState.required.has(q.id) && !value) {
+  if (evalState.required.has(q.id) && (!value || (Array.isArray(value) && value.length === 0))) {
     return "هذا الحقل مطلوب";
   }
   return null;

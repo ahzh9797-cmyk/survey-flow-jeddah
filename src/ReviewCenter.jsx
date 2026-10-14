@@ -724,7 +724,7 @@ export function ReviewPreviewPage({ token, surveys }) {
  {q.type==="text" && <input disabled placeholder="نص قصير..." style={{...iSt({background:R.s50}),cursor:"not-allowed"}}/>}
  {q.type==="textarea" && <textarea disabled rows={2} placeholder="نص طويل..." style={{...iSt({background:R.s50,resize:"none"}),cursor:"not-allowed"}}/>}
  {q.type==="number" && <input type="number" disabled placeholder="0" style={{...iSt({background:R.s50}),cursor:"not-allowed"}}/>}
- {q.type==="select" && (q.options||[]).map(opt=>(
+ {(q.type==="select"||q.type==="multiselect") && (q.options||[]).map(opt=>(
  <div key={opt} style={{padding:"10px 14px",border:`1.5px solid ${R.s200}`,borderRadius:10,marginBottom:6,background:R.s50,fontSize:13,color:R.s500}}>{opt}</div>
  ))}
  {q.type==="rating" && (

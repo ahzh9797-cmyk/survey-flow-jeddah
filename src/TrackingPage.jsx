@@ -171,7 +171,7 @@ function OpenSurveyTracking({ survey, onBack }) {
  "الحالة": r.completed === false ? "توقف عند سؤال الفرز" : "مكتمل",
  "تاريخ الرد": new Date(r.submitted_at).toLocaleString("ar-SA"),
  };
- questions.forEach(q => { base[q.label] = r.answers?.[q.id] ?? ""; });
+ questions.forEach(q => { { const v = r.answers?.[q.id]; base[q.label] = Array.isArray(v) ? v.join("، ") : (v ?? ""); } });
  return base;
  });
  const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ "لا توجد ردود بعد": "" }]);
@@ -321,7 +321,7 @@ function TrackingPage({ survey, onBack }) {
  "المرحلة":s.stage,"الحالة":r?"استجابت":"لم تستجب",
  "تاريخ الرد":r?new Date(r.submitted_at).toLocaleString("ar-SA"):"",
  };
- questions.forEach(q => { base[q.label] = r?.answers?.[q.id] ?? ""; });
+ questions.forEach(q => { { const v = r?.answers?.[q.id]; base[q.label] = Array.isArray(v) ? v.join("، ") : (v ?? ""); } });
  return base;
  });
  const ws = XLSX.utils.json_to_sheet(rows);

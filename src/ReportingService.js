@@ -6,6 +6,7 @@
  */
 
 import { supabase, ensureXLSX, ensurePDF, pdfRTLText, tsStamp } from "./lib.jsx";
+import { answerToText } from "./LogicUtils.js";
 import { resolveTargetedSchools } from "./TargetingService.jsx";
 import { audit } from "./AuditService.js";
 
@@ -67,8 +68,14 @@ export function computeQuestionStats(questions, responses) {
   return questions.map(q => {
     const answers = responses
       .map(r => r.answers?.[q.id])
-      .filter(a => a !== undefined && a !== null && a !== "");
+      .filter(a => a !== undefined && a !== null && a !== "" && !(Array.isArray(a) && a.length === 0));
 
+    if (q.type === "multiselect") {
+      // responseCount = respondents; percentages may sum above 100%
+      const counts = {};
+      answers.forEach(a => (Array.isArray(a) ? a : [a]).forEach(x => { counts[x] = (counts[x]||0)+1; }));
+      return { ...q, responseCount:answers.length, distribution:counts };
+    }
     if (q.type === "select") {
       const counts = {};
       answers.forEach(a => { counts[a] = (counts[a]||0)+1; });
@@ -156,8 +163,7 @@ export async function exportSurveyExcel({ survey, responses, questions, allSchoo
       ...questions.map(q => {
         const ans = r.answers?.[q.id];
         if (ans === undefined || ans === null) return "—";
-        if (typeof ans === "object") return ans.url || JSON.stringify(ans);
-        return String(ans);
+        return answerToText(ans) || "—";
       }),
     ]);
     const wsResponses = XLSX.utils.aoa_to_sheet([headers, ...rows]);
@@ -207,8 +213,7 @@ export async function exportSurveyCSV({ survey, responses, questions, user }) {
     ...questions.map(q => {
       const ans = r.answers?.[q.id];
       if (!ans) return "";
-      if (typeof ans === "object") return ans.url || "";
-      return String(ans).replace(/,/g,"،");
+      return answerToText(ans).replace(/,/g,"،").replace(/"/g,'""');
     }),
   ]);
 
@@ -308,7 +313,7 @@ export async function exportSurveyPDF({ survey, responses, questions, allSchools
 
   // ── Question Stats ──
   const qStats = computeQuestionStats(questions, responses);
-  const selectRatingQs = qStats.filter(q => q.type==="select"||q.type==="rating");
+  const selectRatingQs = qStats.filter(q => q.type==="select"||q.type==="multiselect"||q.type==="rating");
 
   if (selectRatingQs.length) {
     if (y > pageH - 100) { doc.addPage(); y = 40; }
@@ -321,7 +326,7 @@ export async function exportSurveyPDF({ survey, responses, questions, allSchools
       doc.setFontSize(10); doc.setTextColor(45,55,72);
       pdfRTLText(doc, q.label, W-30, y); y+=4;
 
-      if (q.type==="select" && q.distribution) {
+      if ((q.type==="select"||q.type==="multiselect") && q.distribution) {
         const rows = Object.entries(q.distribution).map(([opt,cnt])=>[
           opt, cnt, `${Math.round(cnt/q.responseCount*100)}%`
         ]);
