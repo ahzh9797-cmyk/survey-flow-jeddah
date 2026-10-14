@@ -429,9 +429,15 @@ function SendMessagePanel({ surveys, user, isAdmin }) {
      audience = allPeople.filter(p => !respondedNIDs.has(p.national_id));
 
    } else {
-     // Schools: use existing fetchNonRespondents
+     // Schools: restrict to the survey's targeted schools, then drop respondents
      if (!allSchools.length) return;
-     audience = await fetchNonRespondents(selectedSurvey, allSchools);
+     const targeting = await loadTargeting(selectedSurvey.id);
+     const hasTargeting = targeting && (targeting.rules.length || targeting.selectedSchools.length || targeting.excludedSchools.length);
+     const targetedSchools = resolveTargetedSchools(
+       hasTargeting ? { ...selectedSurvey, targeting, _targeting_loaded: true } : selectedSurvey, // legacy: target_stages
+       allSchools
+     );
+     audience = await fetchNonRespondents(selectedSurvey, targetedSchools);
    }
 
    setNonRespondents(audience);
