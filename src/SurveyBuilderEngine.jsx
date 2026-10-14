@@ -180,7 +180,7 @@ function OptionsEditor({ options, onChange }) {
  disabled={i===0}
  style={{ background:"none", border:"none", cursor:i===0?"not-allowed":"pointer",
  color:i===0?B.s200:B.s400, fontSize:13, padding:"2px", flexShrink:0, opacity:i===0?0.4:1 }}
- ></button>
+ >↑</button>
  <button
  type="button"
  title="تحريك لأسفل"
@@ -188,7 +188,7 @@ function OptionsEditor({ options, onChange }) {
  disabled={i===opts.length-1}
  style={{ background:"none", border:"none", cursor:i===opts.length-1?"not-allowed":"pointer",
  color:i===opts.length-1?B.s200:B.s400, fontSize:13, padding:"2px", flexShrink:0, opacity:i===opts.length-1?0.4:1 }}
- ></button>
+ >↓</button>
 
  <button
  type="button"
@@ -199,7 +199,7 @@ function OptionsEditor({ options, onChange }) {
  width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center",
  cursor:opts.length===1?"not-allowed":"pointer", color:opts.length===1?B.s200:B.danger,
  fontSize:13, flexShrink:0 }}
- ></button>
+ >✕</button>
  </div>
  ))}
 
@@ -264,14 +264,14 @@ function QuestionCard({
  </div>
 
  <div style={{ display:"flex", alignItems:"center", gap:2, flexShrink:0 }}>
- <button className="bld-btn" title="سحب" style={{ cursor:"grab" }} {...dragHandleProps}></button>
- <button className="bld-btn" title="لأعلى" onClick={onMoveUp} disabled={idx===0} style={{ opacity:idx===0?0.3:1 }}></button>
- <button className="bld-btn" title="لأسفل" onClick={onMoveDown} disabled={idx>=total-1} style={{ opacity:idx>=total-1?0.3:1 }}></button>
- <button className="bld-btn" title="تكرار" onClick={onDuplicate}></button>
+ <button className="bld-btn" title="سحب" style={{ cursor:"grab" }} {...dragHandleProps}>⠿</button>
+ <button className="bld-btn" title="لأعلى" onClick={onMoveUp} disabled={idx===0} style={{ opacity:idx===0?0.3:1 }}>↑</button>
+ <button className="bld-btn" title="لأسفل" onClick={onMoveDown} disabled={idx>=total-1} style={{ opacity:idx>=total-1?0.3:1 }}>↓</button>
+ <button className="bld-btn" title="تكرار" onClick={onDuplicate}>⧉</button>
  <button className="bld-btn" title={collapsed?"توسيع":"طي"} onClick={()=>setCollapsed(p=>!p)}>
- {collapsed?"":""}
+ {collapsed?"▸":"▾"}
  </button>
- {total>1 && <button className="bld-btn danger" title="حذف" onClick={onRemove}></button>}
+ {total>1 && <button className="bld-btn danger" title="حذف" onClick={onRemove}>✕</button>}
  </div>
  </div>
 

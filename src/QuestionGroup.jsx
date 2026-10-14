@@ -87,18 +87,18 @@ export default function QuestionGroup({
  {/* Controls */}
  <button onClick={()=>setCollapsed(p=>!p)} title={collapsed?"توسيع":"طي"}
  style={{ background:"none",border:"none",color:G.e700,cursor:"pointer",fontSize:14,padding:"2px 4px" }}>
- {collapsed?"":""}
+ {collapsed?"▸":"▾"}
  </button>
  <button onClick={()=>setEditingLabel(true)} title="تعديل الاسم"
- style={{ background:"none",border:"none",color:G.s500,cursor:"pointer",fontSize:13,padding:"2px 4px" }}></button>
+ style={{ background:"none",border:"none",color:G.s500,cursor:"pointer",fontSize:13,padding:"2px 4px" }}>✎</button>
  <button onClick={onMoveUp} disabled={groupIdx===0} title="تحريك لأعلى"
- style={{ background:"none",border:"none",color:groupIdx===0?G.s200:G.s500,cursor:groupIdx===0?"not-allowed":"pointer",fontSize:13,padding:"2px" }}></button>
+ style={{ background:"none",border:"none",color:groupIdx===0?G.s200:G.s500,cursor:groupIdx===0?"not-allowed":"pointer",fontSize:13,padding:"2px" }}>↑</button>
  <button onClick={onMoveDown} disabled={groupIdx>=totalGroups-1} title="تحريك لأسفل"
- style={{ background:"none",border:"none",color:groupIdx>=totalGroups-1?G.s200:G.s500,cursor:groupIdx>=totalGroups-1?"not-allowed":"pointer",fontSize:13,padding:"2px" }}></button>
+ style={{ background:"none",border:"none",color:groupIdx>=totalGroups-1?G.s200:G.s500,cursor:groupIdx>=totalGroups-1?"not-allowed":"pointer",fontSize:13,padding:"2px" }}>↓</button>
  <button onClick={onDuplicate} title="تكرار المجموعة"
- style={{ background:"none",border:"none",color:G.s500,cursor:"pointer",fontSize:13,padding:"2px" }}></button>
+ style={{ background:"none",border:"none",color:G.s500,cursor:"pointer",fontSize:13,padding:"2px" }}>⧉</button>
  <button onClick={onDelete} title="حذف المجموعة"
- style={{ background:"none",border:"none",color:G.danger,cursor:"pointer",fontSize:13,padding:"2px" }}></button>
+ style={{ background:"none",border:"none",color:G.danger,cursor:"pointer",fontSize:13,padding:"2px" }}>✕</button>
  </div>
 
  {/* Questions inside group */}
