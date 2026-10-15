@@ -398,9 +398,9 @@ function PublicFill({ survey, onBack }) {
     const payload = { survey_id:survey.id, submitted_at:new Date().toISOString(), ...buildResponsePayload(survey.survey_type,entity,respondentLabel,answers,stoppedAtGate,survey.gate_question_id) };
     const responseLimit = survey.response_limit || "one_per_entity";
     let submitErr;
-    if (survey.survey_type===SURVEY_TYPES.SCHOOL && responseLimit==="one_per_entity") {
-      const{error:e}=await supabase.from("survey_responses").upsert(payload,{onConflict:"survey_id,school_id"}); submitErr=e;
-    } else if ((survey.survey_type===SURVEY_TYPES.SUPERVISOR||survey.survey_type===SURVEY_TYPES.ADMINISTRATOR) && responseLimit==="one_per_entity" && payload.respondent_national_id) {
+    // School one_per_entity: the DB trigger replace_previous_school_response
+    // removes the school's earlier response, so a plain insert is enough.
+    if ((survey.survey_type===SURVEY_TYPES.SUPERVISOR||survey.survey_type===SURVEY_TYPES.ADMINISTRATOR) && responseLimit==="one_per_entity" && payload.respondent_national_id) {
       // Delete existing then insert to enforce one response per entity
       await supabase.from("survey_responses").delete()
         .eq("survey_id",survey.id)
