@@ -138,6 +138,7 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
   const [loadingResp,   setLoadingResp]   = useState({});
   const [exporting,     setExporting]     = useState({});
   const [targetCounts,  setTargetCounts]  = useState({});
+  const [targetIds,     setTargetIds]     = useState({}); // survey id → Set of targeted school ids
   const [typeCounts,    setTypeCounts]    = useState({ supervisors:0, administrators:0 });
 
   // Load supervisor/administrator counts once on mount
@@ -219,6 +220,10 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
       ? "id,submitted_at,school_id,respondent_label,respondent_national_id,answers,survey_schools(name,stage,sector,principal)"
       : "id,submitted_at,respondent_label,respondent_national_id,answers";
     const data = await fetchAllResponses(sid, selectFields);
+    if (isSchoolSurvey) {
+      const schools = await fetchTargetedSchools(s, "id");
+      setTargetIds(p=>({...p,[sid]:new Set(schools.map(x=>x.id))}));
+    }
     const targetCount = getTargetCount(s);
     setRespondents(p=>({...p,[sid]:data||[]}));
     setTargetCounts(p=>({...p,[sid]:targetCount}));
@@ -454,7 +459,10 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
         // School surveys may get several responses per school (e.g. one per vice principal):
         // progress counts distinct schools, not raw responses.
         const isSchoolCard = !s.survey_type || s.survey_type === "school";
-        const respSchools = isSchoolCard ? new Set(respList.map(r=>r.school_id).filter(Boolean)).size : 0;
+        const tIds = targetIds[sid];
+        const allRespSchools = isSchoolCard ? new Set(respList.map(r=>r.school_id).filter(Boolean)) : new Set();
+        const respSchools = tIds ? [...allRespSchools].filter(id=>tIds.has(id)).length : allRespSchools.size;
+        const outsideSchools = allRespSchools.size - respSchools;
         const rc = isSchoolCard ? respSchools : (respList.length || 0);
         const pct = tc > 0 ? Math.min(100, Math.round(rc/tc*100)) : 0;
 
@@ -516,7 +524,7 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
                   <p style={{ margin:0, fontSize:12, fontWeight:600, color:"#334155", display:"flex", alignItems:"center", gap:6 }}>
                     <MIcon d={MI.users} size={13} color="#006B54"/>
-                    المستجيبون {respList.length>0?(isSchoolCard?`(${respList.length} رد · ${respSchools} مدرسة)`:`(${respList.length})`):""}
+                    المستجيبون {respList.length>0?(isSchoolCard?`(${respList.length} رد · ${respSchools} مدرسة مستهدفة${outsideSchools>0?` + ${outsideSchools} من خارج المستهدفين`:""})`:`(${respList.length})`):""}
                   </p>
                   <div style={{ display:"flex", gap:5 }}>
                     {["excel","csv"].map(fmt=>(
