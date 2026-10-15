@@ -5,7 +5,7 @@
  * مصممة للتوسع: Email، SMS، Push بدون تغيير الـ API
  */
 
-import { supabase } from "./lib.jsx";
+import { supabase, fetchAllResponses } from "./lib.jsx";
 import { audit } from "./AuditService.js";
 import { sendBulkReminder, NOTIFICATION_CHANNELS } from "./NotificationService.js";
 
@@ -199,10 +199,7 @@ export async function fetchCommunicationLog({ surveyId, limit = 100, from = 0 } 
 export async function fetchNonRespondents(survey, allSchools) {
   if (survey.survey_type !== "school") return [];
 
-  const { data: responses } = await supabase
-    .from("survey_responses")
-    .select("school_id")
-    .eq("survey_id", survey.id);
+  const responses = await fetchAllResponses(survey.id, "school_id");
 
   const respondedIds = new Set((responses || []).map(r => r.school_id));
   return allSchools.filter(s => !respondedIds.has(s.id) && s.phone);

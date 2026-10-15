@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { fetchTargetedSchools } from "./TargetingService.jsx";
 import { supabase, C, Btn, Card, Tag, Spinner, ErrorBanner, ExportMenu,
   ensureXLSX, ensurePDF, pdfRTLText, tsStamp, loadScript, logAction,
-  RoleBadge, ViewerNotice, useSchoolCount, useAppSettings, saveSetting } from "./lib.jsx";
+  RoleBadge, ViewerNotice, useSchoolCount, useAppSettings, saveSetting, fetchAllResponses } from "./lib.jsx";
 import { SURVEY_TYPES, SURVEY_TYPE_LABELS, SURVEY_STATUS_LABELS,
   SurveyTypeSelector, SurveySettingsPanel } from "./SurveyService.jsx";
 import { AudienceSelector, saveTargeting, loadTargeting, emptyTargeting } from "./TargetingService.jsx";
@@ -218,12 +218,7 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
     const selectFields = isSchoolSurvey
       ? "id,submitted_at,school_id,respondent_label,respondent_national_id,answers,survey_schools(name,stage,sector,principal)"
       : "id,submitted_at,respondent_label,respondent_national_id,answers";
-    const { data } = await supabase
-      .from("survey_responses")
-      .select(selectFields)
-      .eq("survey_id", sid)
-      .order("submitted_at", { ascending:false })
-      .limit(100);
+    const data = await fetchAllResponses(sid, selectFields);
     const targetCount = getTargetCount(s);
     setRespondents(p=>({...p,[sid]:data||[]}));
     setTargetCounts(p=>({...p,[sid]:targetCount}));
@@ -235,7 +230,7 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
     setExporting(p=>({...p,[sid]:format}));
     try {
       const [{ data:responses }, { data:questions }, { data:allSchools }] = await Promise.all([
-        supabase.from("survey_responses").select("*,survey_schools(name,stage,sector,district,principal)").eq("survey_id",sid),
+        fetchAllResponses(sid, "*,survey_schools(name,stage,sector,district,principal)").then(data => ({ data })),
         supabase.from("survey_questions").select("*").eq("survey_id",sid).order("order_index"),
         fetchTargetedSchools(s).then(data => ({ data })),
       ]);
@@ -456,7 +451,11 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
         const expFmt      = exporting[sid];
 
         const tc = targetCounts[sid] ?? getTargetCount(s);
-        const rc = respList.length || 0;
+        // School surveys may get several responses per school (e.g. one per vice principal):
+        // progress counts distinct schools, not raw responses.
+        const isSchoolCard = !s.survey_type || s.survey_type === "school";
+        const respSchools = isSchoolCard ? new Set(respList.map(r=>r.school_id).filter(Boolean)).size : 0;
+        const rc = isSchoolCard ? respSchools : (respList.length || 0);
         const pct = tc > 0 ? Math.min(100, Math.round(rc/tc*100)) : 0;
 
         return (
@@ -517,7 +516,7 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
                   <p style={{ margin:0, fontSize:12, fontWeight:600, color:"#334155", display:"flex", alignItems:"center", gap:6 }}>
                     <MIcon d={MI.users} size={13} color="#006B54"/>
-                    المستجيبون {respList.length>0?`(${respList.length})`:""}
+                    المستجيبون {respList.length>0?(isSchoolCard?`(${respList.length} رد · ${respSchools} مدرسة)`:`(${respList.length})`):""}
                   </p>
                   <div style={{ display:"flex", gap:5 }}>
                     {["excel","csv"].map(fmt=>(
@@ -721,7 +720,7 @@ function AnalyticsPage({ surveys, onNavigate }) {
         const { count } = await supabase.from("survey_responses").select("*", { count:"exact", head:true }).eq("survey_id", s.id);
         results[s.id] = count || 0;
         if (s.survey_type === "school" && s.approval_status === "approved") {
-          const { data: responses } = await supabase.from("survey_responses").select("school_id").eq("survey_id", s.id);
+          const responses = await fetchAllResponses(s.id, "school_id");
           const respondedIds = new Set((responses||[]).map(r => r.school_id));
           let allSchools = [], from = 0;
           while (true) {

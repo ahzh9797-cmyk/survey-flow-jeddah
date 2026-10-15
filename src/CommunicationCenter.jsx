@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { supabase, C, Btn, Card, Tag, Spinner, ErrorBanner } from "./lib.jsx";
+import { supabase, C, Btn, Card, Tag, Spinner, ErrorBanner, fetchAllResponses } from "./lib.jsx";
 import { SURVEY_TYPE_LABELS } from "./SurveyService.jsx";
 import { resolveTargetedSchools, emptyTargeting, loadTargeting } from "./TargetingService.jsx";
 import {
@@ -417,10 +417,7 @@ function SendMessagePanel({ surveys, user, isAdmin }) {
      }
 
      // Load responded national IDs
-     const { data: responses } = await supabase
-       .from("survey_responses")
-       .select("respondent_national_id")
-       .eq("survey_id", selectedSurvey.id);
+     const responses = await fetchAllResponses(selectedSurvey.id, "respondent_national_id");
      const respondedNIDs = new Set(
        (responses||[]).map(r => r.respondent_national_id).filter(Boolean)
      );

@@ -593,3 +593,24 @@ export function MinistryLookup({ onConfirm }) {
 
 
 
+
+
+// ── Fetch every response of a survey (pages of 1000 — no row cap) ──
+export async function fetchAllResponses(surveyId, select = "*", { ascending = false } = {}) {
+  let all = [], from = 0;
+  const BATCH = 1000;
+  while (true) {
+    const { data, error } = await supabase
+      .from("survey_responses")
+      .select(select)
+      .eq("survey_id", surveyId)
+      .order("submitted_at", { ascending })
+      .order("id", { ascending: true })
+      .range(from, from + BATCH - 1);
+    if (error || !data || data.length === 0) break;
+    all = all.concat(data);
+    if (data.length < BATCH) break;
+    from += BATCH;
+  }
+  return all;
+}

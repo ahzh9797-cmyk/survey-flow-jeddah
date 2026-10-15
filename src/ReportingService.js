@@ -5,7 +5,7 @@
  * تستخدم branding من إعدادات النظام
  */
 
-import { supabase, ensureXLSX, ensurePDF, pdfRTLText, tsStamp } from "./lib.jsx";
+import { supabase, ensureXLSX, ensurePDF, pdfRTLText, tsStamp, fetchAllResponses } from "./lib.jsx";
 import { answerToText } from "./LogicUtils.js";
 import { resolveTargetedSchools } from "./TargetingService.jsx";
 import { audit } from "./AuditService.js";
@@ -44,10 +44,7 @@ export async function fetchExecutiveData(surveys) {
 export async function fetchSurveyReportData(surveyId) {
   const [surveyRes, responsesRes, questionsRes] = await Promise.all([
     supabase.from("surveys").select("*").eq("id", surveyId).single(),
-    supabase.from("survey_responses")
-      .select("*, survey_schools(name,stage,sector,district,principal)")
-      .eq("survey_id", surveyId)
-      .order("submitted_at", { ascending: false }),
+    fetchAllResponses(surveyId, "*, survey_schools(name,stage,sector,district,principal)").then(data => ({ data })),
     supabase.from("survey_questions")
       .select("*")
       .eq("survey_id", surveyId)
