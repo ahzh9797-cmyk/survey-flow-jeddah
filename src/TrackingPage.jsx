@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase, C, Btn, Card, Tag, Spinner, ErrorBanner, ExportMenu,
  ensureXLSX, ensurePDF, pdfRTLText, tsStamp, logAction, useResponses } from "./lib.jsx";
 import { SURVEY_TYPE_LABELS } from "./SurveyService.jsx";
+import { fetchTargetedSchools } from "./TargetingService.jsx";
 
 // Premium styles 
 if (typeof document !== "undefined" && !document.getElementById("tracking-premium-styles")) {
@@ -265,29 +266,18 @@ function TrackingPage({ survey, onBack }) {
  useEffect(() => {
  setLoadingSchools(true);
  async function loadAllSchools() {
- let all = [], from = 0;
- const BATCH = 1000;
- while (true) {
- const { data, error } = await supabase
- .from("survey_schools")
- .select("id,name,principal,stage")
- .order("name")
- .range(from, from + BATCH - 1);
- if (error || !data || data.length === 0) break;
- all = all.concat(data);
- if (data.length < BATCH) break;
- from += BATCH;
- }
- if (survey.target_stages?.length) {
- all = all.filter(s => survey.target_stages.includes(s.stage));
- }
+ const all = await fetchTargetedSchools(survey, "id,name,principal,stage");
  setAllSchools(all);
  setLoadingSchools(false);
  }
  loadAllSchools();
  }, []);
 
- const respondedIds = useMemo(() => new Set(responses.map(r=>r.school_id)), [responses]);
+ // Count only responses from schools in this survey's audience
+ const respondedIds = useMemo(() => {
+   const inAudience = new Set(allSchools.map(s=>s.id));
+   return new Set(responses.map(r=>r.school_id).filter(id => inAudience.has(id)));
+ }, [responses, allSchools]);
 
  const filtered = useMemo(() => allSchools.filter(s => {
  const hasResp = respondedIds.has(s.id);

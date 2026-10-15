@@ -5,6 +5,8 @@
  *          await populateSnapshot(survey, supabase);
  */
 
+import { fetchTargetedSchools } from "./TargetingService.jsx";
+
 export async function populateSnapshot(survey, supabase) {
   const { id: survey_id, survey_type } = survey;
   if (!survey_id || !survey_type || survey_type === "open") return;
@@ -19,17 +21,8 @@ export async function populateSnapshot(survey, supabase) {
   let rows = [];
 
   if (survey_type === "school") {
-    let all = [], from = 0;
-    while (true) {
-      const { data } = await supabase
-        .from("survey_schools")
-        .select("id,name,phone")
-        .range(from, from+999);
-      if (!data?.length) break;
-      all = all.concat(data);
-      if (data.length < 1000) break;
-      from += 1000;
-    }
+    // Only the schools this survey actually targets
+    const all = await fetchTargetedSchools(survey, "id,name,phone");
     rows = all.map(s => ({
       survey_id,
       respondent_type: "school",

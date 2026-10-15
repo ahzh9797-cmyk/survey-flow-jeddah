@@ -130,6 +130,27 @@ export async function saveTargeting(surveyId, targeting) {
   }
 }
 
+/*
+  fetchTargetedSchools(survey, fields) → school[]
+  Loads every school (paged) and narrows it to the survey's audience.
+  Uses survey_targeting / survey_target_schools / survey_excluded_schools,
+  falling back to legacy target_stages, then to all schools.
+*/
+export async function fetchTargetedSchools(survey, fields = "id,name,stage,sector,district,principal,phone") {
+  let all = [], from = 0;
+  while (true) {
+    const { data, error } = await supabase.from("survey_schools").select(fields).order("name").range(from, from + 999);
+    if (error || !data?.length) break;
+    all = all.concat(data);
+    if (data.length < 1000) break;
+    from += 1000;
+  }
+  if (!survey?.id || (survey.survey_type && survey.survey_type !== "school")) return all;
+  const targeting = await loadTargeting(survey.id);
+  const has = targeting && (targeting.rules.length || targeting.selectedSchools.length || targeting.excludedSchools.length);
+  return resolveTargetedSchools(has ? { ...survey, targeting, _targeting_loaded: true } : survey, all);
+}
+
 export async function loadTargeting(surveyId) {
   if (!surveyId) return null;
 

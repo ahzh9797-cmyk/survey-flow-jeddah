@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "./lib.jsx";
+import { fetchTargetedSchools } from "./TargetingService.jsx";
 import {
  fetchSurveyReportData,
  computeQuestionStats,
@@ -241,18 +242,9 @@ function SurveyReportTab({ surveys, user, settings }) {
  const [activeTab, setActiveTab] = useState("summary");
 
  useEffect(()=>{
- async function loadSchools() {
- let all=[], from=0;
- while(true) {
- const { data } = await supabase.from("survey_schools")
- .select("id,name,stage,sector,district,principal,phone").range(from,from+999);
- if(!data?.length) break;
- all=all.concat(data); if(data.length<1000) break; from+=1000;
- }
- setAllSchools(all);
- }
- loadSchools();
- },[]);
+ if(!data?.survey) { setAllSchools([]); return; }
+ fetchTargetedSchools(data.survey).then(setAllSchools);
+ },[data]);
 
  async function loadReport(id) {
  if(!id) return;

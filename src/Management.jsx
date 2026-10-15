@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { fetchTargetedSchools } from "./TargetingService.jsx";
 import { supabase, C, Btn, Card, Tag, Spinner, ErrorBanner, ExportMenu,
   ensureXLSX, ensurePDF, pdfRTLText, tsStamp, loadScript, logAction,
   RoleBadge, ViewerNotice, useSchoolCount, useAppSettings, saveSetting } from "./lib.jsx";
@@ -236,7 +237,7 @@ function SurveysList({ surveys, schoolCount, onNew, onShare, onTrack, loading, i
       const [{ data:responses }, { data:questions }, { data:allSchools }] = await Promise.all([
         supabase.from("survey_responses").select("*,survey_schools(name,stage,sector,district,principal)").eq("survey_id",sid),
         supabase.from("survey_questions").select("*").eq("survey_id",sid).order("order_index"),
-        supabase.from("survey_schools").select("id,name,stage,sector,district,principal,phone"),
+        fetchTargetedSchools(s).then(data => ({ data })),
       ]);
       if (format === "excel") {
         const XLSX = await ensureXLSX();
